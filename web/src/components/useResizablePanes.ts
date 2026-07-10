@@ -45,11 +45,12 @@ export function useResizablePanes(storagePrefix: string) {
         sidebarRef.current = next;
         setSidebarWidth(next);
       } else if (dragging.current === "threads") {
-        const el = document.getElementById(`${storagePrefix}-right`);
+        const el = document.getElementById(`${storagePrefix}-split`);
         if (!el) return;
         const rect = el.getBoundingClientRect();
+        if (rect.height <= 0) return;
         const pct = ((e.clientY - rect.top) / rect.height) * 100;
-        const next = Math.min(70, Math.max(20, pct));
+        const next = Math.min(75, Math.max(25, pct));
         threadsRef.current = next;
         setThreadsPct(next);
       }

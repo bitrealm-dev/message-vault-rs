@@ -190,6 +190,128 @@ function updateContactsCsv(
   fs.writeFileSync(csvPath, body, "utf8");
 }
 
+function appendContactsCsv(row: {
+  phones: string[];
+  firstName: string | null;
+  lastName: string | null;
+  exclude: boolean;
+  tags: string[];
+}): void {
+  const csvPath = contactsCsvPath();
+  if (!fs.existsSync(csvPath)) {
+    throw new Error(`contacts CSV not found: ${csvPath}`);
+  }
+
+  const raw = fs.readFileSync(csvPath, "utf8");
+  const lines = raw.split(/\r?\n/);
+  if (lines.length === 0) {
+    throw new Error("contacts CSV is empty");
+  }
+
+  const header = parseCsvLine(lines[0] ?? "");
+  const idx = {
+    phones: header.indexOf("phones"),
+    firstName: header.indexOf("first_name"),
+    lastName: header.indexOf("last_name"),
+    exclude: header.indexOf("exclude"),
+  };
+  const tagIdx = tagColumnIndexes(header);
+  if (idx.phones < 0 || idx.exclude < 0 || tagIdx.some((i) => i < 0)) {
+    throw new Error("contacts CSV missing required columns");
+  }
+
+  const cols = header.map(() => "");
+  cols[idx.phones] = row.phones.join(";");
+  if (idx.firstName >= 0) cols[idx.firstName] = row.firstName ?? "";
+  if (idx.lastName >= 0) cols[idx.lastName] = row.lastName ?? "";
+  cols[idx.exclude] = row.exclude ? "true" : "false";
+  writeCsvTags(cols, tagIdx, row.tags);
+
+  const line = cols.map(escapeCsvField).join(",");
+  const needsNewline = raw.length > 0 && !/\r?\n$/.test(raw);
+  fs.writeFileSync(csvPath, `${raw}${needsNewline ? "\n" : ""}${line}\n`, "utf8");
+}
+
+export type ContactCreate = {
+  firstName?: string | null;
+  lastName?: string | null;
+  phones?: string[];
+  exclude?: boolean;
+  tags?: string[];
+};
+
+/** Insert a new contact in SQLite and append contacts.csv; returns the contact. */
+export function createContact(input: ContactCreate): ContactDetail {
+  const firstName = input.firstName?.trim() || null;
+  const lastName = input.lastName?.trim() || null;
+  if (!firstName && !lastName) {
+    throw new Error("first or last name required");
+  }
+  const phones = (input.phones ?? []).map((p) => p.trim()).filter(Boolean);
+  const exclude = input.exclude ?? false;
+  const preferredPhone = phones[0] ?? null;
+  const tags = (input.tags ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => !RESERVED_GROUP_NAMES.has(t.toLowerCase()));
+
+  let newId = 0;
+  const writeDb = new Database(dbPath());
+  try {
+    const tx = writeDb.transaction(() => {
+      for (const phone of phones) {
+        const owner = phoneOwner(writeDb, phone);
+        if (owner != null) {
+          throw new Error(`phone ${phone} already belongs to another contact`);
+        }
+      }
+
+      const result = writeDb
+        .prepare(
+          `INSERT INTO contacts (first_name, last_name, exclude, preferred_phone)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(firstName, lastName, exclude ? 1 : 0, preferredPhone);
+      newId = Number(result.lastInsertRowid);
+
+      const insertPhone = writeDb.prepare(
+        `INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?, ?)`,
+      );
+      for (const phone of phones) {
+        insertPhone.run(phone, newId);
+      }
+
+      if (tags.length > 0) {
+        const insertTag = writeDb.prepare(
+          `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
+        );
+        for (const name of tags) {
+          const tagId = ensureTagId(writeDb, name);
+          insertTag.run(newId, tagId);
+        }
+      }
+    });
+    tx();
+  } finally {
+    writeDb.close();
+  }
+
+  resetDb();
+  appendContactsCsv({
+    phones,
+    firstName,
+    lastName,
+    exclude,
+    tags,
+  });
+
+  const created = getContact(newId);
+  if (!created) {
+    throw new Error("contact missing after create");
+  }
+  return created;
+}
+
 function ensureTagId(db: Database.Database, name: string): number {
   assertAllowedTagName(name);
   db.prepare(`INSERT OR IGNORE INTO tags (name) VALUES (?)`).run(name);
@@ -475,4 +597,115 @@ export function patchContact(
     throw new Error("contact missing after update");
   }
   return updated;
+}
+
+function removeContactsCsv(
+  targets: Array<{
+    phones: string[];
+    firstName: string | null;
+    lastName: string | null;
+  }>,
+): void {
+  if (targets.length === 0) return;
+
+  const csvPath = contactsCsvPath();
+  if (!fs.existsSync(csvPath)) {
+    throw new Error(`contacts CSV not found: ${csvPath}`);
+  }
+
+  const raw = fs.readFileSync(csvPath, "utf8");
+  const lines = raw.split(/\r?\n/);
+  if (lines.length === 0) {
+    throw new Error("contacts CSV is empty");
+  }
+
+  const header = parseCsvLine(lines[0] ?? "");
+  const idx = {
+    phones: header.indexOf("phones"),
+    firstName: header.indexOf("first_name"),
+    lastName: header.indexOf("last_name"),
+  };
+  if (idx.phones < 0) {
+    throw new Error("contacts CSV missing required columns");
+  }
+
+  const matchers = targets.map((t) => ({
+    phones: new Set(t.phones),
+    first: (t.firstName ?? "").trim().toLowerCase(),
+    last: (t.lastName ?? "").trim().toLowerCase(),
+  }));
+
+  const out = lines.filter((line, lineNo) => {
+    if (lineNo === 0 || !line.trim()) return true;
+    const cols = parseCsvLine(line);
+    const rowPhones = (cols[idx.phones] ?? "")
+      .split(";")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const rowFirst =
+      idx.firstName >= 0
+        ? (cols[idx.firstName] ?? "").trim().toLowerCase()
+        : "";
+    const rowLast =
+      idx.lastName >= 0 ? (cols[idx.lastName] ?? "").trim().toLowerCase() : "";
+
+    for (const m of matchers) {
+      const phoneHit =
+        m.phones.size > 0 && rowPhones.some((p) => m.phones.has(p));
+      const nameHit =
+        !phoneHit &&
+        m.phones.size === 0 &&
+        (m.first !== "" || m.last !== "") &&
+        rowFirst === m.first &&
+        rowLast === m.last;
+      if (phoneHit || nameHit) return false;
+    }
+    return true;
+  });
+
+  const endsWithNewline = /\r?\n$/.test(raw);
+  let body = out.join("\n");
+  if (endsWithNewline && !body.endsWith("\n")) body += "\n";
+  fs.writeFileSync(csvPath, body, "utf8");
+}
+
+/** Delete contacts from SQLite and contacts.csv. */
+export function deleteContacts(ids: number[]): number {
+  const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
+  if (unique.length === 0) return 0;
+
+  const snapshots: Array<{
+    phones: string[];
+    firstName: string | null;
+    lastName: string | null;
+  }> = [];
+  for (const id of unique) {
+    const existing = getContact(id);
+    if (!existing) continue;
+    snapshots.push({
+      phones: existing.phones,
+      firstName: existing.firstName,
+      lastName: existing.lastName,
+    });
+  }
+  if (snapshots.length === 0) {
+    throw new Error("contact not found");
+  }
+
+  const writeDb = new Database(dbPath());
+  try {
+    const del = writeDb.prepare(`DELETE FROM contacts WHERE id = ?`);
+    const tx = writeDb.transaction(() => {
+      for (const id of unique) {
+        del.run(id);
+      }
+    });
+    tx();
+  } finally {
+    writeDb.close();
+  }
+
+  resetDb();
+  removeContactsCsv(snapshots);
+  return snapshots.length;
 }

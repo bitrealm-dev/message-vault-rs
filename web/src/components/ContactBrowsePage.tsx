@@ -28,6 +28,7 @@ export function ContactBrowsePage({
           <BrowseShell
             section={paneKey}
             sectionLabel={label}
+            browseSection={section}
             contacts={contacts}
             allTags={tags}
             initialContactId={contactId}

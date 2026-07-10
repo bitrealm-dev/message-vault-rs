@@ -60,30 +60,6 @@ function sortFields(row: {
   return { sortFirst, sortLast, letter };
 }
 
-function hasMessagesSql(): string {
-  return `
-    AND (
-      EXISTS (
-        SELECT 1
-        FROM contact_phones cp
-        JOIN conversations conv ON conv.conv_type = 'individual'
-          AND conv.chat_identifier = cp.phone_e164
-        JOIN messages m ON m.conversation_id = conv.id
-        WHERE cp.contact_id = c.id
-        LIMIT 1
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM contact_phones cp
-        JOIN participants p ON p.handle = cp.phone_e164
-        JOIN messages m ON m.conversation_id = p.conversation_id
-        WHERE cp.contact_id = c.id
-        LIMIT 1
-      )
-    )
-  `;
-}
-
 const RESERVED_TAG_LABELS = new Set(
   ["home", "all", "excluded", "groups", "no-group", "no group"].map((s) =>
     s.toLowerCase(),
@@ -113,7 +89,6 @@ export function tagFromSlug(slug: string): string | null {
 }
 
 function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
-  const hasMsg = hasMessagesSql();
   if (typeof section === "object" && "tag" in section) {
     // Tag filters list everyone with the tag (not excluded), even if they
     // have no imported messages yet — otherwise Travel/Celebration/etc. look empty.
@@ -135,7 +110,6 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
           SELECT DISTINCT c.*
           FROM contacts c
           WHERE c.exclude = 0
-            ${hasMsg}
         `,
         params: [],
       };
@@ -145,7 +119,6 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
           SELECT DISTINCT c.*
           FROM contacts c
           WHERE c.exclude = 1
-            ${hasMsg}
         `,
         params: [],
       };

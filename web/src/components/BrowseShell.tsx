@@ -1,6 +1,6 @@
 "use client";
 
-import type { ContactListItem, MessageRow } from "@/lib/types";
+import type { ContactListItem, ContactSection, MessageRow } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -8,6 +8,8 @@ import { SortByMenu, type SortMode } from "./SortByMenu";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import {
   ContactPhoneList,
+  draftHasName,
+  emptyContactEditDraft,
   phonesForSave,
   seedContactEditDraft,
   type ContactEditDraft,
@@ -60,12 +62,14 @@ function groupDateMeta(g: {
 export function BrowseShell({
   section,
   sectionLabel,
+  browseSection,
   contacts,
   allTags = [],
   initialContactId,
 }: {
   section: string;
   sectionLabel: string;
+  browseSection: ContactSection;
   contacts: ContactListItem[];
   allTags?: string[];
   initialContactId: number | null;
@@ -84,6 +88,7 @@ export function BrowseShell({
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [contactEditing, setContactEditing] = useState(false);
+  const [contactCreating, setContactCreating] = useState(false);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -177,6 +182,7 @@ export function BrowseShell({
       setMessages([]);
       setActiveThread(null);
       setContactEditing(false);
+      setContactCreating(false);
       setEditDraft(null);
       const params = new URLSearchParams(searchParams.toString());
       params.set("c", String(id));
@@ -193,6 +199,7 @@ export function BrowseShell({
     setExcludeOverrides(new Map());
     selectionDirtyRef.current = false;
     setContactEditing(false);
+    setContactCreating(false);
     setEditDraft(null);
   }, [section, query]);
 
@@ -337,22 +344,55 @@ export function BrowseShell({
     [sorted, selectedIds],
   );
   const hasSelection = selectedContacts.length > 0;
-  const canEditGroups = !contactEditing && (hasSelection || !!detail);
+  const canEditGroups =
+    !contactEditing && !contactCreating && (hasSelection || !!detail);
 
   useEffect(() => {
     if (!hasSelection) return;
     setContactEditing(false);
+    setContactCreating(false);
     setEditDraft(null);
   }, [hasSelection]);
 
   const beginContactEdit = useCallback(() => {
-    if (!detail || hasSelection) return;
+    if (!detail || hasSelection || contactCreating) return;
     setEditDraft(seedContactEditDraft(detail));
     setContactEditing(true);
-  }, [detail, hasSelection]);
+  }, [detail, hasSelection, contactCreating]);
+
+  const createDefaults = useMemo(() => {
+    if (typeof browseSection === "object") {
+      return { tags: [browseSection.tag], exclude: false };
+    }
+    if (browseSection === "excluded") {
+      return { tags: [] as string[], exclude: true };
+    }
+    // all, untagged / no-group
+    return { tags: [] as string[], exclude: false };
+  }, [browseSection]);
+
+  const beginCreateContact = useCallback(() => {
+    setSelectedIds(new Set());
+    setContactId(null);
+    setDetail(null);
+    setYearly([]);
+    setGroups([]);
+    setMessages([]);
+    setActiveThread(null);
+    setContactEditing(false);
+    setContactCreating(true);
+    setEditDraft(emptyContactEditDraft(createDefaults));
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("c");
+    params.delete("y");
+    params.delete("conv");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams, createDefaults]);
 
   const cancelContactEdit = useCallback(() => {
     setContactEditing(false);
+    setContactCreating(false);
     setEditDraft(null);
   }, []);
 
@@ -369,6 +409,99 @@ export function BrowseShell({
     setEditDraft(null);
     router.refresh();
   }, [editDraft, contactId, saveContactPatch, router]);
+
+  const saveContactCreate = useCallback(async () => {
+    if (!editDraft || !draftHasName(editDraft)) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: editDraft.firstName.trim() || null,
+          lastName: editDraft.lastName.trim() || null,
+          phones: phonesForSave(editDraft.phones),
+          exclude: editDraft.exclude,
+          tags: editDraft.tags,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "create failed");
+      setContactCreating(false);
+      setEditDraft(null);
+      if (data.contact) {
+        setDetail(data.contact);
+        selectContact(data.contact.id);
+      }
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  }, [editDraft, selectContact, router]);
+
+  const formOpen = (contactEditing || contactCreating) && !!editDraft;
+  const canSaveForm = !!editDraft && draftHasName(editDraft);
+  const canDelete = !contactCreating && (hasSelection || contactId != null);
+
+  const deleteSelectedContacts = useCallback(async () => {
+    const ids = hasSelection
+      ? selectedContacts.map((c) => c.id)
+      : contactId != null
+        ? [contactId]
+        : [];
+    if (ids.length === 0) return;
+    const label =
+      ids.length === 1
+        ? "Delete this contact?"
+        : `Delete ${ids.length} contacts?`;
+    if (!window.confirm(label)) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "delete failed");
+
+      setSelectedIds(new Set());
+      setTagOverrides(new Map());
+      setExcludeOverrides(new Map());
+      selectionDirtyRef.current = false;
+      setContactEditing(false);
+      setContactCreating(false);
+      setEditDraft(null);
+      setDetail(null);
+      setYearly([]);
+      setGroups([]);
+      setMessages([]);
+      setActiveThread(null);
+      setContactId(null);
+
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("c");
+      params.delete("y");
+      params.delete("conv");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    hasSelection,
+    selectedContacts,
+    contactId,
+    pathname,
+    router,
+    searchParams,
+  ]);
 
   const tagsFor = useCallback(
     (id: number, fallback: string[]) => tagOverrides.get(id) ?? fallback,
@@ -685,7 +818,18 @@ export function BrowseShell({
               {contacts.length}
             </span>
           </label>
-          <SortByMenu sort={sort} onChange={setSort} />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="New contact"
+              title="New contact"
+              onClick={beginCreateContact}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+            >
+              <NewContactIcon className="size-4" />
+            </button>
+            <SortByMenu sort={sort} onChange={setSort} />
+          </div>
         </div>
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
           <input
@@ -814,12 +958,14 @@ export function BrowseShell({
         className="flex min-w-0 flex-1 flex-col"
       >
         <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border px-5">
-          {contactEditing ? (
+          {formOpen ? (
             <>
               <button
                 type="button"
-                disabled={saving}
-                onClick={() => void saveContactEdit()}
+                disabled={saving || (contactCreating && !canSaveForm)}
+                onClick={() =>
+                  void (contactCreating ? saveContactCreate() : saveContactEdit())
+                }
                 className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18 disabled:opacity-50"
               >
                 Save
@@ -832,6 +978,16 @@ export function BrowseShell({
               >
                 Cancel
               </button>
+              {canDelete && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void deleteSelectedContacts()}
+                  className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                >
+                  Delete
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -854,6 +1010,16 @@ export function BrowseShell({
                 onCreate={createAndAssignGroup}
                 onOpenChange={onSelectionMenuOpenChange}
               />
+              {canDelete && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void deleteSelectedContacts()}
+                  className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                >
+                  Delete
+                </button>
+              )}
               {statusMsg && (
                 <span className="truncate text-[12px] text-muted">{statusMsg}</span>
               )}
@@ -862,7 +1028,14 @@ export function BrowseShell({
         </div>
 
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
-          {hasSelection ? null : detail && !loadingThreads ? (
+          {hasSelection ? null : contactCreating && editDraft ? (
+            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+              {[editDraft.firstName, editDraft.lastName]
+                .map((p) => p.trim())
+                .filter(Boolean)
+                .join(" ") || "New contact"}
+            </h1>
+          ) : detail && !loadingThreads ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
               {contactEditing && editDraft
                 ? [editDraft.firstName, editDraft.lastName]
@@ -935,18 +1108,20 @@ export function BrowseShell({
             </div>
           </div>
         ) : (
-          <>
-
+          <div
+            id={`browse-${section}-split`}
+            className="flex min-h-0 flex-1 flex-col"
+          >
         <section
-          className="flex flex-col overflow-y-auto bg-panel px-5 py-4"
-          style={{ height: `${threadsPct}%`, minHeight: 140 }}
+          className="min-h-0 flex flex-col overflow-y-auto bg-bg px-5 py-4"
+          style={{ height: `${threadsPct}%` }}
         >
-          {detail && !loadingThreads && (
+          {((detail && !loadingThreads) || (contactCreating && editDraft)) && (
             <>
-              <div>
+              <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
                 <h2 className="text-[13px] font-semibold text-text">Contact details</h2>
-                <div className="mt-2 border-y border-border/60 py-2.5">
-                  {contactEditing && editDraft && (
+                <div className="mt-3">
+                  {formOpen && editDraft && (
                     <div className="mb-3 flex gap-3">
                       <div className="pt-0.5">
                         <PersonDetailIcon className="size-4 shrink-0 text-muted" />
@@ -991,9 +1166,15 @@ export function BrowseShell({
                       <div className="min-w-0 flex-1">
                         <div className="text-[11px] tracking-wide text-muted">Groups</div>
                         <div className="mt-0.5">
-                          {detail.tags.length > 0 ? (
+                          {(contactCreating && editDraft
+                            ? editDraft.tags
+                            : detail?.tags ?? []
+                          ).length > 0 ? (
                             <div className="flex flex-col gap-0.5">
-                              {detail.tags.map((tag) => (
+                              {(contactCreating && editDraft
+                                ? editDraft.tags
+                                : detail!.tags
+                              ).map((tag) => (
                                 <span
                                   key={tag}
                                   className="truncate text-[13px] text-text"
@@ -1015,21 +1196,21 @@ export function BrowseShell({
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-[11px] tracking-wide text-muted">
-                          {(contactEditing && editDraft
+                          {(formOpen && editDraft
                             ? editDraft.phones.filter((p) => p.trim()).length
-                            : detail.phones.length) === 1
+                            : detail?.phones.length ?? 0) === 1
                             ? "Phone"
                             : "Phones"}
                         </div>
                         <div className="mt-0.5">
-                          {contactEditing && editDraft ? (
+                          {formOpen && editDraft ? (
                             <ContactPhoneList
                               phones={editDraft.phones}
                               onChange={(phones) =>
                                 setEditDraft({ ...editDraft, phones })
                               }
                             />
-                          ) : detail.phones.length > 0 ? (
+                          ) : detail && detail.phones.length > 0 ? (
                             <div className="flex flex-col gap-0.5">
                               {detail.phones.map((phone) => (
                                 <span
@@ -1055,7 +1236,7 @@ export function BrowseShell({
                     <div className="min-w-0 flex-1">
                       <div className="text-[11px] tracking-wide text-muted">Excluded</div>
                       <div className="mt-0.5">
-                        {contactEditing && editDraft ? (
+                        {formOpen && editDraft ? (
                           <select
                             value={editDraft.exclude ? "yes" : "no"}
                             onChange={(e) =>
@@ -1069,18 +1250,18 @@ export function BrowseShell({
                             <option value="no">No</option>
                             <option value="yes">Yes</option>
                           </select>
-                        ) : (
+                        ) : detail ? (
                           <span className="text-[13px] text-text">
                             {(excludeOverrides.get(detail.id) ?? detail.exclude)
                               ? "Yes"
                               : "No"}
                           </span>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </div>
 
-                  {detail.dateStart && detail.dateEnd && (
+                  {detail?.dateStart && detail.dateEnd && (
                     <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
                       <div className="pt-0.5">
                         <RangeIcon className="size-4 shrink-0 text-muted" />
@@ -1100,7 +1281,9 @@ export function BrowseShell({
                 </div>
               </div>
 
-              <div className="mt-5">
+              {!contactCreating && (
+              <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+              <div>
                 <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
                   Yearly messages
                 </h3>
@@ -1205,6 +1388,8 @@ export function BrowseShell({
                   </div>
                 )}
               </div>
+              </div>
+              )}
             </>
           )}
         </section>
@@ -1245,7 +1430,7 @@ export function BrowseShell({
             </div>
           )}
         </section>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -1324,6 +1509,25 @@ function PencilIcon({ className }: { className?: string }) {
     >
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function NewContactIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="8.5" cy="7.5" r="3" />
+      <path d="M2.5 19c.55-2.85 2.6-4.5 6-4.5 1.2 0 2.25.2 3.15.55" />
+      <path d="M17.5 10.5v9M13 15h9" strokeWidth="2.25" />
     </svg>
   );
 }

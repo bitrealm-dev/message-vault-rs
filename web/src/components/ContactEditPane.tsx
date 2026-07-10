@@ -5,6 +5,7 @@ export type ContactEditDraft = {
   lastName: string;
   phones: string[];
   exclude: boolean;
+  tags: string[];
 };
 
 export function seedContactEditDraft(contact: {
@@ -12,13 +13,32 @@ export function seedContactEditDraft(contact: {
   lastName: string | null;
   phones: string[];
   exclude: boolean;
+  tags?: string[];
 }): ContactEditDraft {
   return {
     firstName: contact.firstName ?? "",
     lastName: contact.lastName ?? "",
     phones: [...contact.phones, ""],
     exclude: contact.exclude,
+    tags: contact.tags ? [...contact.tags] : [],
   };
+}
+
+export function emptyContactEditDraft(defaults?: {
+  exclude?: boolean;
+  tags?: string[];
+}): ContactEditDraft {
+  return {
+    firstName: "",
+    lastName: "",
+    phones: [""],
+    exclude: defaults?.exclude ?? false,
+    tags: defaults?.tags ? [...defaults.tags] : [],
+  };
+}
+
+export function draftHasName(draft: ContactEditDraft): boolean {
+  return draft.firstName.trim() !== "" || draft.lastName.trim() !== "";
 }
 
 /** Drop empty non-trailing rows; ensure exactly one trailing empty row. */

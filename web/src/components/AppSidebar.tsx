@@ -103,6 +103,44 @@ function ProhibitedIcon({ className }: { className?: string }) {
   );
 }
 
+function PanelCollapseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M9.5 4.5v15" />
+      <path d="M14.25 9.75 11.75 12l2.5 2.25" />
+    </svg>
+  );
+}
+
+function PanelExpandIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M9.5 4.5v15" />
+      <path d="M11.75 9.75 14.25 12l-2.5 2.25" />
+    </svg>
+  );
+}
+
 function EllipsisIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -122,21 +160,19 @@ function NavLink({
   href,
   label,
   active,
-  indent = false,
   icon,
 }: {
   href: string;
   label: string;
   active: boolean;
-  indent?: boolean;
   icon?: ReactNode;
 }) {
   return (
     <Link
       href={href}
-      className={`relative flex items-center gap-2 py-1.5 text-[13px] transition-colors ${
-        indent ? "pl-4 pr-3" : "px-3"
-      } ${active ? "bg-elevated text-text" : "text-muted hover:bg-white/20 hover:text-text"}`}
+      className={`relative flex items-center gap-2 py-1.5 pl-10 pr-3 text-[13px] transition-colors ${
+        active ? "bg-elevated text-text" : "text-muted hover:bg-white/20 hover:text-text"
+      }`}
     >
       {active && (
         <span
@@ -248,7 +284,7 @@ function GroupNamePopover({
 function GroupsNav({ tags }: { tags: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [createOpen, setCreateOpen] = useState(false);
+  const [create, setCreate] = useState<{ x: number; y: number } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [rename, setRename] = useState<{
     name: string;
@@ -258,19 +294,22 @@ function GroupsNav({ tags }: { tags: string[] }) {
   const [busy, setBusy] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const createPanelRef = useRef<HTMLDivElement>(null);
   const renamePanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!createOpen && !menuFor && !rename) return;
+    if (!create && !menuFor && !rename) return;
     const onDoc = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (createOpen && !headerRef.current?.contains(t)) setCreateOpen(false);
+      if (create && !createPanelRef.current?.contains(t) && !headerRef.current?.contains(t)) {
+        setCreate(null);
+      }
       if (menuFor && !menuRef.current?.contains(t)) setMenuFor(null);
       if (rename && !renamePanelRef.current?.contains(t)) setRename(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setCreateOpen(false);
+      setCreate(null);
       setMenuFor(null);
       setRename(null);
     };
@@ -280,7 +319,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [createOpen, menuFor, rename]);
+  }, [create, menuFor, rename]);
 
   const createGroup = async (name: string) => {
     setBusy(true);
@@ -292,7 +331,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "create failed");
-      setCreateOpen(false);
+      setCreate(null);
       router.refresh();
       router.push(`/tag/${tagSlug(data.name)}`);
     } catch (err) {
@@ -354,7 +393,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
   return (
     <div>
       <div className="relative mt-4" ref={headerRef}>
-        <div className="flex items-center justify-between px-3 pb-1">
+        <div className="flex items-center justify-between pl-10 pr-1.5 pb-1">
           <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
             Groups
           </span>
@@ -362,27 +401,22 @@ function GroupsNav({ tags }: { tags: string[] }) {
             type="button"
             aria-label="Create group"
             disabled={busy}
-            onClick={() => {
+            onClick={(e) => {
               setMenuFor(null);
               setRename(null);
-              setCreateOpen((v) => !v);
+              setCreate((v) =>
+                v ? null : { x: e.clientX, y: e.clientY },
+              );
             }}
             className="rounded p-0.5 text-muted hover:bg-elevated hover:text-text disabled:opacity-40"
           >
             <PlusIcon className="size-3.5" />
           </button>
         </div>
-        {createOpen && (
-          <GroupNamePopover
-            title="Create group"
-            onSave={createGroup}
-            onCancel={() => setCreateOpen(false)}
-          />
-        )}
       </div>
 
       {tags.length === 0 ? (
-        <p className="px-3 py-1 text-[12px] text-muted">No groups</p>
+        <p className="pl-10 pr-3 py-1 text-[12px] text-muted">No groups</p>
       ) : (
         tags.map((name) => {
           const href = `/tag/${tagSlug(name)}`;
@@ -406,7 +440,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
                 )}
                 <Link
                   href={href}
-                  className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 pl-4"
+                  className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 pl-10"
                 >
                   {groupIcon}
                   <span className="truncate">{name}</span>
@@ -419,7 +453,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setCreateOpen(false);
+                    setCreate(null);
                     setRename(null);
                     setMenuFor((v) => (v === name ? null : name));
                   }}
@@ -470,9 +504,18 @@ function GroupsNav({ tags }: { tags: string[] }) {
         href="/no-group"
         label="No group"
         active={pathname === "/no-group"}
-        indent
         icon={<PersonIcon className="size-3.5 shrink-0 opacity-80" />}
       />
+
+      {create && (
+        <GroupNamePopover
+          title="Create group"
+          anchor={{ x: create.x, y: create.y }}
+          panelRef={createPanelRef}
+          onSave={createGroup}
+          onCancel={() => setCreate(null)}
+        />
+      )}
 
       {rename && (
         <GroupNamePopover
@@ -488,6 +531,8 @@ function GroupsNav({ tags }: { tags: string[] }) {
   );
 }
 
+const NAV_COLLAPSED_KEY = "message-vault:navCollapsed";
+
 export function AppSidebar({
   active,
   tags = [],
@@ -495,46 +540,81 @@ export function AppSidebar({
   active: string;
   tags?: string[];
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    setCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0");
+      return next;
+    });
+  };
+
   const groupIcon = (
     <PeopleGroupIcon className="size-3.5 shrink-0 opacity-80" />
   );
 
   return (
-    <aside className="flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <Link
-          href="/"
-          className="text-[14px] font-semibold tracking-tight text-text hover:text-accent"
+    <aside
+      className={`flex h-full shrink-0 flex-col border-r border-border bg-sidebar ${
+        collapsed ? "w-10" : "w-[200px]"
+      }`}
+    >
+      <div className="flex h-[45px] shrink-0 items-center gap-1 border-b border-border px-2">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Show navigation" : "Hide navigation"}
+          title={collapsed ? "Show navigation" : "Hide navigation"}
+          className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
         >
-          Message Vault
-        </Link>
+          {collapsed ? (
+            <PanelExpandIcon className="size-4" />
+          ) : (
+            <PanelCollapseIcon className="size-4" />
+          )}
+        </button>
+        {!collapsed && (
+          <Link
+            href="/"
+            className="min-w-0 truncate text-[14px] font-semibold tracking-tight text-text hover:text-accent"
+          >
+            Message Vault
+          </Link>
+        )}
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-        <NavLink
-          href="/all"
-          label="All Contacts"
-          active={active === "/all"}
-          icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
-        />
-        <NavLink
-          href="/excluded"
-          label="Excluded"
-          active={active === "/excluded"}
-          icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
-        />
-
-        <GroupsNav tags={tags} />
-
-        <div className="mt-auto border-t border-border pt-2">
+      {!collapsed && (
+        <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
           <NavLink
-            href="/groups"
-            label="Group chats"
-            active={active === "/groups"}
-            icon={groupIcon}
+            href="/all"
+            label="All Contacts"
+            active={active === "/all"}
+            icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
           />
-        </div>
-      </nav>
+          <NavLink
+            href="/excluded"
+            label="Excluded"
+            active={active === "/excluded"}
+            icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+
+          <GroupsNav tags={tags} />
+
+          <div className="mt-auto border-t border-border pt-2">
+            <NavLink
+              href="/groups"
+              label="Group chats"
+              active={active === "/groups"}
+              icon={groupIcon}
+            />
+          </div>
+        </nav>
+      )}
     </aside>
   );
 }
