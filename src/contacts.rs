@@ -24,7 +24,15 @@ struct ContactCsvRow {
     #[serde(default)]
     exclude: String,
     #[serde(default)]
-    tags: String,
+    tag_1: String,
+    #[serde(default)]
+    tag_2: String,
+    #[serde(default)]
+    tag_3: String,
+    #[serde(default)]
+    tag_4: String,
+    #[serde(default)]
+    tag_5: String,
 }
 
 #[derive(Debug, Clone)]
@@ -146,7 +154,7 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
             stats.phones += 1;
         }
 
-        for tag_name in split_list(&row.tags) {
+        for tag_name in row_tags(&row) {
             let tag_id = ensure_tag(&tx, &tag_name)?;
             tx.execute(
                 "INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?1, ?2)",
@@ -196,6 +204,24 @@ pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Con
         )
         .optional()?;
     Ok(contact)
+}
+
+fn row_tags(row: &ContactCsvRow) -> Vec<String> {
+    // Import is capped at five CSV columns; SQLite may hold more after edits.
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for raw in [&row.tag_1, &row.tag_2, &row.tag_3, &row.tag_4, &row.tag_5] {
+        let tag = raw.trim();
+        if tag.is_empty() {
+            continue;
+        }
+        let key = tag.to_ascii_lowercase();
+        if !seen.insert(key) {
+            continue;
+        }
+        out.push(tag.to_string());
+    }
+    out
 }
 
 fn split_list(raw: &str) -> Vec<String> {

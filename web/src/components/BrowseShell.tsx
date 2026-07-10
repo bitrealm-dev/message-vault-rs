@@ -2,12 +2,12 @@
 
 import type { ContactListItem, MessageRow } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SortByMenu, type SortMode } from "./SortByMenu";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import {
-  ContactEditPane,
+  ContactPhoneList,
   phonesForSave,
   seedContactEditDraft,
   type ContactEditDraft,
@@ -637,6 +637,32 @@ export function BrowseShell({
     };
   }, [activeThread, yearly, groups]);
 
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  const allGroupSelected = useMemo(() => {
+    if (contacts.length === 0) return false;
+    return contacts.every((c) => selectedIds.has(c.id));
+  }, [contacts, selectedIds]);
+
+  const someGroupSelected = useMemo(() => {
+    if (contacts.length === 0) return false;
+    return contacts.some((c) => selectedIds.has(c.id));
+  }, [contacts, selectedIds]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate =
+      someGroupSelected && !allGroupSelected;
+  }, [someGroupSelected, allGroupSelected]);
+
+  const toggleSelectAllInGroup = useCallback(() => {
+    if (allGroupSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(contacts.map((c) => c.id)));
+  }, [allGroupSelected, contacts]);
+
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
       <aside
@@ -644,13 +670,21 @@ export function BrowseShell({
         style={{ width: sidebarWidth }}
       >
         <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
-          <h2 className="text-[13px] font-medium text-text">
-            {sectionLabel}{" "}
-            <span className="text-muted">
-              ({query.trim() ? `${sorted.length}/` : ""}
-              {contacts.length})
+          <label className="flex min-w-0 items-center gap-2">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allGroupSelected}
+              disabled={contacts.length === 0}
+              aria-label={`Select all ${sectionLabel}`}
+              onChange={toggleSelectAllInGroup}
+              className="checkbox-people"
+            />
+            <span className="truncate text-[13px] text-muted">
+              {query.trim() ? `${sorted.length}/` : ""}
+              {contacts.length}
             </span>
-          </h2>
+          </label>
           <SortByMenu sort={sort} onChange={setSort} />
         </div>
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
@@ -827,27 +861,28 @@ export function BrowseShell({
           )}
         </div>
 
-        {!contactEditing && (
-          <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
-            {hasSelection ? null : detail && !loadingThreads ? (
-              <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-                {detail.displayName}
-              </h1>
-            ) : (
-              <span className="text-[13px] text-muted">
-                {!contactId
-                  ? "Choose a contact"
-                  : loadingThreads
-                    ? "Loading…"
-                    : ""}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
+          {hasSelection ? null : detail && !loadingThreads ? (
+            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+              {contactEditing && editDraft
+                ? [editDraft.firstName, editDraft.lastName]
+                    .map((p) => p.trim())
+                    .filter(Boolean)
+                    .join(" ") || detail.displayName
+                : detail.displayName}
+            </h1>
+          ) : (
+            <span className="text-[13px] text-muted">
+              {!contactId
+                ? "Choose a contact"
+                : loadingThreads
+                  ? "Loading…"
+                  : ""}
+            </span>
+          )}
+        </div>
 
-        {contactEditing && editDraft ? (
-          <ContactEditPane draft={editDraft} onChange={setEditDraft} />
-        ) : hasSelection ? (
+        {hasSelection ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg px-5 pt-8 pb-5">
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
@@ -910,67 +945,157 @@ export function BrowseShell({
             <>
               <div>
                 <h2 className="text-[13px] font-semibold text-text">Contact details</h2>
-                <div className="mt-2 divide-y divide-border/60 border-y border-border/60">
-                  <DetailRow
-                    icon={<PeopleGroupIcon className="size-4 shrink-0 text-muted" />}
-                    label="Groups"
-                  >
-                    {detail.tags.length > 0 ? (
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        {detail.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="inline-flex items-center gap-1.5 text-[13px] text-text"
+                <div className="mt-2 border-y border-border/60 py-2.5">
+                  {contactEditing && editDraft && (
+                    <div className="mb-3 flex gap-3">
+                      <div className="pt-0.5">
+                        <PersonDetailIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">Name</div>
+                        <div className="mt-0.5 grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={editDraft.firstName}
+                            onChange={(e) =>
+                              setEditDraft({
+                                ...editDraft,
+                                firstName: e.target.value,
+                              })
+                            }
+                            placeholder="First"
+                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+                          />
+                          <input
+                            type="text"
+                            value={editDraft.lastName}
+                            onChange={(e) =>
+                              setEditDraft({
+                                ...editDraft,
+                                lastName: e.target.value,
+                              })
+                            }
+                            placeholder="Last"
+                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="pt-0.5">
+                        <PeopleGroupIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">Groups</div>
+                        <div className="mt-0.5">
+                          {detail.tags.length > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              {detail.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="truncate text-[13px] text-text"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[13px] text-muted">None</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex min-w-0 gap-3">
+                      <div className="pt-0.5">
+                        <PhoneIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">
+                          {(contactEditing && editDraft
+                            ? editDraft.phones.filter((p) => p.trim()).length
+                            : detail.phones.length) === 1
+                            ? "Phone"
+                            : "Phones"}
+                        </div>
+                        <div className="mt-0.5">
+                          {contactEditing && editDraft ? (
+                            <ContactPhoneList
+                              phones={editDraft.phones}
+                              onChange={(phones) =>
+                                setEditDraft({ ...editDraft, phones })
+                              }
+                            />
+                          ) : detail.phones.length > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              {detail.phones.map((phone) => (
+                                <span
+                                  key={phone}
+                                  className="truncate text-[13px] text-text"
+                                >
+                                  {phone}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[13px] text-muted">None</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
+                    <div className="pt-0.5">
+                      <ProhibitedIcon className="size-4 shrink-0 text-muted" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] tracking-wide text-muted">Excluded</div>
+                      <div className="mt-0.5">
+                        {contactEditing && editDraft ? (
+                          <select
+                            value={editDraft.exclude ? "yes" : "no"}
+                            onChange={(e) =>
+                              setEditDraft({
+                                ...editDraft,
+                                exclude: e.target.value === "yes",
+                              })
+                            }
+                            className="rounded-md border border-border bg-[#1c1c1e] px-2 py-1 text-[13px] text-text outline-none focus:border-accent/60"
                           >
-                            <PeopleGroupIcon className="size-3 opacity-70" />
-                            {tag}
+                            <option value="no">No</option>
+                            <option value="yes">Yes</option>
+                          </select>
+                        ) : (
+                          <span className="text-[13px] text-text">
+                            {(excludeOverrides.get(detail.id) ?? detail.exclude)
+                              ? "Yes"
+                              : "No"}
                           </span>
-                        ))}
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-[13px] text-muted">None</span>
-                    )}
-                  </DetailRow>
-
-                  <DetailRow
-                    icon={<PhoneIcon className="size-4 shrink-0 text-muted" />}
-                    label={detail.phones.length > 1 ? "Phones" : "Mobile"}
-                  >
-                    {detail.phones.length > 0 ? (
-                      <div className="flex flex-col gap-0.5">
-                        {detail.phones.map((phone) => (
-                          <span key={phone} className="text-[13px] text-text">
-                            {phone}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-[13px] text-muted">None</span>
-                    )}
-                  </DetailRow>
-
-                  <DetailRow
-                    icon={<StatusIcon className="size-4 shrink-0 text-muted" />}
-                    label="Excluded"
-                  >
-                    <span className="text-[13px] text-text">
-                      {(excludeOverrides.get(detail.id) ?? detail.exclude)
-                        ? "TRUE"
-                        : "FALSE"}
-                    </span>
-                  </DetailRow>
+                    </div>
+                  </div>
 
                   {detail.dateStart && detail.dateEnd && (
-                    <DetailRow
-                      icon={<RangeIcon className="size-4 shrink-0 text-muted" />}
-                      label="Message range"
-                    >
-                      <span className="text-[13px] text-text">
-                        {detail.dateStart === detail.dateEnd
-                          ? detail.dateStart
-                          : `${detail.dateStart} — ${detail.dateEnd}`}
-                      </span>
-                    </DetailRow>
+                    <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
+                      <div className="pt-0.5">
+                        <RangeIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">
+                          Message range
+                        </div>
+                        <div className="mt-0.5 text-[13px] text-text">
+                          {detail.dateStart === detail.dateEnd
+                            ? detail.dateStart
+                            : `${detail.dateStart} — ${detail.dateEnd}`}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1203,23 +1328,21 @@ function PencilIcon({ className }: { className?: string }) {
   );
 }
 
-function DetailRow({
-  icon,
-  label,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}) {
+function PersonDetailIcon({ className }: { className?: string }) {
   return (
-    <div className="flex gap-3 py-2.5">
-      <div className="pt-0.5">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] tracking-wide text-muted">{label}</div>
-        <div className="mt-0.5">{children}</div>
-      </div>
-    </div>
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="8" r="3.25" />
+      <path d="M5 19.25c.85-3.2 3.4-5 7-5s6.15 1.8 7 5" />
+    </svg>
   );
 }
 
@@ -1243,7 +1366,7 @@ function PeopleGroupIcon({ className }: { className?: string }) {
   );
 }
 
-function StatusIcon({ className }: { className?: string }) {
+function ProhibitedIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -1256,7 +1379,7 @@ function StatusIcon({ className }: { className?: string }) {
       aria-hidden
     >
       <circle cx="12" cy="12" r="8.25" />
-      <path d="M12 8v4.5l2.5 1.5" />
+      <path d="M6.2 6.2 17.8 17.8" />
     </svg>
   );
 }

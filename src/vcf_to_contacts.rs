@@ -299,21 +299,47 @@ fn write_csv(path: &Path, contacts: &[ContactOut]) -> Result<()> {
 
     let mut writer = csv::Writer::from_path(path)
         .with_context(|| format!("failed to write {}", path.display()))?;
-    writer.write_record(["phones", "first_name", "last_name", "exclude", "tags"])?;
+    writer.write_record([
+        "phones",
+        "first_name",
+        "last_name",
+        "exclude",
+        "tag_1",
+        "tag_2",
+        "tag_3",
+        "tag_4",
+        "tag_5",
+    ])?;
 
+    let mut truncated = 0u64;
     for c in contacts {
+        if c.tags.len() > 5 {
+            truncated += 1;
+        }
         let phones = c.phones.join(";");
-        let tags = c.tags.join(";");
         let exclude = if c.exclude { "true" } else { "false" };
+        let mut tag_cols = [String::new(), String::new(), String::new(), String::new(), String::new()];
+        for (i, tag) in c.tags.iter().take(5).enumerate() {
+            tag_cols[i] = tag.clone();
+        }
         writer.write_record([
             phones,
             c.first_name.clone(),
             c.last_name.clone(),
             exclude.to_string(),
-            tags,
+            tag_cols[0].clone(),
+            tag_cols[1].clone(),
+            tag_cols[2].clone(),
+            tag_cols[3].clone(),
+            tag_cols[4].clone(),
         ])?;
     }
 
     writer.flush()?;
+    if truncated > 0 {
+        eprintln!(
+            "warning: truncated tags to tag_1..tag_5 for {truncated} contact(s) in CSV export"
+        );
+    }
     Ok(())
 }

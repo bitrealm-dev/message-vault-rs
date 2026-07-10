@@ -66,6 +66,45 @@ function escapeCsvField(value: string): string {
   return value;
 }
 
+const CSV_TAG_COLUMNS = ["tag_1", "tag_2", "tag_3", "tag_4", "tag_5"] as const;
+
+function tagColumnIndexes(header: string[]): number[] {
+  return CSV_TAG_COLUMNS.map((name) => header.indexOf(name));
+}
+
+function readCsvTags(cols: string[], tagIdx: number[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const i of tagIdx) {
+    if (i < 0) continue;
+    const tag = (cols[i] ?? "").trim();
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+  }
+  return out;
+}
+
+function writeCsvTags(cols: string[], tagIdx: number[], tags: string[]): void {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    const trimmed = tag.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(trimmed);
+  }
+  for (let i = 0; i < tagIdx.length; i++) {
+    const col = tagIdx[i]!;
+    if (col < 0) continue;
+    cols[col] = unique[i] ?? "";
+  }
+}
+
 function updateContactsCsv(
   matchPhones: string[],
   matchNames: { firstName: string | null; lastName: string | null },
@@ -95,9 +134,9 @@ function updateContactsCsv(
     firstName: header.indexOf("first_name"),
     lastName: header.indexOf("last_name"),
     exclude: header.indexOf("exclude"),
-    tags: header.indexOf("tags"),
   };
-  if (idx.phones < 0 || idx.exclude < 0 || idx.tags < 0) {
+  const tagIdx = tagColumnIndexes(header);
+  if (idx.phones < 0 || idx.exclude < 0 || tagIdx.some((i) => i < 0)) {
     throw new Error("contacts CSV missing required columns");
   }
 
@@ -137,7 +176,7 @@ function updateContactsCsv(
       cols[idx.lastName] = patch.lastName ?? "";
     }
     cols[idx.exclude] = patch.exclude ? "true" : "false";
-    cols[idx.tags] = patch.tags.join(";");
+    writeCsvTags(cols, tagIdx, patch.tags);
     return cols.map(escapeCsvField).join(",");
   });
 
@@ -168,7 +207,7 @@ function findTagId(db: Database.Database, name: string): number | null {
   return row?.id ?? null;
 }
 
-/** Rewrite the tags column in contacts.csv by mapping old tag names. */
+/** Rewrite tag_1..tag_5 in contacts.csv by mapping old tag names. */
 function rewriteCsvTags(mapTag: (tag: string) => string | null): void {
   const csvPath = contactsCsvPath();
   if (!fs.existsSync(csvPath)) {
@@ -182,31 +221,19 @@ function rewriteCsvTags(mapTag: (tag: string) => string | null): void {
   }
 
   const header = parseCsvLine(lines[0] ?? "");
-  const tagsIdx = header.indexOf("tags");
-  if (tagsIdx < 0) {
-    throw new Error("contacts CSV missing tags column");
+  const tagIdx = tagColumnIndexes(header);
+  if (tagIdx.some((i) => i < 0)) {
+    throw new Error("contacts CSV missing tag_1..tag_5 columns");
   }
 
   const out = lines.map((line, lineNo) => {
     if (lineNo === 0 || !line.trim()) return line;
     const cols = parseCsvLine(line);
     while (cols.length < header.length) cols.push("");
-    const tags = (cols[tagsIdx] ?? "")
-      .split(";")
-      .map((t) => t.trim())
-      .filter(Boolean)
+    const tags = readCsvTags(cols, tagIdx)
       .map(mapTag)
       .filter((t): t is string => Boolean(t));
-    // Dedupe while preserving order
-    const seen = new Set<string>();
-    const unique: string[] = [];
-    for (const t of tags) {
-      const key = t.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(t);
-    }
-    cols[tagsIdx] = unique.join(";");
+    writeCsvTags(cols, tagIdx, tags);
     return cols.map(escapeCsvField).join(",");
   });
 
