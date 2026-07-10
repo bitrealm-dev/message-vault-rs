@@ -10,7 +10,7 @@ type YearThread = {
   messageCount: number;
   dateStart: string;
   dateEnd: string;
-  conversationId: number;
+  conversationIds: number[];
 };
 
 export function GroupsShell({
@@ -65,10 +65,11 @@ export function GroupsShell({
     };
   }, [groupId]);
 
-  const loadYear = (year: number, conversationId: number) => {
+  const loadYear = (year: number, conversationIds: number[]) => {
     setActiveYear(year);
     setLoading(true);
-    fetch(`/api/messages?conversationId=${conversationId}&year=${year}`)
+    const ids = conversationIds.join(",");
+    fetch(`/api/messages?conversationIds=${ids}&year=${year}`)
       .then((r) => r.json())
       .then((data) => setMessages(data.messages ?? []))
       .finally(() => setLoading(false));
@@ -103,11 +104,26 @@ export function GroupsShell({
                     className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
                   />
                 )}
-                <span className="truncate text-[13px] text-text">{g.title}</span>
-                <span className="text-[11px] text-muted">
-                  {g.messageCount} messages
-                  {g.dateStart ? ` · ${g.dateStart}` : ""}
+                <span className="line-clamp-2 text-[13px] leading-snug text-text" title={g.titleFull}>
+                  {g.title}
                 </span>
+                <span className="truncate text-[11px] text-muted">
+                  {g.namedTitle ? (
+                    <>
+                      {g.namedTitle}
+                      <span className="mx-1.5">·</span>
+                    </>
+                  ) : null}
+                  {g.participantCount} people
+                  <span className="mx-1.5">·</span>
+                  {g.messageCount} msgs
+                </span>
+                {g.dateStart && (
+                  <span className="text-[11px] text-muted">
+                    {g.dateStart}
+                    {g.dateEnd && g.dateEnd !== g.dateStart ? ` — ${g.dateEnd}` : ""}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -129,10 +145,33 @@ export function GroupsShell({
           {!selected && <p className="text-[13px] text-muted">Choose a group</p>}
           {selected && (
             <>
-              <h1 className="text-xl font-semibold text-text">{selected.title}</h1>
+              <h1
+                className="line-clamp-2 text-xl font-semibold leading-snug text-text"
+                title={selected.titleFull}
+              >
+                {selected.title}
+              </h1>
+              <p className="mt-0.5 text-[13px] text-muted">
+                {selected.namedTitle ? (
+                  <>
+                    {selected.namedTitle}
+                    <span className="mx-1.5">·</span>
+                  </>
+                ) : null}
+                {selected.participantCount} people
+                <span className="mx-1.5">·</span>
+                {selected.messageCount} msgs
+              </p>
               {selected.dateStart && selected.dateEnd && (
-                <p className="mt-1 text-[13px] text-muted">
-                  {selected.dateStart} — {selected.dateEnd}
+                <p className="mt-1 text-[12px] text-muted">
+                  {selected.dateStart === selected.dateEnd
+                    ? selected.dateStart
+                    : `${selected.dateStart} — ${selected.dateEnd}`}
+                </p>
+              )}
+              {selected.participantCount > 8 && (
+                <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-muted/90">
+                  {selected.titleFull.split("\n").pop()}
                 </p>
               )}
               <h3 className="mt-5 text-[11px] font-semibold tracking-wider text-muted uppercase">
@@ -143,7 +182,7 @@ export function GroupsShell({
                   <button
                     key={y.year}
                     type="button"
-                    onClick={() => loadYear(y.year, y.conversationId)}
+                    onClick={() => loadYear(y.year, y.conversationIds)}
                     className={`text-[13px] ${
                       activeYear === y.year ? "text-accent" : "text-text hover:text-accent"
                     }`}

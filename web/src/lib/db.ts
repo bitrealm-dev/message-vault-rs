@@ -136,6 +136,9 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         id: row.id,
         displayName: name,
         preferredPhone: row.preferred_phone,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        nickname: row.nickname,
         ...sorts,
       };
     })
@@ -226,33 +229,181 @@ export function contactYearlyThreads(contactId: number): YearThread[] {
   const placeholders = phones.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT c.id AS conversation_id,
-              CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
+      `SELECT CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
               COUNT(*) AS message_count,
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
-              MAX(substr(m.timestamp, 1, 10)) AS date_end
+              MAX(substr(m.timestamp, 1, 10)) AS date_end,
+              GROUP_CONCAT(DISTINCT c.id) AS conversation_ids
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'individual'
          AND c.chat_identifier IN (${placeholders})
-       GROUP BY c.id, year
+       GROUP BY year
        ORDER BY year DESC`,
     )
     .all(...phones) as Array<{
-    conversation_id: number;
     year: number;
     message_count: number;
     date_start: string;
     date_end: string;
+    conversation_ids: string;
   }>;
 
   return rows.map((r) => ({
-    conversationId: r.conversation_id,
     year: r.year,
     messageCount: r.message_count,
     dateStart: r.date_start,
     dateEnd: r.date_end,
+    conversationIds: r.conversation_ids
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id)),
   }));
+}
+
+const MAX_VISIBLE_NAMES = 8;
+
+function isGenericGroupTitle(title: string | null | undefined): boolean {
+  if (!title) return true;
+  const t = title.trim();
+  if (!t) return true;
+  // iMessage chat identifiers look like chat31771234567890...
+  if (/^chat\d+/i.test(t)) return true;
+  return false;
+}
+
+function looksLikePhone(value: string): boolean {
+  const t = value.trim();
+  if (!t) return false;
+  if (t.startsWith("+") && /^[+\d\s().-]+$/.test(t)) return true;
+  const digits = t.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length === t.replace(/[\s().+-]/g, "").length;
+}
+
+function participantLabel(row: {
+  nickname: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  name_hint: string | null;
+  handle: string;
+}): { name: string; unknown: boolean } {
+  const nick = row.nickname?.trim();
+  if (nick) return { name: nick, unknown: false };
+  const first = row.first_name?.trim() ?? "";
+  const last = row.last_name?.trim() ?? "";
+  const full = `${first} ${last}`.trim();
+  if (full) return { name: full, unknown: false };
+  const hint = row.name_hint?.trim();
+  if (hint && !looksLikePhone(hint)) return { name: hint, unknown: false };
+  return { name: hint || row.handle, unknown: true };
+}
+
+function formatPeopleTitle(
+  labels: Array<{ name: string; unknown: boolean }>,
+): {
+  short: string;
+  full: string;
+  count: number;
+} {
+  const seen = new Set<string>();
+  const unique: Array<{ name: string; unknown: boolean }> = [];
+  for (const label of labels) {
+    if (!label.name || seen.has(label.name)) continue;
+    seen.add(label.name);
+    unique.push(label);
+  }
+
+  unique.sort((a, b) => {
+    if (a.unknown !== b.unknown) return a.unknown ? 1 : -1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+
+  const names = unique.map((l) => l.name);
+  const full = names.join(" · ");
+  if (names.length === 0) {
+    return { short: "Group chat", full: "Group chat", count: 0 };
+  }
+  if (names.length <= MAX_VISIBLE_NAMES) {
+    return { short: full, full, count: names.length };
+  }
+  const shown = names.slice(0, MAX_VISIBLE_NAMES).join(" · ");
+  return {
+    short: `${shown} +${names.length - MAX_VISIBLE_NAMES}`,
+    full,
+    count: names.length,
+  };
+}
+
+/** Resolve people labels for group conversations, excluding owner (+ optional focus contact). */
+function groupPeopleTitles(
+  conversationIds: number[],
+  excludePhones: string[] = [],
+): Map<
+  number,
+  { title: string; titleFull: string; namedTitle: string | null; participantCount: number }
+> {
+  const out = new Map<
+    number,
+    { title: string; titleFull: string; namedTitle: string | null; participantCount: number }
+  >();
+  if (!conversationIds.length) return out;
+
+  const db = getDb();
+  const owner = loadOwner();
+  const exclude = new Set(
+    [owner.phone_e164, ...excludePhones].filter(Boolean).map((p) => p.trim()),
+  );
+
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const meta = db
+    .prepare(
+      `SELECT id, group_title FROM conversations WHERE id IN (${placeholders})`,
+    )
+    .all(...conversationIds) as Array<{ id: number; group_title: string | null }>;
+  const namedById = new Map(
+    meta.map((r) => [
+      r.id,
+      isGenericGroupTitle(r.group_title) ? null : (r.group_title?.trim() ?? null),
+    ]),
+  );
+
+  const rows = db
+    .prepare(
+      `SELECT p.conversation_id, p.handle, p.name_hint,
+              c.nickname, c.first_name, c.last_name
+       FROM participants p
+       LEFT JOIN contact_phones cp ON cp.phone_e164 = p.handle
+       LEFT JOIN contacts c ON c.id = cp.contact_id
+       WHERE p.conversation_id IN (${placeholders})`,
+    )
+    .all(...conversationIds) as Array<{
+    conversation_id: number;
+    handle: string;
+    name_hint: string | null;
+    nickname: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  }>;
+
+  const byConv = new Map<number, Array<{ name: string; unknown: boolean }>>();
+  for (const r of rows) {
+    if (exclude.has(r.handle.trim())) continue;
+    const list = byConv.get(r.conversation_id) ?? [];
+    list.push(participantLabel(r));
+    byConv.set(r.conversation_id, list);
+  }
+
+  for (const id of conversationIds) {
+    const people = formatPeopleTitle(byConv.get(id) ?? []);
+    const namedTitle = namedById.get(id) ?? null;
+    out.set(id, {
+      title: people.short,
+      titleFull: namedTitle ? `${namedTitle}\n${people.full}` : people.full,
+      namedTitle,
+      participantCount: people.count,
+    });
+  }
+  return out;
 }
 
 export function contactGroupThreads(contactId: number): GroupThread[] {
@@ -263,7 +414,6 @@ export function contactGroupThreads(contactId: number): GroupThread[] {
   const rows = db
     .prepare(
       `SELECT c.id AS conversation_id,
-              COALESCE(c.group_title, c.chat_identifier) AS title,
               CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
               COUNT(*) AS message_count,
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
@@ -274,25 +424,40 @@ export function contactGroupThreads(contactId: number): GroupThread[] {
        WHERE c.conv_type = 'group'
          AND p.handle IN (${placeholders})
        GROUP BY c.id, year
-       ORDER BY year DESC, title COLLATE NOCASE`,
+       ORDER BY year DESC, c.id`,
     )
     .all(...phones) as Array<{
     conversation_id: number;
-    title: string;
     year: number;
     message_count: number;
     date_start: string;
     date_end: string;
   }>;
 
-  return rows.map((r) => ({
-    conversationId: r.conversation_id,
-    title: r.title,
-    year: r.year,
-    messageCount: r.message_count,
-    dateStart: r.date_start,
-    dateEnd: r.date_end,
-  }));
+  const titles = groupPeopleTitles(
+    [...new Set(rows.map((r) => r.conversation_id))],
+    phones,
+  );
+
+  return rows.map((r) => {
+    const t = titles.get(r.conversation_id) ?? {
+      title: "Group chat",
+      titleFull: "Group chat",
+      namedTitle: null,
+      participantCount: 0,
+    };
+    return {
+      conversationId: r.conversation_id,
+      title: t.title,
+      titleFull: t.titleFull,
+      namedTitle: t.namedTitle,
+      participantCount: t.participantCount,
+      year: r.year,
+      messageCount: r.message_count,
+      dateStart: r.date_start,
+      dateEnd: r.date_end,
+    };
+  });
 }
 
 export function listGroups(): GroupListItem[] {
@@ -300,7 +465,6 @@ export function listGroups(): GroupListItem[] {
   const rows = db
     .prepare(
       `SELECT c.id,
-              COALESCE(c.group_title, c.chat_identifier) AS title,
               COUNT(m.id) AS message_count,
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
               MAX(substr(m.timestamp, 1, 10)) AS date_end
@@ -308,24 +472,40 @@ export function listGroups(): GroupListItem[] {
        LEFT JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'group'
        GROUP BY c.id
-       HAVING message_count > 0
-       ORDER BY title COLLATE NOCASE`,
+       HAVING message_count > 0`,
     )
     .all() as Array<{
     id: number;
-    title: string;
     message_count: number;
     date_start: string | null;
     date_end: string | null;
   }>;
 
-  return rows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    messageCount: r.message_count,
-    dateStart: r.date_start,
-    dateEnd: r.date_end,
-  }));
+  const titles = groupPeopleTitles(rows.map((r) => r.id));
+
+  const items = rows.map((r) => {
+    const t = titles.get(r.id) ?? {
+      title: "Group chat",
+      titleFull: "Group chat",
+      namedTitle: null,
+      participantCount: 0,
+    };
+    return {
+      id: r.id,
+      title: t.title,
+      titleFull: t.titleFull,
+      namedTitle: t.namedTitle,
+      participantCount: t.participantCount,
+      messageCount: r.message_count,
+      dateStart: r.date_start,
+      dateEnd: r.date_end,
+    };
+  });
+
+  items.sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+  );
+  return items;
 }
 
 export function groupYearlyThreads(conversationId: number): YearThread[] {
@@ -351,7 +531,7 @@ export function groupYearlyThreads(conversationId: number): YearThread[] {
   }>;
 
   return rows.map((r) => ({
-    conversationId: r.conversation_id,
+    conversationIds: [r.conversation_id],
     year: r.year,
     messageCount: r.message_count,
     dateStart: r.date_start,
@@ -360,11 +540,16 @@ export function groupYearlyThreads(conversationId: number): YearThread[] {
 }
 
 export function messagesForConversationYear(
-  conversationId: number,
+  conversationIds: number | number[],
   year: number,
 ): MessageRow[] {
+  const ids = (Array.isArray(conversationIds) ? conversationIds : [conversationIds]).filter(
+    (id) => Number.isFinite(id),
+  );
+  if (!ids.length) return [];
   const db = getDb();
   const owner = loadOwner();
+  const placeholders = ids.map(() => "?").join(",");
   const rows = db
     .prepare(
       `SELECT m.id, m.timestamp, m.is_from_me, m.sender, m.body, m.is_announcement,
@@ -375,11 +560,11 @@ export function messagesForConversationYear(
        LEFT JOIN contacts c ON c.id = cp.contact_id
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
-       WHERE m.conversation_id = ?
+       WHERE m.conversation_id IN (${placeholders})
          AND CAST(substr(m.timestamp, 1, 4) AS INTEGER) = ?
-       ORDER BY m.sort_order, m.timestamp`,
+       ORDER BY m.timestamp, m.sort_order`,
     )
-    .all(conversationId, year) as Array<{
+    .all(...ids, year) as Array<{
     id: number;
     timestamp: string;
     is_from_me: number;
