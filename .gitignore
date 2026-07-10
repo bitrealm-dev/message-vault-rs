@@ -31,3 +31,12 @@ target
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Cursor IDE / agent files
+.cursor/
+
+# Keep directory placeholders; ignore all contents
+/sources/*
+!/sources/.gitkeep
+/staging/*
+!/staging/.gitkeep
