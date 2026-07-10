@@ -159,6 +159,18 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         `,
         params: [],
       };
+    case "untagged":
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.display = 1
+            AND NOT EXISTS (
+              SELECT 1 FROM contact_tags ct WHERE ct.contact_id = c.id
+            )
+        `,
+        params: [],
+      };
   }
 }
 

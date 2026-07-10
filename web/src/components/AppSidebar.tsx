@@ -47,6 +47,24 @@ function PlusIcon({ className }: { className?: string }) {
   );
 }
 
+function PersonIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="8" r="3.25" />
+      <path d="M5 19.25c.85-3.2 3.4-5 7-5s6.15 1.8 7 5" />
+    </svg>
+  );
+}
+
 function EllipsisIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -410,6 +428,14 @@ function GroupsNav({ tags }: { tags: string[] }) {
         })
       )}
 
+      <NavLink
+        href="/no-group"
+        label="No group"
+        active={pathname === "/no-group"}
+        indent
+        icon={<PersonIcon className="size-3.5 shrink-0 opacity-80" />}
+      />
+
       {rename && (
         <GroupNamePopover
           title="Rename"
@@ -437,7 +463,7 @@ export function AppSidebar({
 
   return (
     <aside className="flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="border-b border-border px-3 py-3">
+      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
         <Link
           href="/"
           className="text-[14px] font-semibold tracking-tight text-text hover:text-accent"

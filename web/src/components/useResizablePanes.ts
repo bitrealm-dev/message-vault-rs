@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const SIDEBAR_MIN = 120;
+const SIDEBAR_MAX = 448;
+const SIDEBAR_DEFAULT = 272;
+
 function readStored(key: string, fallback: number): number {
   if (typeof window === "undefined") return fallback;
   const raw = window.localStorage.getItem(key);
@@ -10,15 +14,22 @@ function readStored(key: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function clampSidebar(w: number): number {
+  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
+}
+
 export function useResizablePanes(storagePrefix: string) {
-  const [sidebarWidth, setSidebarWidth] = useState(272);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const [threadsPct, setThreadsPct] = useState(40);
-  const sidebarRef = useRef(272);
+  const sidebarRef = useRef(SIDEBAR_DEFAULT);
   const threadsRef = useRef(40);
+  const shellRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<"side" | "threads" | null>(null);
 
   useEffect(() => {
-    const w = readStored(`${storagePrefix}:sidebarWidth`, 272);
+    const w = clampSidebar(
+      readStored(`${storagePrefix}:sidebarWidth`, SIDEBAR_DEFAULT),
+    );
     const t = readStored(`${storagePrefix}:threadsPct`, 40);
     sidebarRef.current = w;
     threadsRef.current = t;
@@ -29,7 +40,8 @@ export function useResizablePanes(storagePrefix: string) {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (dragging.current === "side") {
-        const next = Math.min(448, Math.max(192, e.clientX));
+        const left = shellRef.current?.getBoundingClientRect().left ?? 0;
+        const next = clampSidebar(e.clientX - left);
         sidebarRef.current = next;
         setSidebarWidth(next);
       } else if (dragging.current === "threads") {
@@ -79,5 +91,5 @@ export function useResizablePanes(storagePrefix: string) {
     document.body.style.userSelect = "none";
   }, []);
 
-  return { sidebarWidth, threadsPct, startSide, startThreads };
+  return { sidebarWidth, threadsPct, startSide, startThreads, shellRef };
 }

@@ -28,7 +28,7 @@ export function GroupsShell({
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [activeYear, setActiveYear] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const { sidebarWidth, threadsPct, startSide, startThreads } =
+  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
     useResizablePanes("browse-groups");
 
   const selected = groups.find((g) => g.id === groupId) ?? null;
@@ -76,12 +76,12 @@ export function GroupsShell({
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div ref={shellRef} className="flex h-full min-h-0">
       <aside
         className="flex shrink-0 flex-col bg-sidebar"
         style={{ width: sidebarWidth }}
       >
-        <div className="border-b border-border px-3 py-2.5">
+        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
           <h2 className="text-[13px] font-medium text-text">
             Groups <span className="text-muted">({groups.length})</span>
           </h2>

@@ -81,7 +81,7 @@ export function BrowseShell({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const { sidebarWidth, threadsPct, startSide, startThreads } =
+  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
     useResizablePanes(`browse-${section}`);
 
   const saveContactPatch = useCallback(
@@ -177,38 +177,43 @@ export function BrowseShell({
     return map;
   }, [sorted]);
 
-  const onContactListClick = useCallback(
-    (id: number, shiftKey: boolean) => {
-      selectContact(id);
+  const applyRangeSelect = useCallback(
+    (id: number) => {
+      const clickIndex = sortedIndexById.get(id);
+      if (clickIndex === undefined) return;
 
-      if (shiftKey) {
-        const clickIndex = sortedIndexById.get(id);
-        if (clickIndex === undefined) return;
+      const selectedIndices: number[] = [];
+      for (const sid of selectedIds) {
+        const idx = sortedIndexById.get(sid);
+        if (idx !== undefined) selectedIndices.push(idx);
+      }
 
-        const selectedIndices: number[] = [];
-        for (const sid of selectedIds) {
-          const idx = sortedIndexById.get(sid);
-          if (idx !== undefined) selectedIndices.push(idx);
-        }
-
-        if (selectedIndices.length === 0) {
-          setSelectedIds(new Set([id]));
-          return;
-        }
-
-        const minSel = Math.min(...selectedIndices);
-        const maxSel = Math.max(...selectedIndices);
-        const from = Math.min(minSel, clickIndex);
-        const to = Math.max(maxSel, clickIndex);
-        const next = new Set<number>();
-        for (let i = from; i <= to; i++) {
-          const c = sorted[i];
-          if (c) next.add(c.id);
-        }
-        setSelectedIds(next);
+      if (selectedIndices.length === 0) {
+        setSelectedIds(new Set([id]));
         return;
       }
 
+      const minSel = Math.min(...selectedIndices);
+      const maxSel = Math.max(...selectedIndices);
+      const from = Math.min(minSel, clickIndex);
+      const to = Math.max(maxSel, clickIndex);
+      const next = new Set<number>();
+      for (let i = from; i <= to; i++) {
+        const c = sorted[i];
+        if (c) next.add(c.id);
+      }
+      setSelectedIds(next);
+    },
+    [selectedIds, sorted, sortedIndexById],
+  );
+
+  /** Checkbox: toggle, or shift-range. */
+  const toggleOrRangeSelect = useCallback(
+    (id: number, shiftKey: boolean) => {
+      if (shiftKey) {
+        applyRangeSelect(id);
+        return;
+      }
       setSelectedIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
@@ -216,7 +221,23 @@ export function BrowseShell({
         return next;
       });
     },
-    [selectContact, selectedIds, sorted, sortedIndexById],
+    [applyRangeSelect],
+  );
+
+  /**
+   * Name/phone (or whole row when selection active):
+   * - no selection → open detail only
+   * - selection active → toggle that contact (shift = range)
+   */
+  const onNamePhoneClick = useCallback(
+    (id: number, shiftKey: boolean) => {
+      if (selectedIds.size === 0) {
+        selectContact(id);
+        return;
+      }
+      toggleOrRangeSelect(id, shiftKey);
+    },
+    [selectContact, selectedIds.size, toggleOrRangeSelect],
   );
 
   useEffect(() => {
@@ -266,6 +287,12 @@ export function BrowseShell({
     return [...map.entries()].sort(([a], [b]) => b - a);
   }, [groups]);
 
+  const selectedContacts = useMemo(
+    () => sorted.filter((c) => selectedIds.has(c.id)),
+    [sorted, selectedIds],
+  );
+  const hasSelection = selectedContacts.length > 0;
+
   const activeThreadMeta = useMemo(() => {
     if (!activeThread) return null;
     if (activeThread.startsWith("y-")) {
@@ -291,7 +318,7 @@ export function BrowseShell({
   }, [activeThread, yearly, groups]);
 
   return (
-    <div className="flex h-full min-h-0">
+    <div ref={shellRef} className="flex h-full min-h-0">
       <aside
         className="flex shrink-0 flex-col bg-sidebar"
         style={{ width: sidebarWidth }}
@@ -322,7 +349,7 @@ export function BrowseShell({
           {grouped.map(([letter, items]) => (
             <div key={letter}>
               {!query.trim() && (
-                <div className="sticky top-0 border-b border-border bg-sidebar/95 px-3 py-1 text-[11px] font-semibold text-muted backdrop-blur">
+                <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
                   {letter}
                 </div>
               )}
@@ -330,21 +357,39 @@ export function BrowseShell({
                 const active = c.id === contactId;
                 const checked = selectedIds.has(c.id);
                 const showInsetDivider = i < items.length - 1;
+                const selectionActive = selectedIds.size >= 1;
                 return (
-                  <button
+                  <div
                     key={c.id}
-                    type="button"
-                    onClick={(e) => onContactListClick(c.id, e.shiftKey)}
+                    role={selectionActive ? "button" : undefined}
+                    tabIndex={selectionActive ? 0 : undefined}
+                    onClick={
+                      selectionActive
+                        ? (e) => onNamePhoneClick(c.id, e.shiftKey)
+                        : undefined
+                    }
+                    onKeyDown={
+                      selectionActive
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onNamePhoneClick(c.id, e.shiftKey);
+                            }
+                          }
+                        : undefined
+                    }
                     onMouseDown={(e) => {
                       if (e.shiftKey) e.preventDefault();
                     }}
-                    className={`relative flex w-full items-start gap-2.5 px-3 py-2 text-left select-none ${
+                    className={`relative flex w-full items-start gap-2.5 px-3 py-2 select-none ${
+                      selectionActive ? "cursor-pointer" : ""
+                    } ${
                       checked || active
                         ? "bg-elevated"
                         : "hover:bg-elevated/50"
                     }`}
                   >
-                    {active && (
+                    {active && !selectionActive && (
                       <span
                         aria-hidden
                         className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
@@ -353,12 +398,33 @@ export function BrowseShell({
                     <input
                       type="checkbox"
                       checked={checked}
-                      readOnly
-                      tabIndex={-1}
-                      className="mt-0.5 size-3.5 shrink-0 rounded border-border accent-accent pointer-events-none"
-                      aria-hidden
+                      aria-label={`Select ${c.displayName}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const shiftKey =
+                          "shiftKey" in e.nativeEvent &&
+                          Boolean(
+                            (e.nativeEvent as MouseEvent).shiftKey,
+                          );
+                        toggleOrRangeSelect(c.id, shiftKey);
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        if (e.shiftKey) e.preventDefault();
+                      }}
+                      className="mt-0.5 size-3.5 shrink-0 rounded border-border accent-accent"
                     />
-                    <span className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNamePhoneClick(c.id, e.shiftKey);
+                      }}
+                      onMouseDown={(e) => {
+                        if (e.shiftKey) e.preventDefault();
+                      }}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <span className="block truncate text-[13px] text-text">
                         {c.displayName}
                       </span>
@@ -367,14 +433,14 @@ export function BrowseShell({
                           {c.preferredPhone}
                         </span>
                       )}
-                    </span>
+                    </button>
                     {showInsetDivider && (
                       <span
                         aria-hidden
                         className="pointer-events-none absolute right-3 bottom-0 left-3 h-px bg-border/60"
                       />
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -406,23 +472,21 @@ export function BrowseShell({
             <PencilIcon className="size-3.5" />
             {editing ? "Read only" : "Edit"}
           </button>
-          {detail && (
-            <GroupsMenu
-              allGroups={allTags}
-              selected={detail.tags}
-              disabled={saving}
-              onChange={(tags) => {
-                void saveContactPatch({ tags }).then((ok) => {
-                  if (ok) router.refresh();
-                });
-              }}
-            />
-          )}
+          <GroupsMenu
+            allGroups={allTags}
+            selected={detail?.tags ?? []}
+            disabled={saving || (!detail && !hasSelection)}
+            onChange={(tags) => {
+              void saveContactPatch({ tags }).then((ok) => {
+                if (ok) router.refresh();
+              });
+            }}
+          />
           {saving && <span className="text-[11px] text-muted">Saving…</span>}
         </div>
 
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
-          {detail && !loadingThreads ? (
+          {hasSelection ? null : detail && !loadingThreads ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
               {detail.displayName}
             </h1>
@@ -436,6 +500,50 @@ export function BrowseShell({
             </span>
           )}
         </div>
+
+        {hasSelection ? (
+          <div className="min-h-0 flex-1 overflow-y-auto bg-bg px-5 pt-8 pb-5">
+            <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+              <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+                <h2 className="text-[14px] font-semibold text-text">
+                  {selectedContacts.length} contact
+                  {selectedContacts.length === 1 ? "" : "s"} selected
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <ul>
+                {selectedContacts.map((c, i) => (
+                  <li
+                    key={c.id}
+                    className={`flex items-center justify-between gap-4 px-4 py-2.5 ${
+                      i < selectedContacts.length - 1
+                        ? "border-b border-border/60"
+                        : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectContact(c.id)}
+                      className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
+                    >
+                      {c.displayName}
+                    </button>
+                    <span className="shrink-0 text-[13px] text-muted tabular-nums">
+                      {c.preferredPhone ?? ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <>
 
         <section
           className="flex flex-col overflow-y-auto bg-panel px-5 py-4"
@@ -695,6 +803,8 @@ export function BrowseShell({
             </div>
           )}
         </section>
+          </>
+        )}
       </div>
     </div>
   );

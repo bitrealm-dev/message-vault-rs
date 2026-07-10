@@ -2,6 +2,7 @@ export type ContactSection =
   | "all"
   | "current"
   | "historical"
+  | "untagged"
   | { tag: string };
 
 export type ContactListItem = {
