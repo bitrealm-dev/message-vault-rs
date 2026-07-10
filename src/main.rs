@@ -5,6 +5,8 @@ mod import;
 mod models;
 mod ndjson;
 mod schema;
+mod vcf;
+mod vcf_to_contacts;
 
 use std::path::PathBuf;
 
@@ -48,6 +50,33 @@ enum Commands {
         /// Delete and reload contacts from CSV even if the table is non-empty
         #[arg(long)]
         overwrite_contacts: bool,
+    },
+
+    /// Convert a message-vault contacts.vcf into contacts.csv
+    VcfToContacts {
+        /// Path to config.toml (used for default --out)
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
+
+        /// Input contacts.vcf
+        #[arg(long)]
+        vcf: PathBuf,
+
+        /// Output contacts.csv (defaults to paths.contacts_csv from config)
+        #[arg(long)]
+        out: Option<PathBuf>,
+
+        /// Optional message-vault blacklist.csv (sets hidden)
+        #[arg(long)]
+        blacklist: Option<PathBuf>,
+
+        /// Optional message-vault filter-people.csv (sets groups / hidden)
+        #[arg(long)]
+        filter_people: Option<PathBuf>,
+
+        /// Overwrite --out if it already exists
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -100,6 +129,36 @@ fn main() -> Result<()> {
             println!("  assets copied: {}", stats.assets_copied);
             println!("  assets deduped:{}", stats.assets_deduped);
             println!("  assets missing:{}", stats.assets_missing);
+        }
+
+        Commands::VcfToContacts {
+            config,
+            vcf,
+            out,
+            blacklist,
+            filter_people,
+            force,
+        } => {
+            let out = match out {
+                Some(path) => path,
+                None => {
+                    let cfg = Config::load(&config)?;
+                    cfg.paths.contacts_csv
+                }
+            };
+
+            let stats = vcf_to_contacts::convert(
+                &vcf,
+                &out,
+                blacklist.as_deref(),
+                filter_people.as_deref(),
+                force,
+            )?;
+            println!("Wrote {}", out.display());
+            println!("  vcf cards:        {}", stats.cards_total);
+            println!("  skipped (no TEL): {}", stats.cards_skipped_no_tel);
+            println!("  blacklist-only:   {}", stats.blacklist_only);
+            println!("  contacts written: {}", stats.contacts_written);
         }
     }
 

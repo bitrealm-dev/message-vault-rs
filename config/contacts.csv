@@ -1,5 +1,808 @@
 phones,first_name,middle_name,last_name,nickname,email,hidden,groups
-+18285532527,Zach,,Henson,,,false,People
-"+18285539999;+14075551212",Jane,A,Doe,,,false,"People;Work"
-+19413130870,,,,Mom,,false,"People;Fam"
-+12232031447,Tinder,,,,,true,
++18129299401,Mark,,Nuzum,,nuzmark@yahoo.com,true,Historical
++19414083124,Jeremy,,Williams,,,false,People
++13866907663,Anna,,Gunter,,,false,People
++18082711507,Charlie (Julie Keck BF),,,,,false,People
++14077658258,John Marini,,,,,false,People
++14079206091,Daniel,,Moch,,,false,People
++14083751230,Lila,,Hermosillo,,,false,People
++14074043242,Laura,,Ramiz,,,true,Historical
++14075806040,Kyle,,Krietemeyer,,,false,People
++15405296931,,,Lawson,,,false,People
++17274312559,Caroline,,Miller,,,false,People
++19202277017,Dasa,,Zalaski,,dasapappas@gmail.com,false,People
++18506614637,Kyle,,Armstrong,,jarmstro@math.fsu.edu,false,People
++19126596907,Glenn,,Beisser,,gbeisser@my-access.com,false,People
++17577177638,Josh,,Mann,,,false,Historical;People
++14074906769,Jason,,Boyer,,,true,Historical
++14075519540,Matt,,Rood,,,false,Historical;People
++14074012088,Greg,,Chatelain (Park),,,false,People
++14073341610,Samantha,,Carver,,sammo103@hotmail.com,false,People
++14074966678,Jesse,,Leffler,,jess.leffler@gmail.com,false,People
++18433688299,Erin,,Keating,,,false,People
++19412239802,Jay,,Boggs,,jboggs04@gmail.com,false,People
++14078738141,Aubrey,Benjamin,Dear,,lyssa941@aol.com,false,People
++15617589434,Josh (Grace),,Dean,,,false,People
++16784642513,Kyle,,Jackson,,kjackson@summitconnect.org,false,People
++14079270806,Crystal,,Cregan,,crystal@force-x.net,false,Historical;People
++14074057455,Dave,,Stelling,,dave@redeemercounselingcenter.com,false,Historical;People
++18123616674,James,,McKamey,,jrmckamey@gmail.com,false,Historical;People
++13215278707,Tucker,,Jansen,,,false,People
++15613715054,Brandon,,Rodriguez (UCF LinkedIn),,,false,Historical;People
++19415448629,Ryan,,Schmidt,,schmidt2003@hotmail.com,false,People
++18545881550,Chris,,Godinez,,,false,Historical;People
++14079378428,Chris,,Alders,,calders23@outlook.com,false,People
++14074890263;+14076252823,Mark,,Ronhaar,,mark@markdanielphotography.com,true,Historical
++15618894888,Krystin,,Leigh,,,false,Historical;People
++14075756295,Matthew,,Kenagy,,,false,People
++14072211725,,,,Sue,,true,Historical
++13523286394,Liz,,Cronlund,,emhartsell@gmail.com,false,Historical;People
++14075298884,Jonathan,,Sutherland,,jonsuther@gmail.com,false,People
++16789771899,John,,Boghos,,jgboghos@me.com,false,Historical;People
++14072279087,Jonathan,,Walker,,,true,Historical
++14074162980,Hunter,,Fields,,,false,People
++13218069123,,,,Kelli,,true,Historical
++17705959837,,,,Katie,,false,Historical;People
++17725327816,John,,Kurutz,,,false,People
++17406001608,Josh Reisinger,,,,,false,People
++19546081967,Troy,,Antonio,,,true,Historical
++13212357694,Maria,,Rodriguez,,,false,People
++18656967036,Aaron,,Holmes,,,false,Historical;People
++14077013788,Khelsey,,Brennan,,,false,People
++14079820507,Robb,,Schiller,,robb.schiller@gmail.com,false,Historical;People
++14072191164,Fred Gardner,,,,,false,People
++14076170924,Lindsay,,Janssen,,,true,Historical
++12482311693,Stephanie,,Walker,,,false,Historical;People
++14077489995,Adam,,Stewart,,adamstewart@gmail.com,false,People
++18139562196,Matt,,Williams,,,false,People
++14079238013,Gianna,,Hernandez,,,false,Historical;People
++12398773667,,,,Macy,,true,Historical
++12052296170,Todd,,Deason,,,false,People
++18285534708,,,,Chase,,false,Historical;People
++14076192171,Jenny,,Cameron (Ranae),,,false,Historical;People
++17274342130,Brent,,Henderson,,,false,People
++13216841651,Cory,,Sayles,,,false,Historical;People
++17274813340,Jeremy Crowe,,,,,false,People
++17154107039,David Suennen,,,,,true,Historical
++17148338511,Amanda,,Skinner,,,false,Historical;People
++14073122961,Bill,,Mooney,,,false,People
++14079201372,Helen,,Hardy,,helen.hardy@hotmail.com,false,Historical;People
++13214398425;+14072803424,Christen,,Rodgers,,christen.rodgers@yahoo.com,false,Historical;People
++14073423179,Thien,,Nyugen,,,false,People
++19413214733,Dan,,Saylor,,dan@aaronsleakdetection.com,false,People
++14079021707,Matt McCartney,,,,,false,People
++14073420777,Al,,DiSanto,,,false,People
++19124011501,Kenneth,,Gubert,,,true,Historical
++16034984174,Claire,,Angus,,claire.angus@ccci.org,false,Historical;People
++12392698693,Allyn,,Tuff,,,false,People
++17278086380,Lindsay,,Coile,,lcoile@knights.ucf.edu,false,People
++14046937448,,,,Leah,,true,Historical
++18502615852,Adrienne,,Trematerra,,adriennetrematerra14@gmail.com,false,Historical;People
++14079485351,,,,Dawn,,true,Historical
++14079287640,Marc,,Harmon,,marcharmon@hotmail.com,false,People
++17137249323,Caroline,,Crawford,,carcraw@yahoo.com,false,People
++14076203571,Ben,,Thomas,,bthomas0324@gmail.com,true,Historical
++19412345029,Courtney,Kaskey,Miller,,cbmiller41@yahoo.com,false,People
++13135958859,Deangelo,,Moss,,,true,Historical
++14048620718,,,,Jesse,,true,Historical
++14079521649,Chris,,Radford,,,false,Historical;People
++15174903888,Tim,,McCarty (Jason Friend),,,true,Historical
++19548229277,Anil,,Bozan,,anil.bozan@gmail.com,true,Historical
++14074302219,Molly,,Mitchell,,,true,Historical
++14073253819,Mike,,Ensley,,mike.ensley@gmail.com,true,Historical
++14409108475,Olivia,,Curtis,,,false,People
++14075160960,Amanda,,Williams,,,true,Historical
++19139679509,Kiley,,Gilbert,,,false,People
++14072522921,,,,Ruthie,,true,Historical
++14073124663,Nick,,Daniels,,nickdaniels7@gmail.com,false,People
++17728342405,Brooks,,Everett,,,false,People
++16502146955,Kiran,,Deen,,kirandeen@google.com,false,People
++13019044037,Kayla,,Morris,,,false,Historical;People
++18479895957,Nuccia,,Heinritc,,,false,People
++14074358479,Anne,,Dunlop,,,false,Historical;People
++19046261162,Nick,,Robinson,,,false,People
++15086482017,Thomas,,Oliver,,auron.axel@gmail.com,true,Historical
++19719788127,Andrew,,Pompom,,,false,Historical;People
++17704013501;+17789383501,Derek,,Martin,,derekwmartin1@gmail.com,false,Historical;People
++14074633193,Whitney,,Saylor,,wsaylor@tewscompany.com,false,People
++14074305603,Carrie Ann,,,,,true,Historical
++19412234640,Ashish,,Bhatnagar,,,false,People
++14074152905,Kristina,,Cox,,,false,Historical;People
++18083981064,Kane,,Tomlin,,,false,People
++12398212767,Riley,,Tuff,,riley@tuffnews.com,false,Historical;People
++17165105998,Megan,,Wasneechak,,mwasneechak@summitconnect.org,false,Historical;People
++18155662601,Andrea,,Bennett,,,false,Historical;People
++14079029954,Kyle,,Kubic,,,false,Historical;People
++14078032664,Caitlin,,Crosley,,,false,Historical;People
++14077176459,Elisabeth,,Niemetschek,,,false,People
++14074326419,Jay,,Velez,,,false,Historical;People
++14078100192,Joshua,,Walker,,walkerj@silverleafresorts.com,true,Historical
++15154604600;+18008675309,Robert,,Newkirk,,chemhi2@yahoo.com,false,People
++17039091220,Ross,,Miller,,ross.o.miller@gmail.com,false,People
++19412231450,Andre,,Willard,,drefla_1961@yahoo.com,false,People
++14073766590,Stephanie,,Fry,,seascapes06@gmail.com,false,Historical;People
++13048394300,Jared,,Tomlin,,oiskallmate@yahoo.com,true,Historical
++19542908070,Jason,,Chandler,,,false,Historical;People
++972546832651,David,,Ross,,,false,People
++14074468520,Haley,,Kelley,,,false,People
++19412238191,,,,Drew,,false,Devon Cruise;Historical;People
++17863618909,Clayton,,Adkins,,,true,Grace;Historical
++14074849469,Mike,,Allen,,,false,People;Summit
++13526828745;+13035133985,Nick,,Augello,,nbaugello@gmail.com,false,Historical;People
++13212875673,Nick (Dad),,Augello,,,false,Historical;People
++14079026397,Sean,,Barrie,,,false,Historical;LM;People
++14073610100,Thad,,Beckert,,,false,LM;People
++14077040042,Tiffany,,Bejarano,,,true,Celeb;Historical
++14075012409,Chanice,,Bell,,cbell90@knights.ucf.edu,false,People;Summit
++14075959561,Jay,,Berry,,javanberry@gmail.com,false,Historical;People;Regroup
++14072475555,Alf,,Betancourt,,,false,LM;People
++14074085523;+14073321774,John,,Bork,,,true,Historical;TT
++14075298182,Croy,,Bosch,,croybosch@gmail.com,false,Historical;People;Summit
++14079679301,Brian,,Bragdon,,brianbragdon@yahoo.com,false,People;reGroup
++16022846073,Tony,,Brewer,,,false,Historical;People;TT
++14073105063,Geoffrey,,Brooks,,,true,Historical;TT
++17274159317,Mike,,Brown,,,true,Historical;Summit
++14077826196,Mike,,Capsak,,,true,Grace;Historical
++14075928913,Matt,,Carpenter,,matthewray23@gmail.com,false,Historical;People;Summit
++14077390143,Freddy,,Cintron,,,true,Historical;TT
++14077195950,Sarah,,Coad,,,false,People;TT
++13216620084,Steve,,Connell,,,true,Historical;TT
++13865618777,Tahir,,Core,,tcore617@gmail.com,false,Historical;People;TT
++16187928203,Kristina,,Cornuet,,,false,Celeb;Historical;People
++13212997034,Lance,,Crawley,,lancecrawley41@gmail.com,false,Historical;People;reGroup
++14073998051,Mustali,,Dalal,,mdalal@idexcorp.com,false,Historical;People;TT
++14075756015,Kalli,,Cross,,,false,DBSA;Historical;People
++14077670641,,,,Scott,,false,DBSA;Historical;People
++17723214628,Jessica,,(Pollmeier) Cure,,jrpollmeier@gmail.com,false,People;UCF
++14077189625;+14077776312,Duane,,Delrosario,,,false,Historical;People;TT
++14079204533,Tim,,Demoor,,,true,Grace;Historical
++13215016598,Dan,,Derrico,,,true,Celeb;Historical
++17327785035,Dave,,Diehl,,,false,People;TT
++13215442323,Shauni,,Dusan,,,false,CGroup;Historical;People
++14077147974,Matt,,Eisert,,,false,People;TT
++13212028152,Julianna,,Eleanor,,,false,CGroup;Historical;People
++14072478568,Kristen,,Elias,,,true,CGroup;Historical
++14077661362,John,,Evans,,,false,LM;People
++14022174095,Mandy,,Ewerth,,,false,CGroup;Historical;People
++14075294431,Missy,,Ferguson,,,false,Grace Trip;Historical;People
++14074357555,Mark,,Ferguson,,,false,Grace Trip;People
++14077395154,Chris,,Fielding,,,false,Grace;People
++16303401388,John,,Fletcher,,,false,Historical;NC;People
++18134763607,Cody,,Fliehman,,,false,Historical;People;reGroup
++14077413798,Chris,,Fyffe,,,false,Historical;People;TT
++14077012141,Joseph,,Gable,,,false,Grace;Historical;People
++17602244848,Lauren,,Gaines,,lgaines@summitconnect.org,false,Historical;People;Summit
++14074929659,Julie,,Garner,,,false,Historical;Neighbor;People
++14076879449,Wes,,Garrison,,wes@mercuryrenovations.com,false,Historical;People;Summit
++14075477667,Luc,,Gadrualt,,luc.gaudreault@hotmail.com,true,Historical;TT
++13213036758,Randy,,Gillis,,,true,Historical;TT
++13215916513,John,W.,Givens,,john.w.givens@usa-spaceops.com,false,People;UCF
++14078082908;+17275043004,Tiffany,,Goad,,tgoad@summitconnect.org,false,Historical;People;Summit
++13215127086,Ish,,Gonzalez,,,true,Historical;Neighbor
++13154161221,Stacey,,Greenberg,,srgreenbe@yahoo.com,true,CGroup;Historical
++14073140840,Bill,,Groom,,,false,People;TT
++17542348316,Caroline,,Guy,,infinitespas@gmail.com,false,People;reGroup
++13522232634,Benjamin,,Henes,,bhenes1@gmail.com,false,People;reGroup
++14074601577,Mark,,Henes,,mhenes1@gmail.com,false,People;reGroup
++19414687062,Austin,,Hill,,,false,Historical;People;Summit
++14079208071,Andy,,Hoare,,,false,People;TT
++19415049231,Kristen,,Howard,,klhoward4207@gmail.com,false,People;reGroup
++14075751001,,,,Ian,,true,Historical;reGroup
++18507231509,Lin,,Jackson,,,false,CGroup;Historical;People
++13217957042,Marissa,,Jacobson,,,false,CGroup;Historical;People
++14074430605,,,,Jennifer,,false,Grace Trip;Historical;People
++14077395185,,,,Joanna,,false,Historical;People;Summit
++15417336064,Jessica,,Jocoy,,,false,CGroup;People
++13215145285,Nicole,,Jordan,,,false,Historical;People;Summit
++18502176520,LJ (Laura Judy),,,,,true,Historical;Summit
++19546840551,Brian,,Kelly,,,false,Historical;LM;People
++14077160776,Yannick,,Kinney,,,false,Historical;People;Summit
++14076567525,Jaymee,,Leffler,,jaymeerae7@gmail.com,false,People;Summit
++14072129100,Gina,,Lockwood,,,false,Historical;People;TT
++14072347888,Kenny,,Londono,,londonolegacy@gmail.com,false,Historical;People;Summit
++14076207192,Bryan,,Lorette,,blorette487@gmail.com,true,Historical;Summit
++14075343079,Abigail,,Mangrich,,almangrich@gmail.com,false,CGroup;Historical;People
++18138923348,Bryan,,Martin,,bryanmmartin@gmail.com,false,Historical;People;reGroup
++13212951779,Kim,,Mascarenhas,,,false,Celeb;Historical;People
++13214437725,Bassma,,Matta,,bassma.matta@gmail.com,false,Historical;People;Summit
++12483025162,Sarah,,McDonald,,,false,Historical;People;Summit
++15742741324,Daniel,,Meuninck,,meuninck@gmail.com,true,Historical;reGroup
++14072855735,Nathan,,Miller,,,false,CGroup;People
++14348413384,Matt,,Moore,,,false,Historical;People;reGroup
++14072676033,Isabella,,Morgia,,,false,Historical;People;Summit
++14074611385,Aharon,,Moyer,,,false,People;TT
++17722163216,Danny,,Muller,,drmuller@gmail.com,false,People;Summit
++13212777074,Ricky,,Nakamura,,,true,Historical;TT
++13213564921,Sean,,Neely,,,false,LM;People
++12392973687,Angela,,Nelson,,angelanelson9@gmail.com,true,Historical;Summit
++14077825700,Kylie,,Norman,,,true,CGroup;Historical
++13212300035,Dave,,Oltman,,,false,LM;People
++14075954420,Martin,,Orefice,,marty@ushomeassist.com,false,People;Summit
++14075958699,Chris,,Ortega,,chris@chrisortega.com,false,Historical;People;TT
++14075580863,Will,,Parker,,,false,Historical;People;Summit
++14079295527,Katie,,Peters,,1katiepeters@gmail.com,false,Historical;People;Summit
++12399804408,Casey,,Phillips,,cjbphillips@gmail.com,false,CGroup;Historical;People
++17064247320,Wills,,Porter,,,false,Grace;Historical;People
++13524086095,Cory,,Quintard,,cquintard@summitconnect.org,false,Historical;People;Summit
++32477621202,Ellis,,Ray,,,true,Historical;TT
++14077393734,Milton,,Reparip,,miltonuf@yahoo.com,true,Historical;Summit
++13213566772,,,,Rick,,false,Grace - Park;People
++14076204411,,,,Jorge,,true,Historical;TT?
++14077640107,Adiarys (Addy),,Rivera,,,false,Grace;People
++18503772265,Chelsie,,Roberts,,chelsiejrob12@yahoo.com,false,Historical;People;Summit
++14078026363,Amanda,,Ross,,,false,CGroup;Historical;People
++14074634236,Matt,,Rowlett,,mrowlett@idexcorp.com,true,Historical;TT
++14076198039,Pieter,,Sandrap,,,false,People;TT
++14077014770,Jason,,Scarborough,,jason@aaronsleakdetection.com,false,Historical;People;reGroup
++14079820509,Whitney,,Schiller,,whitney.schiller@gmail.com,false,People;Summit
++14433261682,Del,,Schwalls,,dschwalls@hotmail.com,false,Historical;People;reGroup
++19544610071,Harshal,,Shah,,dudster622@yahoo.com,false,Historical;People;UCF
++14079328880,Dan,,Sherfield,,,false,Historical;People;Summit
++14074612848,Selena,,Sigthorsin,,,false,People;TT
++16156363566,Zach,,Simmons,,,false,Grace;Historical;People
++14077049239,John,,Skees,,jseskees@hotmail.com,false,People;reGroup
++14077708226,Christina,,Smith,,xmsmith@gmail.com,false,Historical;People;Summit
++19048064300,Nicole,,Sweet,,nicolesweet0713@gmail.com,false,CGroup;Historical;People
++14064074828,Mike,,Swyers,,michael.swyers@gmail.com,false,Historical;People;reGroup
++19725238850,Renee,,Templeton,,,false,Historical;People;TT
++14076191075,Adam,,Thomas,,,true,Historical;TT
++14077824104,David,,Tomasetti,,,true,Historical;TT
++14075437995,Christian,,Torez,,,true,Historical;NC
++13218049598,Renee,,Vasquez,,,true,Historical;Summit
++13212800399,Yeshua,,Veloz,,,true,CGroup;Historical
++13216951263,Katie,,Vogel,,littlemisskatielee@gmail.com,true,CGroup;Historical
++14073997088;+14077330130,Adam,,Walker,,adamwalker@cfl.rr.com,true,Historical
++14077606308,Jesse,,Walsh,,,true,Historical;Summit
++14078978130;+14074542616,Sheri,,Wantuck,,swantuck@summitconnect.org,false,People;regroup
++14074162619,Ron,,Weidner,,,false,People;TT
++12814685156,Sarahbeth,,Wesley,,sewesley@gmail.com,false,People;reGroup
++14074683125;+14075041773,Jack,,West,,jwest@summitconnect.org,false,Historical;People;reGroup
++14073149048,Karissa,,Whitmore,,,true,Historical;TT
++14077975338,Ryan,,Williams,,ryangwilliams27@gmail.com,false,Historical;People;reGroup
++14079148407,Chris,,Wolas,,ccww277@gmail.com,true,Historical;TT
++14073004527,Nancy,,Zimmerman,,nancyzimmerman13@gmail.com,false,CGroup;People
++14078713926,Kenya (Carmax Delivery),,,,,false,People
++14074325646,Giovanni,,Abbruzzese,,Giovanni@stonegatepa.com,false,Historical;People
++19418666539,Revitalizing Psychiatry Appointment,,,,,false,Historical;People
++13104963484,Taylor,,Tomlinson,,,false,Historical;People
++13214219411,Chris,,(Orlando Power Sports),,,false,Historical;People
++14072477288,Ross,,Hudson (Evan Realtor),,rossdhudson@gmail.com,false,People
++14406442225,Backbone Support,,,,,false,People
++14078305557,Firestone Complete,Auto,Care,,,false,People
++18883737888,Human,,Trafficking,,,false,People
++14074949499,Christopher,,Wanitshka,,chris@xforce.net,false,Historical;People
++14072401700,Car Max,,,,,false,People
++19542973022,Huthekel (Carmax),,,,,false,People
++14077413624,Spectrum Physical Therapy,,,,,false,Historical;People
++19416773366,Revitalizing,,Psychiatry,,,false,People
++14078822113,UCF,,Alumni,,,false,People
++14077610040,Healing House (Text),,,,,false,Historical;People
++13522146862,Stephan,,Monteserin,,,false,People
++14073559229,Prive Salon & SPA,,,,,false,People
++14077205373,,,,Dentila,,true,
++14078431620,Family Medical Center - PCP,,Dr. Henry,,,false,People
++14073817367;+14073310647;+14073316758,Orlando Health Associates - Primary,Joseph Ragno,,,,false,People
++14079251531,Bobby,,(PURPL),,Bobby@prpl.rs,false,Historical;People
++14072849921,Courtenay,,Marra,,,false,Historical;People;X-Force
++14076122828,Guest Services,,,,,true,Grace;Historical
++14078749334,Masoud,,Asady,,,false,Landlord;People
++17247089319,Karin,,Chazal,,,false,NC;People
++18135285817,Tim,,Adsit,,,false,NC;People
++13525025828,Chase,,Chazel,,,false,NC;People
++19043479646,Lily,,Massie,,,false,NC;People
++18652422940,Matt,,Moses,,,false,NC;People
++14079635279,Evan,,Pederson,,,false,NC;People
++14072428847,Priscilla,,Pederson,,prisped8@gmail.com,false,NC;People
++14072800793,Tom,,Swartz,,tomswartz10@gmail.com,false,Historical;NC;People
++14076761646,Pat,,Swartz,,,false,NC;People
++18632211449,Mark,,Rupert,,,false,NC;People
++14076902506,D'Anna,,Rupert,,,false,NC;People
++13214399360,Jimmy,,Crandall,,,false,NC;People
++16313772141,Hal,,Fickett,,,false,NC;People
++14076208945,Brett,,Hauck,,,false,NC;People
++12069488573,Jonathan,,Hrehov,,,false,NC;People
++14076902089,Madison,,Thomas,,,false,Historical;People
++14077251023,Julian,,Perez,,,false,People
++13346188886,Sara,,York,,sarabea126@aol.com,false,People
++13366887850,Karl,,Hengeveld,,karl.hengeveld@cru.org,false,Historical;People
++14078260216,Ben,,Rivera,,,false,Historical;People
++16892389652,Thomas,,Hester,,,false,Historical;People
++13218632703,Susan,,Hunt,,,false,People
++19365776108,Zac,,Hoevelman,,,false,Historical;People
++15405585648,Rijan,,Aryal,,,false,Historical;People
++14072287088,Kyle's,Bike,Shop,,,false,People
++14072804144,Tonya,,Travelstead,,,false,Historical;People
++14076875475,Jacob,,Studstill,,,false,Historical;People
++14076150361,Michelle,,Hiatt (Rivera),,,false,Historical;People
++19374431599,Alex,,Heck,,,false,Historical;People
++14079217162,Reagan,,Bartels,,,false,Historical;People
++14078264888,Becky,,Rivera,,,false,Historical;People
++12075225465,John,,Miller (Kate Husband),,,true,Historical
++14076945738,Luke,,Cronlund,,ucfdk14@hotmail.com,false,People
++14072438732,Sean,,Williams,,seanthomaswilliams@gmail.com,false,Historical;People
++13046696386,Bethany,,Bealko,,,false,People
++19415043743,Anjali (Isabelle),,Gupta,,,false,People
++14079286221,Dave,,Esler,,,false,People
++14074921771,Pam,,Smith,,,false,People
++40729416681,Callie,,Lane,,cmlane1@gmail.com,false,People
++14076203658,Stephen Sheldon,,,,,false,People
++13523948820;+14075049594,Robert,,McRoy,,mcroyb@gmail.com,false,People
++14077612160,Nigel,,Feavyour,,,false,People
++18285530722,Kate,,Miller (Hensen),,,false,Historical;People
++12392579098,Lauren,,Scott,,,false,People
++16122983866,Chelsea,,Hengeveld,,chelsea.hengeveld@cru.org,false,Historical;People
++12487098157,Michelle,,Rolf,,,false,People;girls
++14077013423,Jeremy,,Levin,,,false,Historical;People
++14075013129,Adam,,Winter,,,false,People
++13213560638,Allison,,Clark,,,false,People
++14079290646,Courtnee,,Boyett,,,false,People
++13056090035,Franche,,Ductant,,fductant@gmail.com,false,People
++14077160071,Will,,Dickenson,,wdickinson@summitconnect.org,false,People
++12056500959,Claudia,,Garcia,,,false,Historical;People
++18137848858,Janice,,(Huang) McEwen,,janiceh@mail.usf.edu,false,People
++13216151491,Sabrina,,McRoy,,,false,People
++14073751791,John,,Bartels,,auctionbart@aol.com,false,People
++14072802358,Andrew,,Johnson,,,false,Historical;People
++14077492449,Heather,,Brookins,,hm.brookins@gmail.com,false,People
++14073412612,Stephen,,Gable,,,false,Historical;People
++14074485128,Bill,,Behr,,bugsbehr@mindspring.com,true,Historical
++18164914813,Jaci,,Thode,,,false,People
++19206024775,Frank,,Beuk,,,false,People
++14074020200,Tonya,,Bartels,,,false,People
++13214724766,David,,Clark,,,false,People
++18635143256,Tom,,Grothouse,,,false,Historical;People
++18635144950,Ryan,,Grothouse,,,false,People
++13212792666,Christian,,Resh (Board Games),,,false,People
++14076208785,Jonny,,Thomas,,jonthomas4@gmail.com,false,People
++18285532527,Zach,,Henson,,zhenson1989@gmail.com,false,People
++18593331013,Brad,,Wiltfang,,bwiltfang@gmail.com,false,People
++19133076100,Paige,,Travelstead,,,false,People
++19414457327,Steven,Allen,Redman,,jarrod_7@hotmail.com,false,People
++19412230140,Aaron,,Redman,,aaron.b.redman@gmail.com,false,People
++15164552393,Amber,,DeCarnis,,,true,Historical
++13219611387,Jay (Jason),,Berry,,,false,Historical;People
++14128675225,Caryn,,Levin,,,false,Historical;People
++19546550193,Karen,,Grothouse,,karen.grothouse@gmail.com,false,People;girls
++19062509223,,,,Sara,,true,Historical;Mallory Friend MI
++14079498537,,,,Jordan,,false,Pat SIL;People
++13216632724,Liz,,Aulds,,,false,NC;People
++19419294674,Lamont,,Andrews,,mont1228@gmail.com,false,Fam;People
++19412346990,Jennifer,,Arp,,j23wolf@hotmail.com,false,Fam;People
++19126556849,Brian,,Beisser,,bgbeisse@gmail.com,false,Fam;Historical;People
++19417163671,Sharon,,Beisser,,sharon@my-access.com,false,Fam;Historical;People
++19412660605,Matt,,Beisser,,mbeisser@bitrealm.dev,false,Fam;People
++14077562511,Bob,,Bush,,,true,Historical;TT
++14079820742,Bobby,,Braun,,,false,CGroup;Historical;People
++14075952139,Ethan,,Chong,,ethanmlchong@gmail.com,false,Historical;NC;People
++14077544398,Brynne,,Coupland,,,false,NC;People
++14077250647,Cami,,Coupland,,,false,NC;People
++19416626877,Emma,,Ducheneau,,,false,Fam;Historical;People
++19543835428,Tim,,"Foard, Jr",,,false,People;TT
++19418095279,Cindy,,Googins,,cindygoogins@me.com,false,Fam;People
++13098258511,Dale,,Gravelle,,,false,Fam;People
++14028901456,Scott And Tanya,,Harry,,,false,Fam;Historical;People
++17277437848,Benjamin,,Kandt,,,false,Historical;NC;People
++13213248766,Chelsea,,Knaff,,,true,Historical;NC
++14023041976,,,,Lacey,,false,Fam;Historical;People
++14078448555,Blake,,Larsen,,,false,NC;People
++14077481215,Paola,,Londono,,pao4280@gmail.com,false,DBSA;Historical;People
++14077707882,Stitch (Sean),,McLaughlin,,,false,Grace;Historical;People
++17046268488,Chris,Jonathan,McNab,,cmcnab7487@gmail.com,false,People;TT
++14078856254,Jace,,Pomales,,,false,Grace;People
++19419619235,Carrah,,Ponson,,,false,Fam;People
++14026199856,Terry,,Zank,,tzank@oppd.com,false,Fam;People
++15732897100,Ron,,Zank,,ronix35@hotmail.com,false,Fam;People
++19044959773,JD,,Widhalm,,,false,NC;People
++19412816226,Ava,,Tomlin,,,false,Fam;People
++13073942071;+19412371584,Joshua,,Tomlin,,jbtomlin@incompass-sound.com,false,Fam;Historical;People
++12108878231,Stuart,,Tomlin,,,false,Fam;People
++19414682600,Madeleine,,Googins,,,true,Fam;Historical
++14074531033,Mark,,Steinbach,,markfsteinbach@gmail.com,false,Historical;People;reGroup
++13173613258,Sara,,Nixon,,snixon@newcityorlando.com,false,NC;People
++18039601677,Amanda,,Adair,,amandaadair10@gmail.com,false,Historical;People;Summit
++14074356057,Amy,,Rivera,,ayme003@gmail.com,false,People;girls
++19415871547,Gabe,,Ponson,,,false,Fam;People
++14074700741,John,,Hursh,,,true,Historical;reGroup
++19415189404,Krystianna,,Ponson,,,false,Fam;People
++19412371249,Lisa,,Ponson,,ponson.lisa@gmail.com,false,Fam;People
++18137873317,Nathan,,Ponson,,,false,Fam;People
++19417304381,Tyler,,Ponson,,,false,Fam;People
++13212054430,Val (Paige group),,Perez,,,false,Grace;People
++19048607304,Will,,Rogers,,,false,NC;People
++19204060423;+19208830544,Gary,,Kunesh,,gjkunesh@aol.com,false,People
++14075806773,Joanna,,Foard,,,true,Historical
++13213025030,Carly,,Gillum (Hunt),,,false,Historical;People
++4915124208407;+4915126238934;+12039135560,Allie,,Gintoli,,,false,Historical;People;TT
++13212466200,Karen,,Grothouse (Work),,,false,People;girls
++972507575781;+14077194436;+14077557584,Tori,,(Hill) Ross,,torihill117@gmail.com,false,People
++14072711081,Abby,,Abbot,,,true,Historical;Summit
++19048746263,Leslie,,Barnett,,,true,Historical
++14077165331,,,,Becah,,true,Historical
++14079219792,Alex,,Beliz,,,true,Historical
++19417161527,Leslie,,Bennett,,,true,Historical
++14076878231,Deen,,Bohler,,,false,Historical;People
++13212583331,Chris,,Burns,,,false,Historical;People;reGroup
++13212307902,Spencer,,Candelario,,,false,Historical;People
++14077330628;+14076191250,Daniel,,Carrion,,,false,Historical;People;TT
++14074744361,,,,Cassy,,true,CGroup;Historical
++14075067869,Pierce,,Coffield,,,false,Historical;People
++14072839248,,,,Kim,,true,DBSA;Historical
++19124011522,Annette,,Gubert,,,false,Historical;People
++14074908985,James,,Harrison,,,true,Historical;TT
++13523281395,Liz,,(Hartsell) Cronlund,,,false,Historical;People;Summit
++17702626079,,,,Dylon,,false,Historical;People
++14072840275,,,,Faith,,true,Historical
++18137844924;+16036745684,Chris,,Hoeddinghaus,,surfstud5@aol.com,false,Historical;People;reGroup
++14075386462;+14072225295,Terry,,Kitch,,tkitch@discovergrace.com,false,Grace;Historical;People
++14074327834;+19548956047;+14074733580,Carrie,,Hollingsworth,,carriehollingsworth@rocketmail.com,false,Historical;People;Summit
++14079029383;+17064146811,Julie,,Keck,,julie.c.keck@gmail.com,false,Historical;People
++17069275325;+17063390465;+14074600991,Joshua,,Keck,,joshua.c.keck@gmail.com,false,Historical;People
++14754140655;+14074169176,Guy,,Ragault,,guy.ragault@gmail.com,false,Historical;People;TT
++12525324720,Dustin,,Keeton,,,true,Historical
++17276875182,,,,Kyle,,true,Historical
++13214449095;+19014915987,Kailey,,Newkirk,,knewkirk@summitconnect.org,false,Historical;People;Summit
++14073126109,Mary,,Yeaman,,,true,Historical
++14022090525;+14028045588,James,,Zank,,jameszank@yahoo.com,false,Fam;People
++14072270726,Scott,,Martin,,,true,Historical
++14079562467,Michael,,Sutkowy,,,true,Historical
++14075570542,,,,Mark,,true,Historical;reGroup
++14074615646,Evan,,Travelstead,,evantravelstead@gmail.com,false,People
++14074044341,Marc,,McKee,,,false,Historical;People
++19546515240,Nathan,,Boyett,,nboyett1@yahoo.com,false,People
++13212462167,Bob,,McRoy,,mcroyr@gmail.com,false,People
++14072804142,Daniel,,Travelstead,,,false,People
++14073109632;+13212041624,Pat,,Clark,,patclark@thegracecompanies.com,false,People
++14197088201,Corey Brittenham,,,,,false,Historical;People;reGroup
++13212768110,Jeff (Isabella Husband),,Morgia,,,false,Historical;People;Summit
++13214329091,Mallory,,Hunt,,mjhunt87@gmail.com,false,People
++19417372972,Brandon,,Kelley,,brandon.kelly85@gmail.com,false,Historical;MG;People
++13524849917,Rohan,,Dass,,rjdass1991@gmail.com,false,Historical;MG;People
++14073467836,Cole,,Schrimsher,,CASchrim@gmail.com,false,Historical;MG;People
++14236677789,Matt,,Storey,,MattStorey1985@gmail.com,false,MG;People
++13219480929,Dave,,Paul,,dave@pkblawfirm.com,false,MG;People
++14079209812,Michael,,Bowles,,mdbowles86@gmail.com,false,MG;People
++14077015435,Tom,,Headley,,twheadley@bellsouth.net,false,Historical;MG;People
++13213313213,Mitchel,,Brennan,,,false,Historical;MG;People
++14077601229,Casey,,Hodges,,,false,Historical;MG;People
++17274520331,Mike,,Saathoff,,,false,MG;People
++18165294401,Joe,,Pettet,,,false,MG;People
++14075058571,Josh,,Kessler,,,false,NC;People
++17273379880,Bella,,Tavernari,,,true,Historical;NC
++19729848776,Jessica,,Christoffel,,,false,NC;People
++17199302930,Hannah,,Lane,,,false,NC;People
++12565096343,Hardy,,Reynolds,,,true,Historical;NC
++18507665935,Jackie,,Braun,,,false,CGroup;Historical;People
++16186985431,Jun,,Kong,,,false,Historical;Landlord;People
++12069194976;+12069194975;+17134801193;+13104293701,Andrew,Sung Chul,McEwen,,asmcewen@gmail.com,false,People
++14076178696,Sam,,Rex,,,false,Historical;People;reGroup
++19417185021,Truett,,Tomlin,,,false,Fam;People
++14075923293;+14077341013;+18658513858,Nicole,,Ramsland,,nicoleramsland@gmail.com,false,People;girls
++14076251750,Tory,,Walker,,,true,Historical;reGroup
++12059656301,Kathyrn,,Hite,,,false,Historical;People
++13217598829;+13522784823,Brett,,English,,brettwenglish@gmail.com,false,Historical;People;RG
++14072214328,,,,Kitty,,false,DBSA;Historical;People
+18563718118,Kevin,,Ambruster,,kevinambruster@gmail.com,false,Lum;People
++13212400170,Wenyu,,Zhang,,,false,Lum;People
++14077198001,Josh,,West,,,false,Lum;People
++14079633833,Paul,,Varcholik,,,false,Lum;People
++16783729167,Kim,,Kryger,,,false,Lum;People
++14073422431,Justin,,Kovacich,,justin_kovacich@microvision.com,false,Lum;People
++14072429273,Jeremy,,Joseph,,jeremy.joseph@luminartech.com,false,Lum;People
++13213325550,Matt,,Limber,,,false,Historical;Lum;People
++14029816819,Zach,,Heylmun,,zach_heylmun@microvision.com,false,Lum;People
++15037050263,,,,Jay,,true,Historical;Lum
++18135987876,Dan,,Brown,,,false,Historical;Lum;People
++14079670490,Natalie,,Eastham,,,false,Lum;People
++17346372698,Joe,,Faris,,,false,Historical;Lum;People
++19542583889,Drew,,Goldfarb,,,false,Lum;People
++14074324890,Steve,,Nelson,,steve.john.nelson@gmail.com,false,Lum;People
++13092136135;+19413130870,,,,Mom,gravellegirl1@gmail.com,false,Fam;People
++19415256671,Devon,,Andrews,,devon.ducheneau@gmail.com,false,Fam;People
++19414749141;+19418096230,Cathy,,Arp,,cmarp@aol.com,false,Fam;People
++14074091136,,,,Mikayla,,false,People
++16046536868;+14074709616,Alastair,,Sterne,,asterne@stpetersfireside.org,false,People
++14077587670,,,,Jared,,false,Historical;People;TT
++14075798984;+13055825394,2 Wheel Heaven,,,,,false,Historical;People
++14076130544;+14076130936;+14079272966,Akil,,Meade,,,false,DBSA;Historical;People
++19046318022,Bekah,,Wilson,,,false,Historical;People
++14178383355,Lane,,Martin,,,false,Lum;People
++15105913333,,,,Tony,,false,People;SPX
++18473473029,,,,Emily,,false,Hinge;People;girls
+88811,,,,Scwabb,,true,
++15183908044,,,,,,true,
+169035,,,,Ragno - already copied,,true,
++14079236130,,,,,,true,
+21335,,,,login.gov,,true,
+72166,,,,Scwabb,,true,
++13864905709,,,,,,true,
++17045538700,,,,,,true,
++13212023621,,,,,,true,
++18445720320,,,,,,true,
+58988,,,,,,true,
++14077584920,,,,,,true,
++15026539771,,,,,,true,
++17542638028,,,,Wave,,true,
++16468639557,,,,Venmo,,true,
+244444,,,,Scwabb,,true,
++18559310517,,,,,,true,
++13548444626,,,,,,true,
+40404,,,,Twitter,,true,
++14077941656,,,,,,true,
+37473,,,,Fedex,,true,
++19803187727,,,,,,true,
++14075059811,,,,,,true,
+73655,,,,Gem Sleep,,true,
+74611888,,,,ATT,,true,
++15137021843,,,,,,true,
+29943,,,,Fidelity Rollover,,true,
++14079012948,,,,Bosphorous Turkish,,true,
+97671,,,,Idex Corp,,true,
++14159806280,,,,Quicken,,true,
+44884,,,,Oscar Health,,true,
+3307803631,,,,No idea,,true,
++14078093036,,,,Team Internet,,true,
++19413563406,,,,,,true,
++19413027104,,,,,,true,
++14078986711,,,,,,true,
+800050001020,,,,,,true,
+898287(smsft),,,,,,true,
++16043634335,,,,Cancer,,true,
+313131,,,,Public Storage,,true,
++18019800842,,,,Free Tax USA,,true,
++18287670041,,,,,,true,
+65083,,,,Grifols,,true,
+900080004000,,,,,,true,
+84285,,,,U-Haul,,true,
+787473,,,,Link Verification,,true,
++14076198431,,,,,,true,
+69035,,,,Scwabb,,true,
+78008,,,,Scwabb,,true,
+900090005354,,,,Scwabb,,true,
++14074138284,,,,Youfit Health,,true,
++17022490757,,,,,,true,
++14072782056,,,,,,true,
++16789225953,,,,,,true,
+93557,,,,Wells Fargo,,true,
++16782233618,,,,One Blood,,true,
++18134375923,,,,Florida Politics,,true,
+239663,,,,Bed Bath Beyond,,true,
+73737,,,,Magic Game,,true,
++13213184165,,,,,,true,
+11113000,,,,ATT,,true,
++16139098118,,,,,,true,
+69525,,,,Scwabb,,true,
+28581,,,,Cash App,,true,
++15572335793,,,,,,true,
++18886082709,,,,,,true,
+224444,,,,Google Verification,,true,
++12514446456,,,,,,true,
++18443950464,,,,,,true,
+29002,,,,Magic,,true,
++14072485000,,,,One Blood,,true,
++17789875403,,,,Spam,,true,
+86753,,,,Venmo,,true,
++14074212266,,,,,,true,
++19548704058,,,,,,true,
+899000,,,,Verizon,,true,
++12017016447,,,,Booking,,true,
++12398725589,,,,Dave Photos with Karen,,true,
++14438047151,,,,,,true,
++14074932034,,,,,,true,
++16502002765,,,,Winter Club,,true,
++14078029200,,,,,,true,
++14105623709,,,,,,true,
++14078622299,,,,,,true,
++14126579594,,,,,,true,
++19046073234,,,,,,true,
++12629142168,,,,,,true,
++18147204745,,,,,,true,
++14075986748,,,,,,true,
++19207375927,,,,,,true,
++13214313052,,,,,,true,
+287797,,,,Scwabb,,true,
++15626674958,,,,,,true,
++14077593632,,,,,,true,
++14072779727,,,,,,true,
++14848188300,,,,,,true,
++12052769609,,,,,,true,
++14072306268,,,,,,true,
++14074632297,,,,,,true,
++14052136656,,,,,,true,
++14078085894,,,,Dan O - LM 2011,,true,
++19415850999,,,,Florida Debate,,true,
++14074856530,,,,Fedex Dude,,true,
++18777510722,,,,,,true,
++14076065301,,,,,,true,
++14253750806,,,,,,true,
+262966,,,,Amazon Prime,,true,
+Unknown,,,,,,true,
++12692670592,,,,,,true,
++19547323348,,,,,,true,
+48267,,,,Amex,,true,
++13853416921,,,,,,true,
+243257,,,,Background Check,,true,
+deadracephus@hotmail.com,,,,,,true,
++14694419179,,,,,,true,
++17547012216,,,,Net Neutrality,,true,
++13432648471,,,,,,true,
+287898,,,,Scwabb,,true,
+898287,,,,,,true,
++14254092623,,,,Microsoft Verification,,true,
+mcroyr@gmail.com,,,,,,true,
+33222,,,,,,true,
++14077914697,,,,,,true,
++17038107041,,,,Last Pass,,true,
++16036859592,,,,,,true,
++14072695847,,,,Youfit,,true,
++19132274474,,,,,,true,
++14074052225,,,,,,true,
+2103827818,,,,Unsure,,true,
+432578,,,,Lifelock,,true,
++17042660605,,,,,,true,
+22000,,,,gcal,,true,
++19417808998,,,,,,true,
++14807880936,,,,,,true,
++18504047208,,,,Team Internet,,true,
++14079680471,,,,,,true,
++19563104288,,,,Oak transport car,,true,
++15715866069,,,,,,true,
+900080006205,,,,,,true,
++14074012912,,,,,,true,
+73251,,,,HR block,,true,
+29694,,,,Scwabb,,true,
++13217328017,,,,,,true,
++19418757825,,,,,,true,
++19414415204,,,,Scwabb,,true,
+32557,,,,Scwabb,,true,
++18888440080,,,,,,true,
++14074621276,,,,,,true,
++13019457296,,,,Lockheed Martin Interview 2026-01-26,,true,
+24528,,,,Delta,,true,
+386732,,,,Scwabb,,true,
++18559090837,,,,Scwabb,,true,
++14254092626,,,,Idex,,true,
++18558804900,,,,,,true,
++12025564198,,,,One Blood,,true,
++14079001008,,,,,,true,
+33433,,,,Paysign,,true,
++14074088751,,,,,,true,
+22395,,,,,,true,
++15612038241,,,,,,true,
+28107,,,,Chase Fraud,,true,
+74230,,,,Bunco reminder,,true,
++19418095722,,,,,,true,
++14073141730,,,,,,true,
+Revitalizing Psychiatry Appointment,,,,,,true,
++18014137643,,,,Verizon,,true,
++18082010975,,,,,,true,
+35213,,,,Amazon OTP,,true,
+900070002107,,,,VZW,,true,
++14073108378,,,,,,true,
++14076877703,,,,,,true,
++17036066275,,,,,,true,
+69682,,,,Scwabb,,true,
+78378,,,,Scwabb,,true,
++18332505081,,,,,,true,
+67760,,,,Scwabb,,true,
+85549,,,,Lincoln,,true,
+32665,,,,Facebook,,true,
++18555008038,,,,,,true,
+85760,,,,Vanguard,,true,
++14072575544,,,,,,true,
++13526727043,,,,,,true,
++14074156759,,,,,,true,
+732873,,,,Microsoft,,true,
++14059191984,,,,,,true,
++19416612763,,,,,,true,
++14073757929,,,,Dustin TT,,true,
+90403,,,,Scwabb,,true,
++14048237757,,,,,,true,
+63368,,,,,,true,
++12054229506,,,,,,true,
++14073807046,,,,Dentila,,true,
+83992,,,,Scwabb,,true,
++19412664494,,,,,,true,
+48773,,,,FedEx,,true,
++14079888101,,,,,,true,
++13214369267,,,,,,true,
+44779,,,,Scwabb,,true,
++18888657169,,,,,,true,
++12514184820,,,,Net Neutrality,,true,
++15853138745,,,,,,true,
++18334399147,,,,Grace Volunteer,,true,
++19253266606,,,,,,true,
++14379086121,,,,,,true,
++17327083720,,,,,,true,
++18556722142,,,,,,true,
++18557301564,,,,,,true,
+36246,,,,Urban Flats,,true,
+88769,,,,Scwabb,,true,
++19792299391,,,,,,true,
+42239,,,,Scwabb,,true,
++16042172649,,,,Chase Bank,,true,
+44398,,,,Hinge,,true,
+28342,,,,Public Storage,,true,
+247262,,,,Airbnb,,true,
+242733,,,,Chase,,true,
+73706,,,,Dentila,,true,
++12132633354,,,,Github,,true,
+32858,,,,Quicken,,true,
++14074461056,,,,,,true,
+57513,,,,Walmart,,true,
++14073838182,,,,Burgos house,,true,
+87892,,,,Scwabb,,true,
+256447,,,,Google,,true,
++14078481004,,,,Parking,,true,
+#CMAS#CMASALL,,,,Wireless Emergency Alerts (CMAS),,true,
++17786690317,,,,Chase Bank,,true,
+28102,,,,Bilt,,true,
++18485651419,,,,,,true,
++17542638928,,,,Waze,,true,
+1111487799,,,,ATT,,true,
+837401,,,,MS Security,,true,
+88170,,,,ATT,,true,
++19412235181,,,,,,true,
++16465189979,,,,,,true,
++17432225699,,,,,,true,
+7535,,,,ATT,,true,
++14072765911,,,,,,true,
+906469,,,,,,true,
++16046523108,,,,,,true,
+75243,,,,Plaid,,true,
+99354,,,,(Unknown),,true,
++19734196864,,,,,,true,
++16192573593,,,,,,true,
++18644377797,,,,,,true,
++19045915852,,,,Unknown,,true,
++14077820228,,,,,,true,
+Siminn,,,,Siminn,,true,
++14079743100,,,,,,true,
++15742146991,,,,,,true,
++14072427337,,,,Joel Truck TT,,true,
++12232031447,,,,Tinder,,true,
++14072803425,,,,,,true,
++16282850767,,,,,,true,
+729725,,,,Paypal,,true,
++12058514558,,,,AirBnb,,true,
+4891,,,,,,true,
++14077480320,,,,,,true,
+Unknown address,,,,,,true,
+alexanderbutlerha277097@gmail.com,,,,,,true,
+84045,,,,Fandango,,true,
++19802531705,,,,,,true,
+25392,,,,Scwabb,,true,
++14075599080,,,,Stretch Lab,,true,
++19412018662,,,,,,true,
++19416611075,,,,,,true,
++19726769297,,,,,,true,
++13025175188,,,,,,true,
++18889366283,,,,,,true,
+72524,,,,DHL,,true,
+91994,,,,,,true,
++19546472144,,,,,,true,
++18444459584,,,,Zelle,,true,
++19413207142,,,,,,true,
++14073807046(smsft),,,,,,true,
++19413765254,,,,Unknown,,true,
++13214181842,,,,,,true,
++14076941579,,,,,,true,
++18607994903,,,,Whats App,,true,
+hjnbstttiu@rambler.ru,,,,,,true,
+89446,,,,Amazon Package,,true,
++14075910734,,,,,,true,
++14044010801,,,,,,true,
++16128088930,,,,,,true,
++12017016417,,,,Ebay,,true,
++14074568538,,,,,,true,
+55678,,,,Scwabb,,true,
++14077195862,,,,,,true,
++12766904418,,,,,,true,
++1121611611,,,,Invalid,,true,
++13215587003,,,,Firebirds Amy Reservation,,true,
++14259797022,,,,Uber,,true,
+94960,,,,Scwabb,,true,
++18555462073,,,,Scwabb,,true,
++19412365264,,,,Election,,true,
++16362816714,,,,,,true,
+287335,,,,CVS Pharmacy,,true,
++13212745492,,,,Niran & Nicole?,,true,
