@@ -1,0 +1,10 @@
+[owner]
+display_name = "Matt Beisser"
+phone_e164 = "+19412660605"
+emails = ["mjbeisser@gmail.com"]
+
+[paths]
+export_dir = "sources/imessage/2026-05-15/export"
+db = "data/imessage.db"
+assets_dir = "data/assets"
+contacts_csv = "config/contacts.csv"

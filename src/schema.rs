@@ -1,7 +1,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-pub fn recreate(conn: &Connection) -> Result<()> {
+/// Drop and recreate message-related tables. Does not touch contacts.
+pub fn recreate_messages(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
         PRAGMA foreign_keys = ON;
@@ -75,6 +76,46 @@ pub fn recreate(conn: &Connection) -> Result<()> {
             emoji TEXT,
             is_from_me INTEGER NOT NULL,
             sender TEXT
+        );
+        "#,
+    )?;
+    Ok(())
+}
+
+/// Create contacts tables if they do not already exist.
+pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        PRAGMA foreign_keys = ON;
+
+        CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY,
+            first_name TEXT,
+            middle_name TEXT,
+            last_name TEXT,
+            nickname TEXT,
+            email TEXT,
+            hidden INTEGER NOT NULL DEFAULT 0,
+            preferred_phone TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS contact_phones (
+            phone_e164 TEXT PRIMARY KEY,
+            contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_contact_phones_contact_id
+            ON contact_phones (contact_id);
+
+        CREATE TABLE IF NOT EXISTS groups (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS contact_groups (
+            contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+            group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+            PRIMARY KEY (contact_id, group_id)
         );
         "#,
     )?;

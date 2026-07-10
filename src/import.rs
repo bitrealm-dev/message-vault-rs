@@ -5,6 +5,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection};
 
 use crate::assets::{self, AssetStats, StoredAsset};
+use crate::contacts;
 use crate::models::{clean_body, AttachmentRecord, ExportRecord, MessageRecord};
 use crate::ndjson;
 use crate::schema;
@@ -20,6 +21,10 @@ pub struct ImportStats {
     pub assets_copied: u64,
     pub assets_deduped: u64,
     pub assets_missing: u64,
+    pub contacts: u64,
+    pub contact_phones: u64,
+    pub contact_group_links: u64,
+    pub contacts_skipped: bool,
 }
 
 struct PreparedAttachment {
@@ -31,6 +36,8 @@ pub fn import_export(
     export_dir: &Path,
     db_path: &Path,
     assets_dir: &Path,
+    contacts_csv: &Path,
+    overwrite_contacts: bool,
 ) -> Result<ImportStats> {
     if !export_dir.is_dir() {
         bail!("export directory does not exist: {}", export_dir.display());
@@ -48,7 +55,11 @@ pub fn import_export(
     let mut conn = Connection::open(db_path)
         .with_context(|| format!("failed to open database {}", db_path.display()))?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    schema::recreate(&conn)?;
+
+    let contact_stats =
+        contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
+
+    schema::recreate_messages(&conn)?;
 
     let mut paths: Vec<_> = fs::read_dir(export_dir)
         .with_context(|| format!("failed to read {}", export_dir.display()))?
@@ -62,7 +73,13 @@ pub fn import_export(
         .collect();
     paths.sort();
 
-    let mut stats = ImportStats::default();
+    let mut stats = ImportStats {
+        contacts: contact_stats.contacts,
+        contact_phones: contact_stats.phones,
+        contact_group_links: contact_stats.groups,
+        contacts_skipped: contact_stats.skipped,
+        ..Default::default()
+    };
     let mut asset_stats = AssetStats::default();
 
     for path in paths {
