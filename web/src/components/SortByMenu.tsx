@@ -81,7 +81,7 @@ function SortOption({
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
     >
       <span className="flex w-4 justify-center text-accent">
         {selected ? <CheckIcon /> : null}

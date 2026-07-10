@@ -14,12 +14,12 @@ export type ContactListItem = {
   sortFirst: string;
   sortLast: string;
   letter: string;
+  tags: string[];
+  display: boolean;
+  status: string;
 };
 
 export type ContactDetail = ContactListItem & {
-  display: boolean;
-  status: string;
-  tags: string[];
   phones: string[];
   dateStart: string | null;
   dateEnd: string | null;

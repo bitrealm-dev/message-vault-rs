@@ -182,7 +182,24 @@ export function listContacts(section: ContactSection): ContactListItem[] {
     first_name: string | null;
     last_name: string | null;
     preferred_phone: string | null;
+    display: number;
+    status: string | null;
   }>;
+
+  const tagRows = db
+    .prepare(
+      `SELECT ct.contact_id AS contact_id, t.name AS name
+       FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tag_id
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all() as Array<{ contact_id: number; name: string }>;
+  const tagsByContact = new Map<number, string[]>();
+  for (const row of tagRows) {
+    const list = tagsByContact.get(row.contact_id);
+    if (list) list.push(row.name);
+    else tagsByContact.set(row.contact_id, [row.name]);
+  }
 
   return rows
     .map((row) => {
@@ -194,6 +211,9 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         preferredPhone: row.preferred_phone,
         firstName: row.first_name,
         lastName: row.last_name,
+        tags: tagsByContact.get(row.id) ?? [],
+        display: row.display !== 0,
+        status: row.status === "historical" ? "historical" : "current",
         ...sorts,
       };
     })

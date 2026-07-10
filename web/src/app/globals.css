@@ -41,4 +41,62 @@ body {
   color: var(--text);
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   margin: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #6a7078 #1a1c1e;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #6a7078 #1a1c1e;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #1a1c1e;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #6a7078;
+  border-radius: 5px;
+  border: 2px solid #1a1c1e;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #838a94;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #1a1c1e;
+}
+
+/* People-list checkboxes: soft grey fill, lightly rounded corners */
+.checkbox-people {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  flex-shrink: 0;
+  border-radius: 3px;
+  border: 1px solid #7a8088;
+  background-color: #c4c8ce;
+  cursor: pointer;
+}
+
+.checkbox-people:checked {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23121416' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.checkbox-people:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

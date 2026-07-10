@@ -65,6 +65,33 @@ function PersonIcon({ className }: { className?: string }) {
   );
 }
 
+/** Clockwise cycle with check — Current. Flip horizontally for Historical. */
+function CycleCheckIcon({
+  className,
+  flipped = false,
+}: {
+  className?: string;
+  flipped?: boolean;
+}) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={flipped ? { transform: "scaleX(-1)" } : undefined}
+    >
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.05-5.2" />
+      <path d="M19.5 4.75v4.1h-4.1" />
+      <path d="M8.75 12.25 11.1 14.6 15.4 9.75" />
+    </svg>
+  );
+}
+
 function EllipsisIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -98,7 +125,7 @@ function NavLink({
       href={href}
       className={`relative flex items-center gap-2 py-1.5 text-[13px] transition-colors ${
         indent ? "pl-4 pr-3" : "px-3"
-      } ${active ? "bg-elevated text-text" : "text-muted hover:bg-elevated/50 hover:text-text"}`}
+      } ${active ? "bg-elevated text-text" : "text-muted hover:bg-white/20 hover:text-text"}`}
     >
       {active && (
         <span
@@ -356,8 +383,8 @@ function GroupsNav({ tags }: { tags: string[] }) {
               <div
                 className={`group relative flex items-center text-[13px] transition-colors ${
                   active
-                    ? "bg-elevated text-text"
-                    : "text-muted hover:bg-elevated/50 hover:text-text"
+                    ? "bg-elevated text-text hover:bg-white/18"
+                    : "text-muted hover:bg-white/20 hover:text-text"
                 }`}
               >
                 {active && (
@@ -402,7 +429,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
                 >
                   <button
                     type="button"
-                    className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/5"
+                    className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
                     onClick={(e) => {
                       setMenuFor(null);
                       setRename({
@@ -416,7 +443,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
                   </button>
                   <button
                     type="button"
-                    className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/5"
+                    className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
                     onClick={() => void deleteGroup(name)}
                   >
                     Delete
@@ -474,11 +501,22 @@ export function AppSidebar({
 
       <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
         <NavLink href="/all" label="All contacts" active={active === "/all"} />
-        <NavLink href="/current" label="Current" active={active === "/current"} />
+        <NavLink
+          href="/current"
+          label="Current"
+          active={active === "/current"}
+          icon={<CycleCheckIcon className="size-3.5 shrink-0 opacity-80" />}
+        />
         <NavLink
           href="/historical"
           label="Historical"
           active={active === "/historical"}
+          icon={
+            <CycleCheckIcon
+              className="size-3.5 shrink-0 opacity-80"
+              flipped
+            />
+          }
         />
 
         <GroupsNav tags={tags} />

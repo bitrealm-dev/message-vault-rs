@@ -12,7 +12,7 @@ phones,first_name,last_name,display,status,tags
 +17274312559,Caroline,Miller,TRUE,historical,
 +19202277017,Dasa,Zalaski,TRUE,historical,
 +18506614637,Kyle,Armstrong,TRUE,historical,
-+19126596907,Glenn,Beisser,TRUE,historical,
++19126596907,Glenn,Beisser,TRUE,historical,DBSA;Girls
 +17577177638,Josh,Mann,TRUE,historical,
 +14074906769,Jason,Boyer,FALSE,historical,
 +14075519540,Matt,Rood,TRUE,historical,
@@ -20,7 +20,7 @@ phones,first_name,last_name,display,status,tags
 +14073341610,Samantha,Carver,TRUE,historical,
 +14074966678,Jesse,Leffler,TRUE,historical,
 +18433688299,Erin,Keating,TRUE,historical,
-+19412239802,Jay,Boggs,TRUE,historical,
++19412239802,Jay,Boggs,TRUE,historical,Celebration
 +14078738141,Aubrey,Dear,TRUE,historical,
 +15617589434,Josh (Grace),Dean,TRUE,historical,Grace
 +16784642513,Kyle,Jackson,TRUE,historical,
@@ -38,7 +38,7 @@ phones,first_name,last_name,display,status,tags
 +14072211725,Sue,,FALSE,historical,
 +13523286394,Liz,Cronlund,TRUE,historical,
 +14075298884,Jonathan,Sutherland,TRUE,historical,
-+16789771899,John,Boghos,TRUE,historical,
++16789771899,John,Boghos,TRUE,historical,Celebration
 +14072279087,Jonathan,Walker,FALSE,historical,
 +14074162980,Hunter,Fields,TRUE,historical,
 +13218069123,Kelli,,FALSE,historical,
@@ -106,12 +106,12 @@ phones,first_name,last_name,display,status,tags
 +17704013501;+17789383501,Derek,Martin,TRUE,historical,Summit
 +14074633193,Whitney,Saylor,TRUE,historical,
 +14074305603,Carrie Ann,,FALSE,historical,
-+19412234640,Ashish,Bhatnagar,TRUE,historical,
++19412234640,Ashish,Bhatnagar,TRUE,historical,Celebration
 +14074152905,Kristina,Cox,TRUE,historical,Summit
 +18083981064,Kane,Tomlin,TRUE,historical,Family
 +12398212767,Riley,Tuff,TRUE,historical,
 +17165105998,Megan,Wasneechak,TRUE,historical,Connect Group
-+18155662601,Andrea,Bennett,TRUE,historical,
++18155662601,Andrea,Bennett,TRUE,historical,DBSA
 +14079029954,Kyle,Kubic,TRUE,historical,
 +14078032664,Caitlin,Crosley,TRUE,historical,Connect Group
 +14077176459,Elisabeth,Niemetschek,TRUE,historical,
@@ -128,8 +128,8 @@ phones,first_name,last_name,display,status,tags
 +19412238191,Drew,,TRUE,historical,
 +17863618909,Clayton,Adkins,FALSE,historical,Grace
 +14074849469,Mike,Allen,TRUE,historical,Summit
-+13526828745;+13035133985,Nick,Augello,TRUE,historical,
-+13212875673,Nick (Dad),Augello,TRUE,historical,
++13526828745;+13035133985,Nick,Augello,TRUE,historical,Connect Group
++13212875673,Nick (Dad),Augello,TRUE,historical,Connect Group
 +14079026397,Sean,Barrie,TRUE,historical,Lockheed Martin
 +14073610100,Thad,Beckert,TRUE,historical,Lockheed Martin
 +14077040042,Tiffany,Bejarano,FALSE,historical,Celebration
@@ -267,7 +267,7 @@ phones,first_name,last_name,display,status,tags
 +13104963484,Taylor,Tomlinson,TRUE,historical,
 +13214219411,Chris,(Orlando Power Sports),TRUE,historical,
 +14072477288,Ross,Hudson (Evan Realtor),TRUE,historical,
-+14406442225,Backbone Support,,TRUE,historical,
++14406442225,Backbone Support,,TRUE,historical,DBSA;Girls
 +14078305557,Firestone Complete,Care,TRUE,current,
 +18883737888,Human,Trafficking,TRUE,historical,
 +14074949499,Christopher,Wanitshka,TRUE,historical,
@@ -315,12 +315,12 @@ phones,first_name,last_name,display,status,tags
 +14076875475,Jacob,Studstill,TRUE,historical,
 +14076150361,Michelle,Hiatt (Rivera),TRUE,historical,
 +19374431599,Alex,Heck,TRUE,historical,
-+14079217162,Reagan,Bartels,TRUE,historical,
++14079217162,Reagan,Bartels,TRUE,historical,DBSA
 +14078264888,Becky,Rivera,TRUE,historical,
 +12075225465,John,Miller (Kate Husband),FALSE,historical,
 +14076945738,Luke,Cronlund,TRUE,current,
 +14072438732,Sean,Williams,TRUE,current,
-+13046696386,Bethany,Bealko,TRUE,current,
++13046696386,Bethany,Bealko,TRUE,current,DBSA;Girls
 +19415043743,Anjali (Isabelle),Gupta,TRUE,current,
 +14079286221,Dave,Esler,TRUE,current,
 +14074921771,Pam,Smith,TRUE,historical,
@@ -335,13 +335,13 @@ phones,first_name,last_name,display,status,tags
 +14077013423,Jeremy,Levin,TRUE,historical,
 +14075013129,Adam,Winter,TRUE,current,
 +13213560638,Allison,Clark,TRUE,current,
-+14079290646,Courtnee,Boyett,TRUE,current,
++14079290646,Courtnee,Boyett,TRUE,current,Celebration
 +13056090035,Franche,Ductant,TRUE,current,
 +14077160071,Will,Dickenson,TRUE,current,
 +12056500959,Claudia,Garcia,TRUE,historical,
 +18137848858,Janice,(Huang) McEwen,TRUE,current,
 +13216151491,Sabrina,McRoy,TRUE,historical,
-+14073751791,John,Bartels,TRUE,current,
++14073751791,John,Bartels,TRUE,current,DBSA
 +14072802358,Andrew,Johnson,TRUE,historical,
 +14077492449,Heather,Brookins,TRUE,current,Connect Group
 +14073412612,Stephen,Gable,TRUE,historical,Summit

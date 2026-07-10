@@ -2,10 +2,11 @@
 
 import type { ContactListItem, MessageRow } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SortByMenu, type SortMode } from "./SortByMenu";
-import { GroupsMenu } from "./GroupsMenu";
+import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import { HiddenMenu, StatusMenu } from "./BulkFieldMenus";
 import { useResizablePanes } from "./useResizablePanes";
 
 type YearThread = {
@@ -81,6 +82,19 @@ export function BrowseShell({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [tagOverrides, setTagOverrides] = useState<Map<number, string[]>>(
+    () => new Map(),
+  );
+  const [displayOverrides, setDisplayOverrides] = useState<Map<number, boolean>>(
+    () => new Map(),
+  );
+  const [statusOverrides, setStatusOverrides] = useState<
+    Map<number, "current" | "historical">
+  >(() => new Map());
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const selectionDirtyRef = useRef(false);
+  const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
     useResizablePanes(`browse-${section}`);
 
@@ -169,7 +183,31 @@ export function BrowseShell({
 
   useEffect(() => {
     setSelectedIds(new Set());
+    setTagOverrides(new Map());
+    setDisplayOverrides(new Map());
+    setStatusOverrides(new Map());
+    selectionDirtyRef.current = false;
   }, [section, query]);
+
+  useEffect(() => {
+    return () => {
+      if (statusShowTimerRef.current) clearTimeout(statusShowTimerRef.current);
+      if (statusClearTimerRef.current) clearTimeout(statusClearTimerRef.current);
+    };
+  }, []);
+
+  const queueStatusMessage = useCallback((message: string) => {
+    if (statusShowTimerRef.current) clearTimeout(statusShowTimerRef.current);
+    if (statusClearTimerRef.current) clearTimeout(statusClearTimerRef.current);
+    statusShowTimerRef.current = setTimeout(() => {
+      setStatusMsg(message);
+      statusClearTimerRef.current = setTimeout(() => {
+        setStatusMsg(null);
+        statusClearTimerRef.current = null;
+      }, 5000);
+      statusShowTimerRef.current = null;
+    }, 300);
+  }, []);
 
   const sortedIndexById = useMemo(() => {
     const map = new Map<number, number>();
@@ -293,6 +331,303 @@ export function BrowseShell({
   );
   const hasSelection = selectedContacts.length > 0;
 
+  const tagsFor = useCallback(
+    (id: number, fallback: string[]) => tagOverrides.get(id) ?? fallback,
+    [tagOverrides],
+  );
+
+  const groupTargets = useMemo(() => {
+    if (hasSelection) {
+      return selectedContacts.map((c) => ({
+        id: c.id,
+        tags: tagsFor(c.id, c.tags),
+      }));
+    }
+    if (detail) {
+      return [{ id: detail.id, tags: tagsFor(detail.id, detail.tags) }];
+    }
+    return [] as Array<{ id: number; tags: string[] }>;
+  }, [hasSelection, selectedContacts, detail, tagsFor]);
+
+  const menuGroups = useMemo(() => {
+    const names = new Set(allTags);
+    for (const person of groupTargets) {
+      for (const tag of person.tags) names.add(tag);
+    }
+    return [...names].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [allTags, groupTargets]);
+
+  const groupChecks = useMemo(() => {
+    const result: Record<string, GroupCheckState> = {};
+    const n = groupTargets.length;
+    for (const name of menuGroups) {
+      if (n === 0) {
+        result[name] = "off";
+        continue;
+      }
+      let count = 0;
+      for (const person of groupTargets) {
+        if (person.tags.includes(name)) count++;
+      }
+      result[name] =
+        count === 0 ? "off" : count === n ? "on" : "mixed";
+    }
+    return result;
+  }, [menuGroups, groupTargets]);
+
+  const applyGroupMembership = useCallback(
+    async (name: string, enable: boolean) => {
+      const targets = groupTargets;
+      if (targets.length === 0) return;
+
+      let changed = 0;
+      for (const person of targets) {
+        if (person.tags.includes(name) !== enable) changed++;
+      }
+      if (changed === 0) return;
+
+      // Optimistic UI so the menu can stay open across multiple toggles.
+      setTagOverrides((prev) => {
+        const next = new Map(prev);
+        for (const person of targets) {
+          const current = next.get(person.id) ?? person.tags;
+          const has = current.includes(name);
+          if (enable === has) continue;
+          const tags = enable
+            ? [...current, name].sort((a, b) =>
+                a.localeCompare(b, undefined, { sensitivity: "base" }),
+              )
+            : current.filter((t) => t !== name);
+          next.set(person.id, tags);
+        }
+        return next;
+      });
+      selectionDirtyRef.current = true;
+
+      const noun = changed === 1 ? "contact" : "contacts";
+      queueStatusMessage(
+        enable
+          ? `Added ${changed} ${noun} to ${name}`
+          : `Removed ${changed} ${noun} from ${name}`,
+      );
+
+      try {
+        for (const person of targets) {
+          const has = person.tags.includes(name);
+          if (enable === has) continue;
+          const tags = enable
+            ? [...person.tags, name].sort((a, b) =>
+                a.localeCompare(b, undefined, { sensitivity: "base" }),
+              )
+            : person.tags.filter((t) => t !== name);
+
+          if (!hasSelection && person.id === contactId) {
+            const ok = await saveContactPatch({ tags });
+            if (!ok) throw new Error("save failed");
+          } else {
+            const res = await fetch(`/api/contacts/${person.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tags }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "save failed");
+            if (data.contact && person.id === contactId) {
+              setDetail(data.contact);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        // Re-sync from server on failure.
+        selectionDirtyRef.current = true;
+        router.refresh();
+        setTagOverrides(new Map());
+      }
+    },
+    [
+      groupTargets,
+      hasSelection,
+      contactId,
+      saveContactPatch,
+      router,
+      queueStatusMessage,
+    ],
+  );
+
+  const toggleGroup = useCallback(
+    (name: string) => {
+      const state = groupChecks[name] ?? "off";
+      const enable = state !== "on";
+      void applyGroupMembership(name, enable);
+    },
+    [groupChecks, applyGroupMembership],
+  );
+
+  const createAndAssignGroup = useCallback(
+    (name: string) => {
+      void applyGroupMembership(name, true);
+    },
+    [applyGroupMembership],
+  );
+
+  const onSelectionMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) return;
+      if (!selectionDirtyRef.current) return;
+      selectionDirtyRef.current = false;
+      setTagOverrides(new Map());
+      setDisplayOverrides(new Map());
+      setStatusOverrides(new Map());
+      router.refresh();
+    },
+    [router],
+  );
+
+  const selectionFieldTargets = useMemo(() => {
+    return selectedContacts.map((c) => ({
+      id: c.id,
+      display: displayOverrides.get(c.id) ?? c.display,
+      status:
+        statusOverrides.get(c.id) ??
+        (c.status === "historical" ? "historical" : "current"),
+    }));
+  }, [selectedContacts, displayOverrides, statusOverrides]);
+
+  const hiddenCheck = useMemo((): GroupCheckState => {
+    const n = selectionFieldTargets.length;
+    if (n === 0) return "off";
+    let hidden = 0;
+    for (const p of selectionFieldTargets) {
+      if (!p.display) hidden++;
+    }
+    if (hidden === 0) return "off";
+    if (hidden === n) return "on";
+    return "mixed";
+  }, [selectionFieldTargets]);
+
+  const currentCheck = useMemo((): GroupCheckState => {
+    const n = selectionFieldTargets.length;
+    if (n === 0) return "off";
+    let count = 0;
+    for (const p of selectionFieldTargets) {
+      if (p.status === "current") count++;
+    }
+    if (count === 0) return "off";
+    if (count === n) return "on";
+    return "mixed";
+  }, [selectionFieldTargets]);
+
+  const historicalCheck = useMemo((): GroupCheckState => {
+    const n = selectionFieldTargets.length;
+    if (n === 0) return "off";
+    let count = 0;
+    for (const p of selectionFieldTargets) {
+      if (p.status === "historical") count++;
+    }
+    if (count === 0) return "off";
+    if (count === n) return "on";
+    return "mixed";
+  }, [selectionFieldTargets]);
+
+  const patchContactFields = useCallback(
+    async (
+      id: number,
+      patch: { display?: boolean; status?: "current" | "historical" },
+    ) => {
+      const res = await fetch(`/api/contacts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "save failed");
+      if (data.contact && id === contactId) setDetail(data.contact);
+    },
+    [contactId],
+  );
+
+  const toggleHiddenForSelection = useCallback(async () => {
+    const targets = selectionFieldTargets;
+    if (targets.length === 0) return;
+    const hideAll = hiddenCheck !== "on";
+    const nextDisplay = !hideAll;
+    let changed = 0;
+    for (const p of targets) {
+      if (p.display !== nextDisplay) changed++;
+    }
+    if (changed === 0) return;
+
+    setDisplayOverrides((prev) => {
+      const next = new Map(prev);
+      for (const p of targets) {
+        next.set(p.id, nextDisplay);
+      }
+      return next;
+    });
+    selectionDirtyRef.current = true;
+
+    const noun = changed === 1 ? "contact" : "contacts";
+    queueStatusMessage(
+      hideAll ? `Hid ${changed} ${noun}` : `Unhid ${changed} ${noun}`,
+    );
+
+    try {
+      for (const p of targets) {
+        if (p.display === nextDisplay) continue;
+        await patchContactFields(p.id, { display: nextDisplay });
+      }
+    } catch (err) {
+      console.error(err);
+      selectionDirtyRef.current = true;
+      router.refresh();
+      setDisplayOverrides(new Map());
+    }
+  }, [
+    selectionFieldTargets,
+    hiddenCheck,
+    queueStatusMessage,
+    patchContactFields,
+    router,
+  ]);
+
+  const setStatusForSelection = useCallback(
+    async (status: "current" | "historical") => {
+      const targets = selectionFieldTargets;
+      if (targets.length === 0) return;
+      let changed = 0;
+      for (const p of targets) {
+        if (p.status !== status) changed++;
+      }
+      if (changed === 0) return;
+
+      setStatusOverrides((prev) => {
+        const next = new Map(prev);
+        for (const p of targets) next.set(p.id, status);
+        return next;
+      });
+      selectionDirtyRef.current = true;
+
+      const noun = changed === 1 ? "contact" : "contacts";
+      queueStatusMessage(`Set ${changed} ${noun} to ${status}`);
+
+      try {
+        for (const p of targets) {
+          if (p.status === status) continue;
+          await patchContactFields(p.id, { status });
+        }
+      } catch (err) {
+        console.error(err);
+        selectionDirtyRef.current = true;
+        router.refresh();
+        setStatusOverrides(new Map());
+      }
+    },
+    [selectionFieldTargets, queueStatusMessage, patchContactFields, router],
+  );
+
   const activeThreadMeta = useMemo(() => {
     if (!activeThread) return null;
     if (activeThread.startsWith("y-")) {
@@ -385,8 +720,8 @@ export function BrowseShell({
                       selectionActive ? "cursor-pointer" : ""
                     } ${
                       checked || active
-                        ? "bg-elevated"
-                        : "hover:bg-elevated/50"
+                        ? "bg-elevated hover:bg-white/18"
+                        : "hover:bg-white/20"
                     }`}
                   >
                     {active && !selectionActive && (
@@ -412,7 +747,7 @@ export function BrowseShell({
                         e.stopPropagation();
                         if (e.shiftKey) e.preventDefault();
                       }}
-                      className="mt-0.5 size-3.5 shrink-0 rounded border-border accent-accent"
+                      className="checkbox-people mt-0.5"
                     />
                     <button
                       type="button"
@@ -473,16 +808,31 @@ export function BrowseShell({
             {editing ? "Read only" : "Edit"}
           </button>
           <GroupsMenu
-            allGroups={allTags}
-            selected={detail?.tags ?? []}
-            disabled={saving || (!detail && !hasSelection)}
-            onChange={(tags) => {
-              void saveContactPatch({ tags }).then((ok) => {
-                if (ok) router.refresh();
-              });
-            }}
+            allGroups={menuGroups}
+            checks={groupChecks}
+            disabled={groupTargets.length === 0}
+            onToggle={toggleGroup}
+            onCreate={createAndAssignGroup}
+            onOpenChange={onSelectionMenuOpenChange}
           />
-          {saving && <span className="text-[11px] text-muted">Saving…</span>}
+          {hasSelection && (
+            <>
+              <HiddenMenu
+                state={hiddenCheck}
+                onToggle={() => void toggleHiddenForSelection()}
+                onOpenChange={onSelectionMenuOpenChange}
+              />
+              <StatusMenu
+                currentState={currentCheck}
+                historicalState={historicalCheck}
+                onSelect={(status) => void setStatusForSelection(status)}
+                onOpenChange={onSelectionMenuOpenChange}
+              />
+            </>
+          )}
+          {statusMsg && (
+            <span className="truncate text-[12px] text-muted">{statusMsg}</span>
+          )}
         </div>
 
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
@@ -511,7 +861,20 @@ export function BrowseShell({
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setSelectedIds(new Set())}
+                  onClick={() => {
+                    setSelectedIds(new Set());
+                    if (selectionDirtyRef.current) {
+                      selectionDirtyRef.current = false;
+                      setTagOverrides(new Map());
+                      setDisplayOverrides(new Map());
+                      setStatusOverrides(new Map());
+                      router.refresh();
+                    } else {
+                      setTagOverrides(new Map());
+                      setDisplayOverrides(new Map());
+                      setStatusOverrides(new Map());
+                    }
+                  }}
                   className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
                 >
                   Clear selection
@@ -594,24 +957,24 @@ export function BrowseShell({
 
                   <DetailRow
                     icon={<StatusIcon className="size-4 shrink-0 text-muted" />}
-                    label="Display"
+                    label="Hidden"
                   >
                     {editing ? (
                       <label className="inline-flex items-center gap-2 text-[13px] text-text">
                         <input
                           type="checkbox"
-                          checked={detail.display}
+                          checked={!detail.display}
                           disabled={saving}
                           onChange={(e) =>
-                            saveContactPatch({ display: e.target.checked })
+                            saveContactPatch({ display: !e.target.checked })
                           }
                           className="size-3.5 rounded border-border"
                         />
-                        {detail.display ? "TRUE" : "FALSE"}
+                        {!detail.display ? "TRUE" : "FALSE"}
                       </label>
                     ) : (
                       <span className="text-[13px] text-text">
-                        {detail.display ? "TRUE" : "FALSE"}
+                        {!detail.display ? "TRUE" : "FALSE"}
                       </span>
                     )}
                   </DetailRow>
@@ -728,10 +1091,10 @@ export function BrowseShell({
                                       key,
                                     )
                                   }
-                                  className={`flex w-full items-start justify-between gap-4 py-2 text-left text-[13px] ${
+                                  className={`flex w-full items-start justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
                                     active
-                                      ? "text-accent"
-                                      : "text-text hover:text-accent"
+                                      ? "bg-white/12 text-accent"
+                                      : "text-text hover:bg-white/20 hover:text-accent"
                                   }`}
                                 >
                                   <span className="min-w-0">

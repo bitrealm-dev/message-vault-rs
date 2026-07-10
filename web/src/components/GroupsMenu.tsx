@@ -2,15 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+export type GroupCheckState = "on" | "off" | "mixed";
+
 export function GroupsMenu({
   allGroups,
-  selected,
-  onChange,
+  checks,
+  onToggle,
+  onCreate,
+  onOpenChange,
   disabled = false,
 }: {
   allGroups: string[];
-  selected: string[];
-  onChange?: (next: string[]) => void;
+  /** Per-group membership across the current contact or selection. */
+  checks: Record<string, GroupCheckState>;
+  onToggle?: (name: string) => void;
+  /** Called when a new group is created; should add it to the current target(s). */
+  onCreate?: (name: string) => void;
+  onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -21,7 +29,21 @@ export function GroupsMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
-  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const checkRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  const closeMenu = () => {
+    setOpen(false);
+    setMode("list");
+    onOpenChangeRef.current?.(false);
+  };
+
+  const openMenu = () => {
+    setOpen(true);
+    setMode("list");
+    onOpenChangeRef.current?.(true);
+  };
 
   useEffect(() => {
     setLocalGroups((prev) => {
@@ -42,8 +64,7 @@ export function GroupsMenu({
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-        setMode("list");
+        closeMenu();
       }
     };
     const onKey = (e: KeyboardEvent) => {
@@ -52,7 +73,7 @@ export function GroupsMenu({
           setMode("list");
           setNewName("");
         } else {
-          setOpen(false);
+          closeMenu();
         }
       }
     };
@@ -75,18 +96,21 @@ export function GroupsMenu({
     }
   }, [open, mode]);
 
+  useEffect(() => {
+    for (const name of localGroups) {
+      const el = checkRefs.current.get(name);
+      if (!el) continue;
+      el.indeterminate = checks[name] === "mixed";
+    }
+  }, [checks, localGroups, open, filtered]);
+
   const toggle = (name: string) => {
-    if (disabled || !onChange) return;
-    const next = selectedSet.has(name)
-      ? selected.filter((g) => g !== name)
-      : [...selected, name].sort((a, b) =>
-          a.localeCompare(b, undefined, { sensitivity: "base" }),
-        );
-    onChange(next);
+    if (disabled || !onToggle) return;
+    onToggle(name);
   };
 
   const saveNewGroup = () => {
-    if (disabled || !onChange) return;
+    if (disabled || !onCreate) return;
     const name = newName.trim();
     if (!name) return;
 
@@ -103,14 +127,7 @@ export function GroupsMenu({
       );
     }
 
-    if (!selectedSet.has(resolved)) {
-      onChange(
-        [...selected, resolved].sort((a, b) =>
-          a.localeCompare(b, undefined, { sensitivity: "base" }),
-        ),
-      );
-    }
-
+    onCreate(resolved);
     setNewName("");
     setMode("list");
   };
@@ -121,8 +138,8 @@ export function GroupsMenu({
         type="button"
         aria-expanded={open}
         onClick={() => {
-          setOpen((v) => !v);
-          setMode("list");
+          if (open) closeMenu();
+          else openMenu();
         }}
         className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
           open
@@ -132,9 +149,6 @@ export function GroupsMenu({
       >
         <PeopleGroupIcon className="size-3.5" />
         Groups
-        {selected.length > 0 && (
-          <span className="tabular-nums text-muted">({selected.length})</span>
-        )}
         <ChevronIcon className="size-3 opacity-70" />
       </button>
 
@@ -159,15 +173,19 @@ export function GroupsMenu({
               <p className="px-3 py-2 text-[12px] text-muted">No groups</p>
             ) : (
               filtered.map((name) => {
-                const checked = selectedSet.has(name);
+                const state = checks[name] ?? "off";
                 return (
                   <label
                     key={name}
-                    className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-white/5"
+                    className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-white/20"
                   >
                     <input
+                      ref={(el) => {
+                        if (el) checkRefs.current.set(name, el);
+                        else checkRefs.current.delete(name);
+                      }}
                       type="checkbox"
-                      checked={checked}
+                      checked={state === "on"}
                       disabled={disabled}
                       onChange={() => toggle(name)}
                       className="size-3.5 rounded border-border accent-accent"
@@ -179,14 +197,17 @@ export function GroupsMenu({
             )}
           </div>
 
-          <div className="border-t border-border/80 px-3 py-2">
+          <div className="border-t border-border/80 py-1">
             <button
               type="button"
               disabled={disabled}
               onClick={() => setMode("create")}
-              className="text-[13px] text-accent hover:underline disabled:opacity-50"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
             >
-              + Create group
+              <span className="flex size-3.5 items-center justify-center text-[15px] leading-none text-muted">
+                +
+              </span>
+              <span>Create group</span>
             </button>
           </div>
         </div>

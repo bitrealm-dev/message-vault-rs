@@ -95,7 +95,7 @@ export function GroupsShell({
                 type="button"
                 onClick={() => selectGroup(g.id)}
                 className={`relative flex w-full flex-col border-b border-border/60 px-3 py-2 text-left ${
-                  active ? "bg-elevated" : "hover:bg-elevated/50"
+                  active ? "bg-elevated hover:bg-white/18" : "hover:bg-white/20"
                 }`}
               >
                 {active && (
