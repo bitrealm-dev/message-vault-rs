@@ -358,10 +358,10 @@ export function BrowseShell({
                 {groupsByYear.length === 0 ? (
                   <p className="mt-2 text-[12px] text-muted">No group messages</p>
                 ) : (
-                  <div className="mt-3 space-y-7">
+                  <div className="mt-3 space-y-12">
                     {groupsByYear.map(([year, items]) => (
                       <div key={year}>
-                        <div className="mb-2 text-base font-semibold text-text">
+                        <div className="mb-2 text-[13px] font-semibold text-text">
                           {year}
                         </div>
                         <ul className="divide-y divide-border/50 border-y border-border/50">
