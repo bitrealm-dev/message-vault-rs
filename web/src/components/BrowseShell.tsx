@@ -135,12 +135,27 @@ export function BrowseShell({
     [contactId],
   );
 
+  const isContactExcluded = useCallback(
+    (c: { id: number; exclude: boolean }) =>
+      excludeOverrides.get(c.id) ?? c.exclude,
+    [excludeOverrides],
+  );
+
+  /** Excluded contacts only appear under Excluded — never in All / groups / no-group. */
+  const visibleContacts = useMemo(() => {
+    const onExcluded = browseSection === "excluded";
+    return contacts.filter((c) => {
+      const excluded = isContactExcluded(c);
+      return onExcluded ? excluded : !excluded;
+    });
+  }, [contacts, browseSection, isContactExcluded]);
+
   const sorted = useMemo(() => {
     const q = query.trim();
     if (q) {
-      return searchContacts(contacts, q);
+      return searchContacts(visibleContacts, q);
     }
-    const copy = [...contacts];
+    const copy = [...visibleContacts];
     copy.sort((a, b) => {
       if (sort === "first") {
         return (
@@ -154,7 +169,7 @@ export function BrowseShell({
       );
     });
     return copy;
-  }, [contacts, sort, query]);
+  }, [visibleContacts, sort, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ContactListItem[]>();
@@ -773,14 +788,14 @@ export function BrowseShell({
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   const allGroupSelected = useMemo(() => {
-    if (contacts.length === 0) return false;
-    return contacts.every((c) => selectedIds.has(c.id));
-  }, [contacts, selectedIds]);
+    if (visibleContacts.length === 0) return false;
+    return visibleContacts.every((c) => selectedIds.has(c.id));
+  }, [visibleContacts, selectedIds]);
 
   const someGroupSelected = useMemo(() => {
-    if (contacts.length === 0) return false;
-    return contacts.some((c) => selectedIds.has(c.id));
-  }, [contacts, selectedIds]);
+    if (visibleContacts.length === 0) return false;
+    return visibleContacts.some((c) => selectedIds.has(c.id));
+  }, [visibleContacts, selectedIds]);
 
   useEffect(() => {
     if (!selectAllRef.current) return;
@@ -793,8 +808,8 @@ export function BrowseShell({
       setSelectedIds(new Set());
       return;
     }
-    setSelectedIds(new Set(contacts.map((c) => c.id)));
-  }, [allGroupSelected, contacts]);
+    setSelectedIds(new Set(visibleContacts.map((c) => c.id)));
+  }, [allGroupSelected, visibleContacts]);
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
@@ -808,14 +823,14 @@ export function BrowseShell({
               ref={selectAllRef}
               type="checkbox"
               checked={allGroupSelected}
-              disabled={contacts.length === 0}
+              disabled={visibleContacts.length === 0}
               aria-label={`Select all ${sectionLabel}`}
               onChange={toggleSelectAllInGroup}
               className="checkbox-people"
             />
             <span className="truncate text-[13px] text-muted">
               {query.trim() ? `${sorted.length}/` : ""}
-              {contacts.length}
+              {visibleContacts.length}
             </span>
           </label>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -1166,26 +1181,38 @@ export function BrowseShell({
                       <div className="min-w-0 flex-1">
                         <div className="text-[11px] tracking-wide text-muted">Groups</div>
                         <div className="mt-0.5">
-                          {(contactCreating && editDraft
-                            ? editDraft.tags
-                            : detail?.tags ?? []
-                          ).length > 0 ? (
-                            <div className="flex flex-col gap-0.5">
-                              {(contactCreating && editDraft
+                          {(() => {
+                            const detailExcluded = detail
+                              ? isContactExcluded(detail)
+                              : false;
+                            const shownTags =
+                              contactCreating && editDraft
                                 ? editDraft.tags
-                                : detail!.tags
-                              ).map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="truncate text-[13px] text-text"
-                                >
-                                  {tag}
+                                : detailExcluded
+                                  ? []
+                                  : detail
+                                    ? tagsFor(detail.id, detail.tags)
+                                    : [];
+                            if (shownTags.length === 0) {
+                              return (
+                                <span className="text-[13px] text-muted">
+                                  {detailExcluded ? "Excluded" : "None"}
                                 </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[13px] text-muted">None</span>
-                          )}
+                              );
+                            }
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                {shownTags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="truncate text-[13px] text-text"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

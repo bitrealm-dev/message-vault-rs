@@ -90,8 +90,7 @@ export function tagFromSlug(slug: string): string | null {
 
 function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
   if (typeof section === "object" && "tag" in section) {
-    // Tag filters list everyone with the tag (not excluded), even if they
-    // have no imported messages yet — otherwise Travel/Celebration/etc. look empty.
+    // Exclude overrides tags: excluded contacts only appear under Excluded.
     return {
       sql: `
         SELECT DISTINCT c.*
