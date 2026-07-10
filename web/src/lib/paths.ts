@@ -1,27 +1,61 @@
 import fs from "fs";
 import path from "path";
+import { parse } from "smol-toml";
 
-/** Repo root (parent of web/). */
+const DEFAULT_DB = "data/imessage.db";
+const DEFAULT_ASSETS_DIR = "data/assets";
+
+/** Repo root (parent of web/), detected via config/config.toml. */
 export function repoRoot(): string {
   const cwd = process.cwd();
-  if (fs.existsSync(path.join(cwd, "data", "imessage.db"))) {
+  if (fs.existsSync(path.join(cwd, "config", "config.toml"))) {
     return cwd;
   }
   const parent = path.resolve(cwd, "..");
-  if (fs.existsSync(path.join(parent, "data", "imessage.db"))) {
+  if (fs.existsSync(path.join(parent, "config", "config.toml"))) {
     return parent;
   }
   return parent;
 }
 
+export function configTomlPath(): string {
+  return path.join(repoRoot(), "config", "config.toml");
+}
+
+function resolveConfiguredPath(
+  configured: string | undefined,
+  fallback: string,
+): string {
+  const rel = configured?.trim() || fallback;
+  if (path.isAbsolute(rel)) return rel;
+  return path.join(repoRoot(), rel);
+}
+
+type PathsConfig = {
+  db?: string;
+  assets_dir?: string;
+};
+
+function loadPathsConfig(): PathsConfig {
+  const configPath = configTomlPath();
+  if (!fs.existsSync(configPath)) {
+    return {};
+  }
+  try {
+    const text = fs.readFileSync(configPath, "utf8");
+    const cfg = parse(text) as { paths?: PathsConfig };
+    return cfg.paths ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export function dbPath(): string {
-  return path.join(repoRoot(), "data", "imessage.db");
+  const paths = loadPathsConfig();
+  return resolveConfiguredPath(paths.db, DEFAULT_DB);
 }
 
 export function assetsRoot(): string {
-  return path.join(repoRoot(), "data", "assets");
-}
-
-export function configTomlPath(): string {
-  return path.join(repoRoot(), "config", "config.toml");
+  const paths = loadPathsConfig();
+  return resolveConfiguredPath(paths.assets_dir, DEFAULT_ASSETS_DIR);
 }

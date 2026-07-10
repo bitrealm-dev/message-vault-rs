@@ -3,6 +3,7 @@
 import type { GroupListItem, MessageRow } from "@/lib/types";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { MessageAttachments } from "./MessageAttachments";
 import { useResizablePanes } from "./useResizablePanes";
 
 type YearThread = {
@@ -234,27 +235,10 @@ export function GroupsShell({
                     {m.body && (
                       <p className="whitespace-pre-wrap break-words">{m.body}</p>
                     )}
-                    {m.attachments.map((a) =>
-                      a.assetsPath && a.mimeType?.startsWith("image/") ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={a.id}
-                          src={`/api/assets/${a.assetsPath}`}
-                          alt={a.originalName ?? ""}
-                          className="mt-1 max-h-64 max-w-full rounded-lg"
-                        />
-                      ) : a.assetsPath ? (
-                        <a
-                          key={a.id}
-                          href={`/api/assets/${a.assetsPath}`}
-                          className="mt-1 block text-[12px] underline"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {a.originalName ?? "attachment"}
-                        </a>
-                      ) : null,
-                    )}
+                    <MessageAttachments
+                      attachments={m.attachments}
+                      hasBody={Boolean(m.body)}
+                    />
                   </div>
                 </div>
               ))}

@@ -14,6 +14,7 @@ import {
   seedContactEditDraft,
   type ContactEditDraft,
 } from "./ContactEditPane";
+import { MessageAttachments } from "./MessageAttachments";
 import { useResizablePanes } from "./useResizablePanes";
 
 type YearThread = {
@@ -1485,35 +1486,10 @@ function MessageBubble({ message }: { message: MessageRow }) {
       )}
       <div className={`max-w-[75%] px-3 py-2 text-[14px] leading-snug ${bubble}`}>
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-        {message.attachments.length > 0 && (
-          <div className={`${message.body ? "mt-2" : ""} space-y-1`}>
-            {message.attachments.map((a) =>
-              a.assetsPath && a.mimeType?.startsWith("image/") ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={a.id}
-                  src={`/api/assets/${a.assetsPath}`}
-                  alt={a.originalName ?? "attachment"}
-                  className="max-h-64 max-w-full rounded-lg"
-                />
-              ) : a.assetsPath ? (
-                <a
-                  key={a.id}
-                  href={`/api/assets/${a.assetsPath}`}
-                  className="block text-[12px] underline opacity-90"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {a.originalName ?? a.assetsPath}
-                </a>
-              ) : (
-                <span key={a.id} className="block text-[12px] opacity-70">
-                  {a.originalName ?? "Missing attachment"}
-                </span>
-              ),
-            )}
-          </div>
-        )}
+        <MessageAttachments
+          attachments={message.attachments}
+          hasBody={Boolean(message.body)}
+        />
       </div>
       <span className="mt-0.5 px-1 text-[10px] text-muted">
         {message.timestamp.replace("T", " ").slice(0, 19)}

@@ -41,7 +41,7 @@ pub fn import_export(
     db_path: &Path,
     assets_dir: &Path,
     contacts_csv: &Path,
-    exclude_csv: &Path,
+    blacklist_csv: &Path,
     overwrite_contacts: bool,
 ) -> Result<ImportStats> {
     if !export_dir.is_dir() {
@@ -63,7 +63,7 @@ pub fn import_export(
 
     let contact_stats =
         contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
-    let exclude = ExcludeSet::load(exclude_csv)?;
+    let exclude = ExcludeSet::load(blacklist_csv)?;
 
     schema::recreate_messages(&conn)?;
 
