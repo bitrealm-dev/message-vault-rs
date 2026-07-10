@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #121416;
+  --panel: #1a1c1e;
+  --sidebar: #222426;
+  --elevated: #2a2d30;
+  --border: #33373b;
+  --text: #e2e8f0;
+  --muted: #9aa3ad;
+  --accent: #5ea1ff;
+  --sent: #0b84fe;
+  --sent-text: #ffffff;
+  --received: #3a3a3c;
+  --received-text: #f5f5f7;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-sidebar: var(--sidebar);
+  --color-elevated: var(--elevated);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-sent: var(--sent);
+  --color-sent-text: var(--sent-text);
+  --color-received: var(--received);
+  --color-received-text: var(--received-text);
+  --font-sans: var(--font-geist-sans);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  margin: 0;
+}

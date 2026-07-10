@@ -1,0 +1,83 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+function readStored(key: string, fallback: number): number {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function useResizablePanes(storagePrefix: string) {
+  const [sidebarWidth, setSidebarWidth] = useState(272);
+  const [threadsPct, setThreadsPct] = useState(40);
+  const sidebarRef = useRef(272);
+  const threadsRef = useRef(40);
+  const dragging = useRef<"side" | "threads" | null>(null);
+
+  useEffect(() => {
+    const w = readStored(`${storagePrefix}:sidebarWidth`, 272);
+    const t = readStored(`${storagePrefix}:threadsPct`, 40);
+    sidebarRef.current = w;
+    threadsRef.current = t;
+    setSidebarWidth(w);
+    setThreadsPct(t);
+  }, [storagePrefix]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (dragging.current === "side") {
+        const next = Math.min(448, Math.max(192, e.clientX));
+        sidebarRef.current = next;
+        setSidebarWidth(next);
+      } else if (dragging.current === "threads") {
+        const el = document.getElementById(`${storagePrefix}-right`);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const pct = ((e.clientY - rect.top) / rect.height) * 100;
+        const next = Math.min(70, Math.max(20, pct));
+        threadsRef.current = next;
+        setThreadsPct(next);
+      }
+    };
+    const onUp = () => {
+      if (!dragging.current) return;
+      if (dragging.current === "side") {
+        window.localStorage.setItem(
+          `${storagePrefix}:sidebarWidth`,
+          String(sidebarRef.current),
+        );
+      } else if (dragging.current === "threads") {
+        window.localStorage.setItem(
+          `${storagePrefix}:threadsPct`,
+          String(threadsRef.current),
+        );
+      }
+      dragging.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [storagePrefix]);
+
+  const startSide = useCallback(() => {
+    dragging.current = "side";
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const startThreads = useCallback(() => {
+    dragging.current = "threads";
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  return { sidebarWidth, threadsPct, startSide, startThreads };
+}
