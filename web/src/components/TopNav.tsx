@@ -1,22 +1,39 @@
+import { tagSlug } from "@/lib/db";
 import Link from "next/link";
 
-const LINKS = [
+const FIXED_BEFORE = [
   { href: "/", label: "Home" },
-  { href: "/people", label: "People" },
+  { href: "/all", label: "All" },
+  { href: "/current", label: "Current" },
   { href: "/historical", label: "Historical" },
-  { href: "/girls", label: "Girls" },
-  { href: "/groups", label: "Groups" },
 ] as const;
 
-export function TopNav({ active }: { active: string }) {
+const FIXED_AFTER = [{ href: "/groups", label: "Groups" }] as const;
+
+export function TopNav({
+  active,
+  tags = [],
+}: {
+  active: string;
+  tags?: string[];
+}) {
+  const links = [
+    ...FIXED_BEFORE,
+    ...tags.map((name) => ({
+      href: `/tag/${tagSlug(name)}`,
+      label: name,
+    })),
+    ...FIXED_AFTER,
+  ];
+
   return (
-    <header className="flex h-12 shrink-0 items-center gap-8 border-b border-border bg-panel px-5">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-border bg-panel px-5 py-2">
       <Link href="/" className="text-[15px] font-semibold tracking-tight text-text">
         Message Vault
       </Link>
-      <nav className="flex items-center gap-5">
-        {LINKS.map((link) => {
-          const isActive = active === link.href || active === link.label.toLowerCase();
+      <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {links.map((link) => {
+          const isActive = active === link.href;
           return (
             <Link
               key={link.href}
@@ -27,7 +44,7 @@ export function TopNav({ active }: { active: string }) {
             >
               {link.label}
               {isActive && (
-                <span className="absolute inset-x-0 -bottom-[13px] h-0.5 bg-accent" />
+                <span className="absolute inset-x-0 -bottom-2 h-0.5 bg-accent" />
               )}
             </Link>
           );

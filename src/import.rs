@@ -6,6 +6,7 @@ use rusqlite::{params, Connection};
 
 use crate::assets::{self, AssetStats, StoredAsset};
 use crate::contacts;
+use crate::exclude::ExcludeSet;
 use crate::models::{clean_body, AttachmentRecord, ExportRecord, MessageRecord};
 use crate::ndjson;
 use crate::schema;
@@ -23,8 +24,11 @@ pub struct ImportStats {
     pub assets_missing: u64,
     pub contacts: u64,
     pub contact_phones: u64,
-    pub contact_group_links: u64,
+    pub contact_tag_links: u64,
     pub contacts_skipped: bool,
+    pub conversations_excluded: u64,
+    pub messages_excluded: u64,
+    pub participants_excluded: u64,
 }
 
 struct PreparedAttachment {
@@ -37,6 +41,7 @@ pub fn import_export(
     db_path: &Path,
     assets_dir: &Path,
     contacts_csv: &Path,
+    exclude_csv: &Path,
     overwrite_contacts: bool,
 ) -> Result<ImportStats> {
     if !export_dir.is_dir() {
@@ -58,6 +63,7 @@ pub fn import_export(
 
     let contact_stats =
         contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
+    let exclude = ExcludeSet::load(exclude_csv)?;
 
     schema::recreate_messages(&conn)?;
 
@@ -76,19 +82,23 @@ pub fn import_export(
     let mut stats = ImportStats {
         contacts: contact_stats.contacts,
         contact_phones: contact_stats.phones,
-        contact_group_links: contact_stats.groups,
+        contact_tag_links: contact_stats.tags,
         contacts_skipped: contact_stats.skipped,
         ..Default::default()
     };
     let mut asset_stats = AssetStats::default();
 
     for path in paths {
-        let file_stats = import_file(&mut conn, export_dir, assets_dir, &path, &mut asset_stats)?;
+        let file_stats =
+            import_file(&mut conn, export_dir, assets_dir, &path, &exclude, &mut asset_stats)?;
         stats.conversations += file_stats.conversations;
         stats.participants += file_stats.participants;
         stats.messages += file_stats.messages;
         stats.attachments += file_stats.attachments;
         stats.tapbacks += file_stats.tapbacks;
+        stats.conversations_excluded += file_stats.conversations_excluded;
+        stats.messages_excluded += file_stats.messages_excluded;
+        stats.participants_excluded += file_stats.participants_excluded;
         stats.files += 1;
     }
 
@@ -131,6 +141,7 @@ fn import_file(
     export_dir: &Path,
     assets_dir: &Path,
     path: &Path,
+    exclude: &ExcludeSet,
     asset_stats: &mut AssetStats,
 ) -> Result<ImportStats> {
     let source_file = path
@@ -194,9 +205,54 @@ fn import_file(
             );
         };
 
+    let mut stats = ImportStats::default();
+
+    // Skip whole conversation when chat id or 1:1 peer is excluded.
+    if exclude.contains_handle(&chat_identifier) {
+        stats.conversations_excluded = 1;
+        return Ok(stats);
+    }
+    if conv_type == "individual" {
+        let peer_excluded = participants
+            .iter()
+            .any(|(handle, _)| exclude.contains_handle(handle));
+        if peer_excluded {
+            stats.conversations_excluded = 1;
+            return Ok(stats);
+        }
+    }
+
+    let kept_participants: Vec<(String, Option<String>)> = participants
+        .into_iter()
+        .filter(|(handle, _)| {
+            if exclude.contains_handle(handle) {
+                stats.participants_excluded += 1;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    let kept_messages: Vec<MessageRecord> = messages
+        .into_iter()
+        .filter(|msg| {
+            let excluded = msg
+                .sender
+                .as_deref()
+                .is_some_and(|s| exclude.contains_handle(s));
+            if excluded {
+                stats.messages_excluded += 1;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
     // Hash/copy assets before opening the DB transaction.
-    let mut prepared_messages = Vec::with_capacity(messages.len());
-    for mut msg in messages {
+    let mut prepared_messages = Vec::with_capacity(kept_messages.len());
+    for mut msg in kept_messages {
         let attachments = prepare_attachments(
             export_dir,
             assets_dir,
@@ -207,7 +263,6 @@ fn import_file(
     }
 
     let tx = conn.transaction()?;
-    let mut stats = ImportStats::default();
 
     tx.execute(
         r#"
@@ -227,7 +282,7 @@ fn import_file(
     let conversation_id = tx.last_insert_rowid();
     stats.conversations = 1;
 
-    for (handle, name_hint) in participants {
+    for (handle, name_hint) in kept_participants {
         tx.execute(
             r#"
             INSERT INTO participants (conversation_id, handle, name_hint)

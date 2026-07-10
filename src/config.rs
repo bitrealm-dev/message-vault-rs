@@ -25,6 +25,12 @@ pub struct PathsConfig {
     pub db: PathBuf,
     pub assets_dir: PathBuf,
     pub contacts_csv: PathBuf,
+    #[serde(default = "default_exclude_csv")]
+    pub exclude_csv: PathBuf,
+}
+
+fn default_exclude_csv() -> PathBuf {
+    PathBuf::from("config/exclude.csv")
 }
 
 impl Config {

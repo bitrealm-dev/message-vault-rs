@@ -9,8 +9,7 @@ type SearchableContact = ContactListItem & {
 function toSearchable(c: ContactListItem): SearchableContact {
   const first = c.firstName ?? "";
   const last = c.lastName ?? "";
-  const nick = c.nickname ?? "";
-  const initials = [first, last, nick]
+  const initials = [first, last]
     .filter(Boolean)
     .map((p) => p.trim().charAt(0))
     .join("")
@@ -22,7 +21,7 @@ function toSearchable(c: ContactListItem): SearchableContact {
   };
 }
 
-/** Ranked contact search: names, nickname, phone, initials; tolerates typos. */
+/** Ranked contact search: names, phone, initials; tolerates typos. */
 export function searchContacts(
   contacts: ContactListItem[],
   query: string,
@@ -33,10 +32,9 @@ export function searchContacts(
   const items = contacts.map(toSearchable);
   const fuse = new Fuse(items, {
     keys: [
-      { name: "displayName", weight: 0.35 },
-      { name: "firstName", weight: 0.2 },
-      { name: "lastName", weight: 0.2 },
-      { name: "nickname", weight: 0.15 },
+      { name: "displayName", weight: 0.4 },
+      { name: "firstName", weight: 0.25 },
+      { name: "lastName", weight: 0.25 },
       { name: "preferredPhone", weight: 0.05 },
       { name: "phoneDigits", weight: 0.1 },
       { name: "initials", weight: 0.1 },
@@ -45,12 +43,10 @@ export function searchContacts(
     ignoreLocation: true,
     includeScore: true,
     minMatchCharLength: 1,
-    // Prefer exact-ish matches over loose subsequence noise
     findAllMatches: false,
     useExtendedSearch: false,
   });
 
-  // Digits-only queries: prefer phone match
   const digits = q.replace(/\D/g, "");
   if (digits.length >= 3 && digits === q.replace(/[\s+\-().]/g, "")) {
     const phoneHits = items

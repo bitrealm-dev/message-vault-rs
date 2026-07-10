@@ -91,11 +91,9 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS contacts (
             id INTEGER PRIMARY KEY,
             first_name TEXT,
-            middle_name TEXT,
             last_name TEXT,
-            nickname TEXT,
-            email TEXT,
-            hidden INTEGER NOT NULL DEFAULT 0,
+            display INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'current',
             preferred_phone TEXT
         );
 
@@ -107,17 +105,34 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS ix_contact_phones_contact_id
             ON contact_phones (contact_id);
 
-        CREATE TABLE IF NOT EXISTS groups (
+        CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE
         );
 
-        CREATE TABLE IF NOT EXISTS contact_groups (
+        CREATE TABLE IF NOT EXISTS contact_tags (
             contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-            group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-            PRIMARY KEY (contact_id, group_id)
+            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            PRIMARY KEY (contact_id, tag_id)
         );
         "#,
     )?;
     Ok(())
+}
+
+/// Drop and recreate contacts tables (used when overwriting from CSV).
+pub fn recreate_contacts(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        PRAGMA foreign_keys = ON;
+
+        DROP TABLE IF EXISTS contact_tags;
+        DROP TABLE IF EXISTS tags;
+        DROP TABLE IF EXISTS contact_groups;
+        DROP TABLE IF EXISTS groups;
+        DROP TABLE IF EXISTS contact_phones;
+        DROP TABLE IF EXISTS contacts;
+        "#,
+    )?;
+    ensure_contacts_schema(conn)
 }

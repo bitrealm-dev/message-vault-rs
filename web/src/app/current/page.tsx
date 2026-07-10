@@ -2,7 +2,7 @@ import { ContactBrowsePage, parseContactId } from "@/components/ContactBrowsePag
 
 export const dynamic = "force-dynamic";
 
-export default async function HistoricalPage({
+export default async function CurrentPage({
   searchParams,
 }: {
   searchParams: Promise<{ c?: string }>;
@@ -10,9 +10,9 @@ export default async function HistoricalPage({
   const sp = await searchParams;
   return (
     <ContactBrowsePage
-      section="historical"
-      label="Historical"
-      nav="/historical"
+      section="current"
+      label="Current"
+      nav="/current"
       contactId={parseContactId(sp.c)}
     />
   );

@@ -10,7 +10,7 @@ use serde::Deserialize;
 pub struct ContactLoadStats {
     pub contacts: u64,
     pub phones: u64,
-    pub groups: u64,
+    pub tags: u64,
     pub skipped: bool,
 }
 
@@ -20,39 +20,30 @@ struct ContactCsvRow {
     #[serde(default)]
     first_name: String,
     #[serde(default)]
-    middle_name: String,
-    #[serde(default)]
     last_name: String,
     #[serde(default)]
-    nickname: String,
+    display: String,
     #[serde(default)]
-    email: String,
+    status: String,
     #[serde(default)]
-    hidden: String,
-    #[serde(default)]
-    groups: String,
+    tags: String,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // used by display/lookup helpers for later UI resolve
+#[allow(dead_code)]
 pub struct Contact {
     pub id: i64,
     pub first_name: Option<String>,
-    pub middle_name: Option<String>,
     pub last_name: Option<String>,
-    pub nickname: Option<String>,
-    pub email: Option<String>,
-    pub hidden: bool,
+    pub display: bool,
+    pub status: String,
     pub preferred_phone: Option<String>,
 }
 
 impl Contact {
     #[allow(dead_code)]
     pub fn display_name(&self) -> String {
-        if let Some(nick) = self.nickname.as_deref().filter(|s| !s.is_empty()) {
-            return nick.to_string();
-        }
-        [self.first_name.as_deref(), self.middle_name.as_deref(), self.last_name.as_deref()]
+        [self.first_name.as_deref(), self.last_name.as_deref()]
             .into_iter()
             .flatten()
             .filter(|s| !s.is_empty())
@@ -67,7 +58,15 @@ pub fn load_contacts_if_needed(
     csv_path: &Path,
     overwrite: bool,
 ) -> Result<ContactLoadStats> {
-    crate::schema::ensure_contacts_schema(conn)?;
+    // Ensure we can query contacts; recreate if the legacy schema is present.
+    if conn
+        .prepare("SELECT display, status FROM contacts LIMIT 1")
+        .is_err()
+    {
+        crate::schema::recreate_contacts(conn)?;
+    } else {
+        crate::schema::ensure_contacts_schema(conn)?;
+    }
 
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM contacts", [], |row| row.get(0))?;
 
@@ -78,9 +77,7 @@ pub fn load_contacts_if_needed(
         });
     }
 
-    if overwrite {
-        wipe_contacts(conn)?;
-    }
+    crate::schema::recreate_contacts(conn)?;
 
     if !csv_path.exists() {
         eprintln!(
@@ -91,18 +88,6 @@ pub fn load_contacts_if_needed(
     }
 
     load_from_csv(conn, csv_path)
-}
-
-fn wipe_contacts(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        r#"
-        DELETE FROM contact_groups;
-        DELETE FROM contact_phones;
-        DELETE FROM contacts;
-        DELETE FROM groups;
-        "#,
-    )?;
-    Ok(())
 }
 
 fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadStats> {
@@ -117,7 +102,10 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
     for (row_no, result) in reader.deserialize().enumerate() {
         let row_no = row_no + 2; // header is line 1
         let row: ContactCsvRow = result.with_context(|| {
-            format!("failed to parse contacts CSV row {row_no} in {}", csv_path.display())
+            format!(
+                "failed to parse contacts CSV row {row_no} in {}",
+                csv_path.display()
+            )
         })?;
 
         let phones = split_list(&row.phones);
@@ -138,26 +126,22 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
         }
 
         let preferred = phones[0].clone();
-        let hidden = parse_bool(&row.hidden);
+        let display = parse_bool(&row.display);
+        let status = normalize_status(&row.status);
         let first_name = empty_to_none(&row.first_name);
-        let middle_name = empty_to_none(&row.middle_name);
         let last_name = empty_to_none(&row.last_name);
-        let nickname = empty_to_none(&row.nickname);
-        let email = empty_to_none(&row.email);
 
         tx.execute(
             r#"
             INSERT INTO contacts (
-                first_name, middle_name, last_name, nickname, email, hidden, preferred_phone
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                first_name, last_name, display, status, preferred_phone
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
             "#,
             params![
                 first_name,
-                middle_name,
                 last_name,
-                nickname,
-                email,
-                hidden as i64,
+                display as i64,
+                status,
                 preferred,
             ],
         )?;
@@ -172,13 +156,13 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
             stats.phones += 1;
         }
 
-        for group_name in split_list(&row.groups) {
-            let group_id = ensure_group(&tx, &group_name)?;
+        for tag_name in split_list(&row.tags) {
+            let tag_id = ensure_tag(&tx, &tag_name)?;
             tx.execute(
-                "INSERT OR IGNORE INTO contact_groups (contact_id, group_id) VALUES (?1, ?2)",
-                params![contact_id, group_id],
+                "INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?1, ?2)",
+                params![contact_id, tag_id],
             )?;
-            stats.groups += 1;
+            stats.tags += 1;
         }
     }
 
@@ -186,13 +170,13 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
     Ok(stats)
 }
 
-fn ensure_group(conn: &Connection, name: &str) -> Result<i64> {
+fn ensure_tag(conn: &Connection, name: &str) -> Result<i64> {
     conn.execute(
-        "INSERT OR IGNORE INTO groups (name) VALUES (?1)",
+        "INSERT OR IGNORE INTO tags (name) VALUES (?1)",
         params![name],
     )?;
     let id: i64 = conn.query_row(
-        "SELECT id FROM groups WHERE name = ?1",
+        "SELECT id FROM tags WHERE name = ?1",
         params![name],
         |row| row.get(0),
     )?;
@@ -204,8 +188,7 @@ pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Con
     let contact = conn
         .query_row(
             r#"
-            SELECT c.id, c.first_name, c.middle_name, c.last_name, c.nickname,
-                   c.email, c.hidden, c.preferred_phone
+            SELECT c.id, c.first_name, c.last_name, c.display, c.status, c.preferred_phone
             FROM contact_phones p
             JOIN contacts c ON c.id = p.contact_id
             WHERE p.phone_e164 = ?1
@@ -215,12 +198,10 @@ pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Con
                 Ok(Contact {
                     id: row.get(0)?,
                     first_name: row.get(1)?,
-                    middle_name: row.get(2)?,
-                    last_name: row.get(3)?,
-                    nickname: row.get(4)?,
-                    email: row.get(5)?,
-                    hidden: row.get::<_, i64>(6)? != 0,
-                    preferred_phone: row.get(7)?,
+                    last_name: row.get(2)?,
+                    display: row.get::<_, i64>(3)? != 0,
+                    status: row.get(4)?,
+                    preferred_phone: row.get(5)?,
                 })
             },
         )
@@ -250,4 +231,11 @@ fn parse_bool(raw: &str) -> bool {
         raw.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "y"
     )
+}
+
+fn normalize_status(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "historical" => "historical".to_string(),
+        _ => "current".to_string(),
+    }
 }

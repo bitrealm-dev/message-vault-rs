@@ -1,6 +1,7 @@
 mod assets;
 mod config;
 mod contacts;
+mod exclude;
 mod import;
 mod models;
 mod ndjson;
@@ -47,6 +48,10 @@ enum Commands {
         #[arg(long)]
         contacts_csv: Option<PathBuf>,
 
+        /// Exclude CSV path (overrides config)
+        #[arg(long)]
+        exclude_csv: Option<PathBuf>,
+
         /// Delete and reload contacts from CSV even if the table is non-empty
         #[arg(long)]
         overwrite_contacts: bool,
@@ -66,11 +71,11 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
 
-        /// Optional message-vault blacklist.csv (sets hidden)
+        /// Optional message-vault blacklist.csv (sets display=FALSE)
         #[arg(long)]
         blacklist: Option<PathBuf>,
 
-        /// Optional message-vault filter-people.csv (sets groups / hidden)
+        /// Optional message-vault filter-people.csv (sets status / tags)
         #[arg(long)]
         filter_people: Option<PathBuf>,
 
@@ -90,6 +95,7 @@ fn main() -> Result<()> {
             db,
             assets_dir,
             contacts_csv,
+            exclude_csv,
             overwrite_contacts,
         } => {
             let cfg = Config::load(&config)?;
@@ -97,12 +103,14 @@ fn main() -> Result<()> {
             let db = db.unwrap_or(cfg.paths.db);
             let assets_dir = assets_dir.unwrap_or(cfg.paths.assets_dir);
             let contacts_csv = contacts_csv.unwrap_or(cfg.paths.contacts_csv);
+            let exclude_csv = exclude_csv.unwrap_or(cfg.paths.exclude_csv);
 
             let stats = import::import_export(
                 &export_dir,
                 &db,
                 &assets_dir,
                 &contacts_csv,
+                &exclude_csv,
                 overwrite_contacts,
             )?;
             println!("Imported into {}", db.display());
@@ -113,12 +121,13 @@ fn main() -> Result<()> {
             );
             println!("  assets dir:    {}", assets_dir.display());
             println!("  contacts csv:  {}", contacts_csv.display());
+            println!("  exclude csv:   {}", exclude_csv.display());
             if stats.contacts_skipped {
                 println!("  contacts:      (skipped — already loaded; use --overwrite-contacts)");
             } else {
                 println!("  contacts:      {}", stats.contacts);
                 println!("  contact phones:{}", stats.contact_phones);
-                println!("  contact groups:{}", stats.contact_group_links);
+                println!("  contact tags:  {}", stats.contact_tag_links);
             }
             println!("  files:         {}", stats.files);
             println!("  conversations: {}", stats.conversations);
@@ -126,6 +135,9 @@ fn main() -> Result<()> {
             println!("  messages:      {}", stats.messages);
             println!("  attachments:   {}", stats.attachments);
             println!("  tapbacks:      {}", stats.tapbacks);
+            println!("  excl. convos:  {}", stats.conversations_excluded);
+            println!("  excl. msgs:    {}", stats.messages_excluded);
+            println!("  excl. parts:   {}", stats.participants_excluded);
             println!("  assets copied: {}", stats.assets_copied);
             println!("  assets deduped:{}", stats.assets_deduped);
             println!("  assets missing:{}", stats.assets_missing);

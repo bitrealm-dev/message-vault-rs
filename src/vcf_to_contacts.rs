@@ -19,12 +19,10 @@ pub struct ConvertStats {
 struct ContactOut {
     phones: Vec<String>,
     first_name: String,
-    middle_name: String,
     last_name: String,
-    nickname: String,
-    email: String,
-    hidden: bool,
-    groups: Vec<String>,
+    display: bool,
+    status: String,
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,7 +77,7 @@ pub fn convert(
         let mut contact = card_to_contact(card);
         apply_blacklist(&mut contact, &blacklist);
         apply_filters(&mut contact, &filters);
-        finalize_groups(&mut contact);
+        finalize_contact(&mut contact);
 
         // Merge into an existing contact if any phone already seen.
         let existing = contact
@@ -111,13 +109,11 @@ pub fn convert(
         phone_to_index.insert(number.clone(), contacts.len());
         contacts.push(ContactOut {
             phones: vec![number.clone()],
-            first_name: String::new(),
-            middle_name: String::new(),
+            first_name: label.clone(),
             last_name: String::new(),
-            nickname: label.clone(),
-            email: String::new(),
-            hidden: true,
-            groups: Vec::new(),
+            display: false,
+            status: "current".to_string(),
+            tags: Vec::new(),
         });
         stats.blacklist_only += 1;
     }
@@ -141,30 +137,23 @@ fn merge_contact(into: &mut ContactOut, from: ContactOut) {
     if into.first_name.is_empty() {
         into.first_name = from.first_name;
     }
-    if into.middle_name.is_empty() {
-        into.middle_name = from.middle_name;
-    }
     if into.last_name.is_empty() {
         into.last_name = from.last_name;
     }
-    if into.nickname.is_empty() {
-        into.nickname = from.nickname;
+    into.display = into.display && from.display;
+    if into.status != "historical" && from.status == "historical" {
+        into.status = "historical".to_string();
     }
-    if into.email.is_empty() {
-        into.email = from.email;
+    for tag in from.tags {
+        push_tag(&mut into.tags, &tag);
     }
-    into.hidden = into.hidden || from.hidden;
-    for g in from.groups {
-        push_group(&mut into.groups, &g);
-    }
-    into.groups.sort();
-    into.groups.dedup();
+    into.tags.sort();
+    into.tags.dedup();
 }
 
 fn card_to_contact(card: &VcfCard) -> ContactOut {
     let (fn_stripped, fn_tags) = vcf::extract_tags(&card.fn_raw);
     let first = vcf::strip_tags(&card.n_given);
-    let middle = vcf::strip_tags(&card.n_middle);
     let last = vcf::strip_tags(&card.n_family);
 
     // Mom-style: FN is a single token and last name empty after tag strip
@@ -178,69 +167,90 @@ fn card_to_contact(card: &VcfCard) -> ContactOut {
         String::new()
     };
 
-    let (first_name, middle_name, last_name) = if !nickname.is_empty() {
-        (String::new(), String::new(), String::new())
+    let (first_name, last_name) = if !nickname.is_empty() {
+        (nickname, String::new())
     } else {
-        (first, middle, last)
+        (first, last)
     };
+
+    let mut tags = Vec::new();
+    for tag in fn_tags {
+        let normalized = normalize_tag(&tag);
+        if normalized.eq_ignore_ascii_case("People")
+            || normalized.eq_ignore_ascii_case("Historical")
+        {
+            continue;
+        }
+        push_tag(&mut tags, &normalized);
+    }
 
     ContactOut {
         phones: card.phones.clone(),
         first_name,
-        middle_name,
         last_name,
-        nickname,
-        email: card.email.clone().unwrap_or_default(),
-        hidden: false,
-        groups: fn_tags,
+        display: true,
+        status: "current".to_string(),
+        tags,
     }
 }
 
 fn apply_blacklist(contact: &mut ContactOut, blacklist: &HashMap<String, String>) {
-    if contact
-        .phones
-        .iter()
-        .any(|p| blacklist.contains_key(p))
-    {
-        contact.hidden = true;
+    if contact.phones.iter().any(|p| blacklist.contains_key(p)) {
+        contact.display = false;
     }
 }
 
 fn apply_filters(contact: &mut ContactOut, filters: &HashMap<String, String>) {
-    for phone in &contact.phones {
+    for phone in &contact.phones.clone() {
         let Some(category) = filters.get(phone) else {
             continue;
         };
         match category.to_ascii_lowercase().as_str() {
             "girls" | "dating" | "dated" => {
-                push_group(&mut contact.groups, "girls");
+                push_tag(&mut contact.tags, "Girls");
             }
             "historical" => {
-                push_group(&mut contact.groups, "Historical");
+                contact.status = "historical".to_string();
             }
             "historical-exclude" => {
-                contact.hidden = true;
-                push_group(&mut contact.groups, "Historical");
+                contact.display = false;
+                contact.status = "historical".to_string();
             }
             other => {
-                // Preserve unknown categories as group names
-                push_group(&mut contact.groups, other);
+                let tag = normalize_tag(other);
+                if !tag.eq_ignore_ascii_case("People")
+                    && !tag.eq_ignore_ascii_case("Historical")
+                {
+                    push_tag(&mut contact.tags, &tag);
+                }
             }
         }
     }
 }
 
-fn finalize_groups(contact: &mut ContactOut) {
-    if !contact.hidden {
-        push_group(&mut contact.groups, "People");
+fn finalize_contact(contact: &mut ContactOut) {
+    contact.tags.sort();
+    contact.tags.dedup();
+    if contact.status.is_empty() {
+        contact.status = "current".to_string();
     }
-    contact.groups.sort();
-    contact.groups.dedup();
 }
 
-fn push_group(groups: &mut Vec<String>, name: &str) {
-    if !groups.iter().any(|g| g == name) {
-        groups.push(name.to_string());
+fn normalize_tag(raw: &str) -> String {
+    let t = raw.trim();
+    if t.eq_ignore_ascii_case("girls") {
+        "Girls".to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn push_tag(tags: &mut Vec<String>, name: &str) {
+    if name.is_empty() {
+        return;
+    }
+    if !tags.iter().any(|g| g.eq_ignore_ascii_case(name)) {
+        tags.push(name.to_string());
     }
 }
 
@@ -305,31 +315,23 @@ fn write_csv(path: &Path, contacts: &[ContactOut]) -> Result<()> {
     writer.write_record([
         "phones",
         "first_name",
-        "middle_name",
         "last_name",
-        "nickname",
-        "email",
-        "hidden",
-        "groups",
+        "display",
+        "status",
+        "tags",
     ])?;
 
     for c in contacts {
         let phones = c.phones.join(";");
-        let groups = c.groups.join(";");
-        let hidden = if c.hidden {
-            "true".to_string()
-        } else {
-            "false".to_string()
-        };
+        let tags = c.tags.join(";");
+        let display = if c.display { "TRUE" } else { "FALSE" };
         writer.write_record([
             phones,
             c.first_name.clone(),
-            c.middle_name.clone(),
             c.last_name.clone(),
-            c.nickname.clone(),
-            c.email.clone(),
-            hidden,
-            groups,
+            display.to_string(),
+            c.status.clone(),
+            tags,
         ])?;
     }
 

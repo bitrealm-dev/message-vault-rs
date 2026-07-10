@@ -23,14 +23,11 @@ export function getDb(): Database.Database {
 }
 
 function displayName(row: {
-  nickname: string | null;
   first_name: string | null;
-  middle_name: string | null;
   last_name: string | null;
   preferred_phone: string | null;
 }): string {
-  if (row.nickname?.trim()) return row.nickname.trim();
-  const parts = [row.first_name, row.middle_name, row.last_name]
+  const parts = [row.first_name, row.last_name]
     .map((p) => p?.trim())
     .filter(Boolean) as string[];
   if (parts.length) return parts.join(" ");
@@ -38,13 +35,12 @@ function displayName(row: {
 }
 
 function sortFields(row: {
-  nickname: string | null;
   first_name: string | null;
   last_name: string | null;
   preferred_phone: string | null;
 }): { sortFirst: string; sortLast: string; letter: string } {
-  const first = (row.first_name || row.nickname || "").trim();
-  const last = (row.last_name || row.nickname || row.first_name || "").trim();
+  const first = (row.first_name || "").trim();
+  const last = (row.last_name || row.first_name || "").trim();
   const sortFirst = first || row.preferred_phone || "Unknown";
   const sortLast = last || row.preferred_phone || "Unknown";
   const letterSrc = sortLast;
@@ -77,53 +73,97 @@ function hasMessagesSql(): string {
   `;
 }
 
-function sectionSql(section: ContactSection): string {
+const RESERVED_TAG_LABELS = new Set(
+  ["home", "all", "current", "historical", "groups"].map((s) => s.toLowerCase()),
+);
+
+export function tagSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function listTags(): string[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT name FROM tags
+       ORDER BY name COLLATE NOCASE`,
+    )
+    .all() as Array<{ name: string }>;
+  return rows
+    .map((r) => r.name)
+    .filter((name) => !RESERVED_TAG_LABELS.has(name.trim().toLowerCase()));
+}
+
+export function tagFromSlug(slug: string): string | null {
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized) return null;
+  for (const name of listTags()) {
+    if (tagSlug(name) === normalized) return name;
+  }
+  return null;
+}
+
+function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
   const hasMsg = hasMessagesSql();
+  if (typeof section === "object" && "tag" in section) {
+    return {
+      sql: `
+        SELECT DISTINCT c.*
+        FROM contacts c
+        JOIN contact_tags ct ON ct.contact_id = c.id
+        JOIN tags t ON t.id = ct.tag_id AND t.name = ?
+        WHERE c.display = 1
+          ${hasMsg}
+      `,
+      params: [section.tag],
+    };
+  }
   switch (section) {
-    case "people":
-      return `
-        SELECT DISTINCT c.*
-        FROM contacts c
-        JOIN contact_groups cg ON cg.contact_id = c.id
-        JOIN groups g ON g.id = cg.group_id AND g.name = 'People'
-        WHERE c.hidden = 0
-          AND c.id NOT IN (
-            SELECT cg2.contact_id FROM contact_groups cg2
-            JOIN groups g2 ON g2.id = cg2.group_id
-            WHERE g2.name IN ('Historical', 'girls')
-          )
-          ${hasMsg}
-      `;
+    case "all":
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.display = 1
+            ${hasMsg}
+        `,
+        params: [],
+      };
+    case "current":
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.display = 1
+            AND c.status = 'current'
+            ${hasMsg}
+        `,
+        params: [],
+      };
     case "historical":
-      return `
-        SELECT DISTINCT c.*
-        FROM contacts c
-        JOIN contact_groups cg ON cg.contact_id = c.id
-        JOIN groups g ON g.id = cg.group_id AND g.name = 'Historical'
-        WHERE 1=1
-          ${hasMsg}
-      `;
-    case "girls":
-      return `
-        SELECT DISTINCT c.*
-        FROM contacts c
-        JOIN contact_groups cg ON cg.contact_id = c.id
-        JOIN groups g ON g.id = cg.group_id AND g.name = 'girls'
-        WHERE c.hidden = 0
-          ${hasMsg}
-      `;
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.display = 1
+            AND c.status = 'historical'
+            ${hasMsg}
+        `,
+        params: [],
+      };
   }
 }
 
 export function listContacts(section: ContactSection): ContactListItem[] {
   const db = getDb();
-  const rows = db
-    .prepare(sectionSql(section))
-    .all() as Array<{
+  const { sql, params } = sectionSql(section);
+  const rows = db.prepare(sql).all(...params) as Array<{
     id: number;
-    nickname: string | null;
     first_name: string | null;
-    middle_name: string | null;
     last_name: string | null;
     preferred_phone: string | null;
   }>;
@@ -138,13 +178,13 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         preferredPhone: row.preferred_phone,
         firstName: row.first_name,
         lastName: row.last_name,
-        nickname: row.nickname,
         ...sorts,
       };
     })
-    .sort((a, b) =>
-      a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" }) ||
-      a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" }),
+    .sort(
+      (a, b) =>
+        a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" }) ||
+        a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" }),
     );
 }
 
@@ -152,18 +192,16 @@ export function getContact(id: number): ContactDetail | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, first_name, middle_name, last_name, nickname, email, hidden, preferred_phone
+      `SELECT id, first_name, last_name, display, status, preferred_phone
        FROM contacts WHERE id = ?`,
     )
     .get(id) as
     | {
         id: number;
         first_name: string | null;
-        middle_name: string | null;
         last_name: string | null;
-        nickname: string | null;
-        email: string | null;
-        hidden: number;
+        display: number;
+        status: string;
         preferred_phone: string | null;
       }
     | undefined;
@@ -172,6 +210,15 @@ export function getContact(id: number): ContactDetail | null {
   const phones = db
     .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ? ORDER BY phone_e164`)
     .all(id) as Array<{ phone_e164: string }>;
+
+  const tags = db
+    .prepare(
+      `SELECT t.name FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tag_id
+       WHERE ct.contact_id = ?
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all(id) as Array<{ name: string }>;
 
   const phoneList = phones.map((p) => p.phone_e164);
   const dateRange = contactDateRange(phoneList);
@@ -182,11 +229,10 @@ export function getContact(id: number): ContactDetail | null {
     displayName: displayName(row),
     preferredPhone: row.preferred_phone,
     firstName: row.first_name,
-    middleName: row.middle_name,
     lastName: row.last_name,
-    nickname: row.nickname,
-    email: row.email,
-    hidden: row.hidden !== 0,
+    display: row.display !== 0,
+    status: row.status,
+    tags: tags.map((t) => t.name),
     phones: phoneList,
     dateStart: dateRange?.start ?? null,
     dateEnd: dateRange?.end ?? null,
@@ -281,14 +327,11 @@ function looksLikePhone(value: string): boolean {
 }
 
 function participantLabel(row: {
-  nickname: string | null;
   first_name: string | null;
   last_name: string | null;
   name_hint: string | null;
   handle: string;
 }): { name: string; unknown: boolean } {
-  const nick = row.nickname?.trim();
-  if (nick) return { name: nick, unknown: false };
   const first = row.first_name?.trim() ?? "";
   const last = row.last_name?.trim() ?? "";
   const full = `${first} ${last}`.trim();
@@ -370,7 +413,7 @@ function groupPeopleTitles(
   const rows = db
     .prepare(
       `SELECT p.conversation_id, p.handle, p.name_hint,
-              c.nickname, c.first_name, c.last_name
+              c.first_name, c.last_name
        FROM participants p
        LEFT JOIN contact_phones cp ON cp.phone_e164 = p.handle
        LEFT JOIN contacts c ON c.id = cp.contact_id
@@ -380,7 +423,6 @@ function groupPeopleTitles(
     conversation_id: number;
     handle: string;
     name_hint: string | null;
-    nickname: string | null;
     first_name: string | null;
     last_name: string | null;
   }>;
@@ -553,7 +595,7 @@ export function messagesForConversationYear(
   const rows = db
     .prepare(
       `SELECT m.id, m.timestamp, m.is_from_me, m.sender, m.body, m.is_announcement,
-              c.nickname, c.first_name, c.middle_name, c.last_name, c.preferred_phone,
+              c.first_name, c.last_name, c.preferred_phone,
               p.name_hint
        FROM messages m
        LEFT JOIN contact_phones cp ON cp.phone_e164 = m.sender
@@ -571,9 +613,7 @@ export function messagesForConversationYear(
     sender: string | null;
     body: string | null;
     is_announcement: number;
-    nickname: string | null;
     first_name: string | null;
-    middle_name: string | null;
     last_name: string | null;
     preferred_phone: string | null;
     name_hint: string | null;
@@ -591,9 +631,7 @@ export function messagesForConversationYear(
       senderName = owner.display_name;
     } else {
       senderName = displayName({
-        nickname: r.nickname,
         first_name: r.first_name,
-        middle_name: r.middle_name,
         last_name: r.last_name,
         preferred_phone: r.preferred_phone ?? r.sender,
       });
@@ -633,9 +671,9 @@ export function messagesForConversationYear(
 
 export function homeStats(): HomeStats {
   return {
-    people: listContacts("people").length,
+    all: listContacts("all").length,
+    current: listContacts("current").length,
     historical: listContacts("historical").length,
-    girls: listContacts("girls").length,
     groups: listGroups().length,
     messages: (
       getDb().prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }

@@ -1,4 +1,8 @@
-export type ContactSection = "people" | "historical" | "girls";
+export type ContactSection =
+  | "all"
+  | "current"
+  | "historical"
+  | { tag: string };
 
 export type ContactListItem = {
   id: number;
@@ -6,16 +10,15 @@ export type ContactListItem = {
   preferredPhone: string | null;
   firstName: string | null;
   lastName: string | null;
-  nickname: string | null;
   sortFirst: string;
   sortLast: string;
   letter: string;
 };
 
 export type ContactDetail = ContactListItem & {
-  middleName: string | null;
-  email: string | null;
-  hidden: boolean;
+  display: boolean;
+  status: string;
+  tags: string[];
   phones: string[];
   dateStart: string | null;
   dateEnd: string | null;
@@ -72,9 +75,9 @@ export type MessageRow = {
 };
 
 export type HomeStats = {
-  people: number;
+  all: number;
+  current: number;
   historical: number;
-  girls: number;
   groups: number;
   messages: number;
   contacts: number;
