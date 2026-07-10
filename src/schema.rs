@@ -92,8 +92,7 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
             id INTEGER PRIMARY KEY,
             first_name TEXT,
             last_name TEXT,
-            display INTEGER NOT NULL DEFAULT 1,
-            status TEXT NOT NULL DEFAULT 'current',
+            exclude INTEGER NOT NULL DEFAULT 0,
             preferred_phone TEXT
         );
 

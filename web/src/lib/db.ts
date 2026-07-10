@@ -85,7 +85,9 @@ function hasMessagesSql(): string {
 }
 
 const RESERVED_TAG_LABELS = new Set(
-  ["home", "all", "current", "historical", "groups"].map((s) => s.toLowerCase()),
+  ["home", "all", "excluded", "groups", "no-group", "no group"].map((s) =>
+    s.toLowerCase(),
+  ),
 );
 
 export function listTags(): string[] {
@@ -113,7 +115,7 @@ export function tagFromSlug(slug: string): string | null {
 function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
   const hasMsg = hasMessagesSql();
   if (typeof section === "object" && "tag" in section) {
-    // Tag filters list everyone with the tag (displayable), even if they
+    // Tag filters list everyone with the tag (not excluded), even if they
     // have no imported messages yet — otherwise Travel/Celebration/etc. look empty.
     return {
       sql: `
@@ -121,7 +123,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         FROM contacts c
         JOIN contact_tags ct ON ct.contact_id = c.id
         JOIN tags t ON t.id = ct.tag_id AND t.name = ?
-        WHERE c.display = 1
+        WHERE c.exclude = 0
       `,
       params: [section.tag],
     };
@@ -132,29 +134,17 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         sql: `
           SELECT DISTINCT c.*
           FROM contacts c
-          WHERE c.display = 1
+          WHERE c.exclude = 0
             ${hasMsg}
         `,
         params: [],
       };
-    case "current":
+    case "excluded":
       return {
         sql: `
           SELECT DISTINCT c.*
           FROM contacts c
-          WHERE c.display = 1
-            AND c.status = 'current'
-            ${hasMsg}
-        `,
-        params: [],
-      };
-    case "historical":
-      return {
-        sql: `
-          SELECT DISTINCT c.*
-          FROM contacts c
-          WHERE c.display = 1
-            AND c.status = 'historical'
+          WHERE c.exclude = 1
             ${hasMsg}
         `,
         params: [],
@@ -164,7 +154,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         sql: `
           SELECT DISTINCT c.*
           FROM contacts c
-          WHERE c.display = 1
+          WHERE c.exclude = 0
             AND NOT EXISTS (
               SELECT 1 FROM contact_tags ct WHERE ct.contact_id = c.id
             )
@@ -182,8 +172,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
     first_name: string | null;
     last_name: string | null;
     preferred_phone: string | null;
-    display: number;
-    status: string | null;
+    exclude: number;
   }>;
 
   const tagRows = db
@@ -212,8 +201,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         firstName: row.first_name,
         lastName: row.last_name,
         tags: tagsByContact.get(row.id) ?? [],
-        display: row.display !== 0,
-        status: row.status === "historical" ? "historical" : "current",
+        exclude: row.exclude !== 0,
         ...sorts,
       };
     })
@@ -228,7 +216,7 @@ export function getContact(id: number): ContactDetail | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, first_name, last_name, display, status, preferred_phone
+      `SELECT id, first_name, last_name, exclude, preferred_phone
        FROM contacts WHERE id = ?`,
     )
     .get(id) as
@@ -236,8 +224,7 @@ export function getContact(id: number): ContactDetail | null {
         id: number;
         first_name: string | null;
         last_name: string | null;
-        display: number;
-        status: string;
+        exclude: number;
         preferred_phone: string | null;
       }
     | undefined;
@@ -266,8 +253,7 @@ export function getContact(id: number): ContactDetail | null {
     preferredPhone: row.preferred_phone,
     firstName: row.first_name,
     lastName: row.last_name,
-    display: row.display !== 0,
-    status: row.status,
+    exclude: row.exclude !== 0,
     tags: tags.map((t) => t.name),
     phones: phoneList,
     dateStart: dateRange?.start ?? null,
@@ -708,8 +694,7 @@ export function messagesForConversationYear(
 export function homeStats(): HomeStats {
   return {
     all: listContacts("all").length,
-    current: listContacts("current").length,
-    historical: listContacts("historical").length,
+    excluded: listContacts("excluded").length,
     groups: listGroups().length,
     messages: (
       getDb().prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }

@@ -7,10 +7,20 @@ import { getContact, resetDb } from "./db";
 import type { ContactDetail } from "./types";
 
 export type ContactPatch = {
-  display?: boolean;
-  status?: "current" | "historical";
+  exclude?: boolean;
   tags?: string[];
+  firstName?: string | null;
+  lastName?: string | null;
+  phones?: string[];
 };
+
+const RESERVED_GROUP_NAMES = new Set(["excluded"]);
+
+function assertAllowedTagName(name: string): void {
+  if (RESERVED_GROUP_NAMES.has(name.trim().toLowerCase())) {
+    throw new Error("Excluded is a reserved group");
+  }
+}
 
 function contactsCsvPath(): string {
   const text = fs.readFileSync(configTomlPath(), "utf8");
@@ -57,15 +67,22 @@ function escapeCsvField(value: string): string {
 }
 
 function updateContactsCsv(
-  phones: string[],
-  patch: { display: boolean; status: string; tags: string[] },
+  matchPhones: string[],
+  matchNames: { firstName: string | null; lastName: string | null },
+  patch: {
+    exclude: boolean;
+    tags: string[];
+    firstName?: string | null;
+    lastName?: string | null;
+    phones?: string[];
+  },
 ): void {
   const csvPath = contactsCsvPath();
   if (!fs.existsSync(csvPath)) {
     throw new Error(`contacts CSV not found: ${csvPath}`);
   }
 
-  const phoneSet = new Set(phones);
+  const phoneSet = new Set(matchPhones);
   const raw = fs.readFileSync(csvPath, "utf8");
   const lines = raw.split(/\r?\n/);
   if (lines.length === 0) {
@@ -75,13 +92,17 @@ function updateContactsCsv(
   const header = parseCsvLine(lines[0] ?? "");
   const idx = {
     phones: header.indexOf("phones"),
-    display: header.indexOf("display"),
-    status: header.indexOf("status"),
+    firstName: header.indexOf("first_name"),
+    lastName: header.indexOf("last_name"),
+    exclude: header.indexOf("exclude"),
     tags: header.indexOf("tags"),
   };
-  if (idx.phones < 0 || idx.display < 0 || idx.status < 0 || idx.tags < 0) {
+  if (idx.phones < 0 || idx.exclude < 0 || idx.tags < 0) {
     throw new Error("contacts CSV missing required columns");
   }
+
+  const matchFirst = (matchNames.firstName ?? "").trim().toLowerCase();
+  const matchLast = (matchNames.lastName ?? "").trim().toLowerCase();
 
   let matched = false;
   const out = lines.map((line, lineNo) => {
@@ -92,12 +113,30 @@ function updateContactsCsv(
       .split(";")
       .map((p) => p.trim())
       .filter(Boolean);
-    if (!rowPhones.some((p) => phoneSet.has(p))) {
+    const phoneHit =
+      phoneSet.size > 0 && rowPhones.some((p) => phoneSet.has(p));
+    const nameHit =
+      !phoneHit &&
+      phoneSet.size === 0 &&
+      idx.firstName >= 0 &&
+      idx.lastName >= 0 &&
+      (cols[idx.firstName] ?? "").trim().toLowerCase() === matchFirst &&
+      (cols[idx.lastName] ?? "").trim().toLowerCase() === matchLast &&
+      (matchFirst !== "" || matchLast !== "");
+    if (!phoneHit && !nameHit) {
       return line;
     }
     matched = true;
-    cols[idx.display] = patch.display ? "TRUE" : "FALSE";
-    cols[idx.status] = patch.status;
+    if (patch.phones) {
+      cols[idx.phones] = patch.phones.join(";");
+    }
+    if (patch.firstName !== undefined && idx.firstName >= 0) {
+      cols[idx.firstName] = patch.firstName ?? "";
+    }
+    if (patch.lastName !== undefined && idx.lastName >= 0) {
+      cols[idx.lastName] = patch.lastName ?? "";
+    }
+    cols[idx.exclude] = patch.exclude ? "true" : "false";
     cols[idx.tags] = patch.tags.join(";");
     return cols.map(escapeCsvField).join(",");
   });
@@ -113,6 +152,7 @@ function updateContactsCsv(
 }
 
 function ensureTagId(db: Database.Database, name: string): number {
+  assertAllowedTagName(name);
   db.prepare(`INSERT OR IGNORE INTO tags (name) VALUES (?)`).run(name);
   const row = db.prepare(`SELECT id FROM tags WHERE name = ?`).get(name) as
     | { id: number }
@@ -179,6 +219,7 @@ function rewriteCsvTags(mapTag: (tag: string) => string | null): void {
 export function createTag(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
+  assertAllowedTagName(trimmed);
 
   const writeDb = new Database(dbPath());
   try {
@@ -201,6 +242,7 @@ export function renameTag(from: string, to: string): string {
   const oldName = from.trim();
   const newName = to.trim();
   if (!oldName || !newName) throw new Error("name required");
+  assertAllowedTagName(newName);
   if (oldName.toLowerCase() === newName.toLowerCase()) {
     // Same name ignoring case — allow casing fix
     if (oldName === newName) return newName;
@@ -250,7 +292,88 @@ export function deleteTag(name: string): void {
   );
 }
 
-/** Update display/status/tags in SQLite and contacts.csv; returns refreshed contact. */
+function phoneOwner(
+  db: Database.Database,
+  phone: string,
+): number | null {
+  const row = db
+    .prepare(`SELECT contact_id FROM contact_phones WHERE phone_e164 = ?`)
+    .get(phone) as { contact_id: number } | undefined;
+  return row?.contact_id ?? null;
+}
+
+/**
+ * Retarget message/conversation handles when a contact phone changes so the
+ * person stays linked to their threads (list filters require phone↔message join).
+ */
+function remapPhoneHandle(
+  db: Database.Database,
+  contactId: number,
+  from: string,
+  to: string,
+): void {
+  if (from === to) return;
+
+  const owner = phoneOwner(db, to);
+  if (owner != null && owner !== contactId) {
+    throw new Error(`phone ${to} already belongs to another contact`);
+  }
+
+  // Prefer updating the PK in place; if `to` already exists on this contact,
+  // drop the old row instead (merge).
+  if (owner === contactId) {
+    db.prepare(`DELETE FROM contact_phones WHERE phone_e164 = ?`).run(from);
+  } else {
+    db.prepare(
+      `UPDATE contact_phones SET phone_e164 = ? WHERE phone_e164 = ?`,
+    ).run(to, from);
+  }
+
+  db.prepare(
+    `UPDATE conversations SET chat_identifier = ? WHERE chat_identifier = ?`,
+  ).run(to, from);
+  db.prepare(`UPDATE participants SET handle = ? WHERE handle = ?`).run(to, from);
+  db.prepare(`UPDATE messages SET sender = ? WHERE sender = ?`).run(to, from);
+  db.prepare(`UPDATE tapbacks SET sender = ? WHERE sender = ?`).run(to, from);
+}
+
+function syncContactPhones(
+  db: Database.Database,
+  contactId: number,
+  oldPhones: string[],
+  newPhones: string[],
+): void {
+  const shared = Math.min(oldPhones.length, newPhones.length);
+  for (let i = 0; i < shared; i++) {
+    const from = oldPhones[i]!;
+    const to = newPhones[i]!;
+    if (from !== to) {
+      remapPhoneHandle(db, contactId, from, to);
+    }
+  }
+
+  for (let i = shared; i < oldPhones.length; i++) {
+    db.prepare(`DELETE FROM contact_phones WHERE phone_e164 = ?`).run(
+      oldPhones[i],
+    );
+  }
+
+  const insert = db.prepare(
+    `INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?, ?)`,
+  );
+  for (let i = shared; i < newPhones.length; i++) {
+    const phone = newPhones[i]!;
+    const owner = phoneOwner(db, phone);
+    if (owner != null && owner !== contactId) {
+      throw new Error(`phone ${phone} already belongs to another contact`);
+    }
+    if (owner == null) {
+      insert.run(phone, contactId);
+    }
+  }
+}
+
+/** Update contact fields in SQLite and contacts.csv; returns refreshed contact. */
 export function patchContact(
   id: number,
   patch: ContactPatch,
@@ -260,34 +383,65 @@ export function patchContact(
     throw new Error("contact not found");
   }
 
-  const display = patch.display ?? existing.display;
-  const status =
-    patch.status ??
-    (existing.status === "historical" ? "historical" : "current");
+  const exclude = patch.exclude ?? existing.exclude;
   const tags = patch.tags ?? existing.tags;
+  const firstName =
+    patch.firstName !== undefined
+      ? patch.firstName?.trim() || null
+      : existing.firstName;
+  const lastName =
+    patch.lastName !== undefined
+      ? patch.lastName?.trim() || null
+      : existing.lastName;
+  const phones =
+    patch.phones !== undefined
+      ? patch.phones.map((p) => p.trim()).filter(Boolean)
+      : existing.phones;
+  const preferredPhone = phones[0] ?? null;
 
   const writeDb = new Database(dbPath());
   try {
-    writeDb
-      .prepare(`UPDATE contacts SET display = ?, status = ? WHERE id = ?`)
-      .run(display ? 1 : 0, status, id);
-
-    if (patch.tags) {
-      writeDb.prepare(`DELETE FROM contact_tags WHERE contact_id = ?`).run(id);
-      const insert = writeDb.prepare(
-        `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
-      );
-      for (const name of tags) {
-        const tagId = ensureTagId(writeDb, name);
-        insert.run(id, tagId);
+    const tx = writeDb.transaction(() => {
+      if (patch.phones) {
+        syncContactPhones(writeDb, id, existing.phones, phones);
       }
-    }
+
+      writeDb
+        .prepare(
+          `UPDATE contacts
+           SET first_name = ?, last_name = ?, exclude = ?, preferred_phone = ?
+           WHERE id = ?`,
+        )
+        .run(firstName, lastName, exclude ? 1 : 0, preferredPhone, id);
+
+      if (patch.tags) {
+        writeDb.prepare(`DELETE FROM contact_tags WHERE contact_id = ?`).run(id);
+        const insert = writeDb.prepare(
+          `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
+        );
+        for (const name of tags) {
+          const tagId = ensureTagId(writeDb, name);
+          insert.run(id, tagId);
+        }
+      }
+    });
+    tx();
   } finally {
     writeDb.close();
   }
 
   resetDb();
-  updateContactsCsv(existing.phones, { display, status, tags });
+  updateContactsCsv(
+    existing.phones,
+    { firstName: existing.firstName, lastName: existing.lastName },
+    {
+      exclude,
+      tags,
+      firstName: patch.firstName !== undefined ? firstName : undefined,
+      lastName: patch.lastName !== undefined ? lastName : undefined,
+      phones: patch.phones !== undefined ? phones : undefined,
+    },
+  );
 
   const updated = getContact(id);
   if (!updated) {

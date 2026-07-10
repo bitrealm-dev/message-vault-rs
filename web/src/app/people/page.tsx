@@ -7,5 +7,5 @@ export default async function PeopleRedirect({
 }) {
   const sp = await searchParams;
   const q = sp.c ? `?c=${encodeURIComponent(sp.c)}` : "";
-  redirect(`/current${q}`);
+  redirect(`/all${q}`);
 }

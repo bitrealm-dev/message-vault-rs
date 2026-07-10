@@ -1,7 +1,6 @@
 export type ContactSection =
   | "all"
-  | "current"
-  | "historical"
+  | "excluded"
   | "untagged"
   | { tag: string };
 
@@ -15,8 +14,7 @@ export type ContactListItem = {
   sortLast: string;
   letter: string;
   tags: string[];
-  display: boolean;
-  status: string;
+  exclude: boolean;
 };
 
 export type ContactDetail = ContactListItem & {
@@ -77,8 +75,7 @@ export type MessageRow = {
 
 export type HomeStats = {
   all: number;
-  current: number;
-  historical: number;
+  excluded: number;
   groups: number;
   messages: number;
   contacts: number;

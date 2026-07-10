@@ -1,19 +1,11 @@
-import { ContactBrowsePage, parseContactId } from "@/components/ContactBrowsePage";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function HistoricalPage({
+export default async function HistoricalRedirect({
   searchParams,
 }: {
   searchParams: Promise<{ c?: string }>;
 }) {
   const sp = await searchParams;
-  return (
-    <ContactBrowsePage
-      section="historical"
-      label="Historical"
-      nav="/historical"
-      contactId={parseContactId(sp.c)}
-    />
-  );
+  const q = sp.c ? `?c=${encodeURIComponent(sp.c)}` : "";
+  redirect(`/tag/historical${q}`);
 }

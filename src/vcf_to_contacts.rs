@@ -20,8 +20,7 @@ struct ContactOut {
     phones: Vec<String>,
     first_name: String,
     last_name: String,
-    display: bool,
-    status: String,
+    exclude: bool,
     tags: Vec<String>,
 }
 
@@ -111,8 +110,7 @@ pub fn convert(
             phones: vec![number.clone()],
             first_name: label.clone(),
             last_name: String::new(),
-            display: false,
-            status: "current".to_string(),
+            exclude: true,
             tags: Vec::new(),
         });
         stats.blacklist_only += 1;
@@ -140,10 +138,7 @@ fn merge_contact(into: &mut ContactOut, from: ContactOut) {
     if into.last_name.is_empty() {
         into.last_name = from.last_name;
     }
-    into.display = into.display && from.display;
-    if into.status != "historical" && from.status == "historical" {
-        into.status = "historical".to_string();
-    }
+    into.exclude = into.exclude || from.exclude;
     for tag in from.tags {
         push_tag(&mut into.tags, &tag);
     }
@@ -176,9 +171,7 @@ fn card_to_contact(card: &VcfCard) -> ContactOut {
     let mut tags = Vec::new();
     for tag in fn_tags {
         let normalized = normalize_tag(&tag);
-        if normalized.eq_ignore_ascii_case("People")
-            || normalized.eq_ignore_ascii_case("Historical")
-        {
+        if normalized.eq_ignore_ascii_case("People") {
             continue;
         }
         push_tag(&mut tags, &normalized);
@@ -188,15 +181,14 @@ fn card_to_contact(card: &VcfCard) -> ContactOut {
         phones: card.phones.clone(),
         first_name,
         last_name,
-        display: true,
-        status: "current".to_string(),
+        exclude: false,
         tags,
     }
 }
 
 fn apply_blacklist(contact: &mut ContactOut, blacklist: &HashMap<String, String>) {
     if contact.phones.iter().any(|p| blacklist.contains_key(p)) {
-        contact.display = false;
+        contact.exclude = true;
     }
 }
 
@@ -210,17 +202,15 @@ fn apply_filters(contact: &mut ContactOut, filters: &HashMap<String, String>) {
                 push_tag(&mut contact.tags, "Girls");
             }
             "historical" => {
-                contact.status = "historical".to_string();
+                push_tag(&mut contact.tags, "Historical");
             }
             "historical-exclude" => {
-                contact.display = false;
-                contact.status = "historical".to_string();
+                contact.exclude = true;
+                push_tag(&mut contact.tags, "Historical");
             }
             other => {
                 let tag = normalize_tag(other);
-                if !tag.eq_ignore_ascii_case("People")
-                    && !tag.eq_ignore_ascii_case("Historical")
-                {
+                if !tag.eq_ignore_ascii_case("People") {
                     push_tag(&mut contact.tags, &tag);
                 }
             }
@@ -231,9 +221,6 @@ fn apply_filters(contact: &mut ContactOut, filters: &HashMap<String, String>) {
 fn finalize_contact(contact: &mut ContactOut) {
     contact.tags.sort();
     contact.tags.dedup();
-    if contact.status.is_empty() {
-        contact.status = "current".to_string();
-    }
 }
 
 fn normalize_tag(raw: &str) -> String {
@@ -312,25 +299,17 @@ fn write_csv(path: &Path, contacts: &[ContactOut]) -> Result<()> {
 
     let mut writer = csv::Writer::from_path(path)
         .with_context(|| format!("failed to write {}", path.display()))?;
-    writer.write_record([
-        "phones",
-        "first_name",
-        "last_name",
-        "display",
-        "status",
-        "tags",
-    ])?;
+    writer.write_record(["phones", "first_name", "last_name", "exclude", "tags"])?;
 
     for c in contacts {
         let phones = c.phones.join(";");
         let tags = c.tags.join(";");
-        let display = if c.display { "TRUE" } else { "FALSE" };
+        let exclude = if c.exclude { "true" } else { "false" };
         writer.write_record([
             phones,
             c.first_name.clone(),
             c.last_name.clone(),
-            display.to_string(),
-            c.status.clone(),
+            exclude.to_string(),
             tags,
         ])?;
     }

@@ -7,7 +7,9 @@ export type GroupCheckState = "on" | "off" | "mixed";
 export function GroupsMenu({
   allGroups,
   checks,
+  excludedCheck = "off",
   onToggle,
+  onToggleExcluded,
   onCreate,
   onOpenChange,
   disabled = false,
@@ -15,7 +17,10 @@ export function GroupsMenu({
   allGroups: string[];
   /** Per-group membership across the current contact or selection. */
   checks: Record<string, GroupCheckState>;
+  /** Implicit Excluded group (backed by exclude column, not tags). */
+  excludedCheck?: GroupCheckState;
   onToggle?: (name: string) => void;
+  onToggleExcluded?: () => void;
   /** Called when a new group is created; should add it to the current target(s). */
   onCreate?: (name: string) => void;
   onOpenChange?: (open: boolean) => void;
@@ -102,7 +107,11 @@ export function GroupsMenu({
       if (!el) continue;
       el.indeterminate = checks[name] === "mixed";
     }
-  }, [checks, localGroups, open, filtered]);
+    const excludedEl = checkRefs.current.get("__excluded__");
+    if (excludedEl) {
+      excludedEl.indeterminate = excludedCheck === "mixed";
+    }
+  }, [checks, excludedCheck, localGroups, open, filtered]);
 
   const toggle = (name: string) => {
     if (disabled || !onToggle) return;
@@ -113,6 +122,7 @@ export function GroupsMenu({
     if (disabled || !onCreate) return;
     const name = newName.trim();
     if (!name) return;
+    if (name.toLowerCase() === "excluded") return;
 
     const existing = localGroups.find(
       (g) => g.toLowerCase() === name.toLowerCase(),
@@ -169,6 +179,23 @@ export function GroupsMenu({
           </div>
 
           <div className="max-h-56 overflow-y-auto py-1">
+            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-white/20">
+              <input
+                ref={(el) => {
+                  if (el) checkRefs.current.set("__excluded__", el);
+                  else checkRefs.current.delete("__excluded__");
+                }}
+                type="checkbox"
+                checked={excludedCheck === "on"}
+                disabled={disabled}
+                onChange={() => {
+                  if (!disabled) onToggleExcluded?.();
+                }}
+                className="size-3.5 rounded border-border accent-accent"
+              />
+              <span className="truncate">Excluded</span>
+            </label>
+            <div className="mx-3 my-1 border-t border-border/60" />
             {filtered.length === 0 ? (
               <p className="px-3 py-2 text-[12px] text-muted">No groups</p>
             ) : (

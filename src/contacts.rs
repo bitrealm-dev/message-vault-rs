@@ -22,9 +22,7 @@ struct ContactCsvRow {
     #[serde(default)]
     last_name: String,
     #[serde(default)]
-    display: String,
-    #[serde(default)]
-    status: String,
+    exclude: String,
     #[serde(default)]
     tags: String,
 }
@@ -35,8 +33,7 @@ pub struct Contact {
     pub id: i64,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
-    pub display: bool,
-    pub status: String,
+    pub exclude: bool,
     pub preferred_phone: Option<String>,
 }
 
@@ -60,7 +57,7 @@ pub fn load_contacts_if_needed(
 ) -> Result<ContactLoadStats> {
     // Ensure we can query contacts; recreate if the legacy schema is present.
     if conn
-        .prepare("SELECT display, status FROM contacts LIMIT 1")
+        .prepare("SELECT exclude FROM contacts LIMIT 1")
         .is_err()
     {
         crate::schema::recreate_contacts(conn)?;
@@ -126,24 +123,17 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
         }
 
         let preferred = phones[0].clone();
-        let display = parse_bool(&row.display);
-        let status = normalize_status(&row.status);
+        let exclude = parse_bool(&row.exclude);
         let first_name = empty_to_none(&row.first_name);
         let last_name = empty_to_none(&row.last_name);
 
         tx.execute(
             r#"
             INSERT INTO contacts (
-                first_name, last_name, display, status, preferred_phone
-            ) VALUES (?1, ?2, ?3, ?4, ?5)
+                first_name, last_name, exclude, preferred_phone
+            ) VALUES (?1, ?2, ?3, ?4)
             "#,
-            params![
-                first_name,
-                last_name,
-                display as i64,
-                status,
-                preferred,
-            ],
+            params![first_name, last_name, exclude as i64, preferred],
         )?;
         let contact_id = tx.last_insert_rowid();
         stats.contacts += 1;
@@ -188,7 +178,7 @@ pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Con
     let contact = conn
         .query_row(
             r#"
-            SELECT c.id, c.first_name, c.last_name, c.display, c.status, c.preferred_phone
+            SELECT c.id, c.first_name, c.last_name, c.exclude, c.preferred_phone
             FROM contact_phones p
             JOIN contacts c ON c.id = p.contact_id
             WHERE p.phone_e164 = ?1
@@ -199,9 +189,8 @@ pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Con
                     id: row.get(0)?,
                     first_name: row.get(1)?,
                     last_name: row.get(2)?,
-                    display: row.get::<_, i64>(3)? != 0,
-                    status: row.get(4)?,
-                    preferred_phone: row.get(5)?,
+                    exclude: row.get::<_, i64>(3)? != 0,
+                    preferred_phone: row.get(4)?,
                 })
             },
         )
@@ -231,11 +220,4 @@ fn parse_bool(raw: &str) -> bool {
         raw.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "y"
     )
-}
-
-fn normalize_status(raw: &str) -> String {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "historical" => "historical".to_string(),
-        _ => "current".to_string(),
-    }
 }

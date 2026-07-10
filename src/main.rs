@@ -71,11 +71,11 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
 
-        /// Optional message-vault blacklist.csv (sets display=FALSE)
+        /// Optional message-vault blacklist.csv (sets exclude=true)
         #[arg(long)]
         blacklist: Option<PathBuf>,
 
-        /// Optional message-vault filter-people.csv (sets status / tags)
+        /// Optional message-vault filter-people.csv (sets Historical tag / exclude / tags)
         #[arg(long)]
         filter_people: Option<PathBuf>,
 

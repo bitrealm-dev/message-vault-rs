@@ -6,7 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SortByMenu, type SortMode } from "./SortByMenu";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
-import { HiddenMenu, StatusMenu } from "./BulkFieldMenus";
+import {
+  ContactEditPane,
+  phonesForSave,
+  seedContactEditDraft,
+  type ContactEditDraft,
+} from "./ContactEditPane";
 import { useResizablePanes } from "./useResizablePanes";
 
 type YearThread = {
@@ -30,8 +35,7 @@ type GroupThread = {
 };
 
 type ContactDetail = ContactListItem & {
-  display: boolean;
-  status: string;
+  exclude: boolean;
   tags: string[];
   phones: string[];
   dateStart: string | null;
@@ -79,18 +83,16 @@ export function BrowseShell({
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [contactEditing, setContactEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [tagOverrides, setTagOverrides] = useState<Map<number, string[]>>(
     () => new Map(),
   );
-  const [displayOverrides, setDisplayOverrides] = useState<Map<number, boolean>>(
+  const [excludeOverrides, setExcludeOverrides] = useState<Map<number, boolean>>(
     () => new Map(),
   );
-  const [statusOverrides, setStatusOverrides] = useState<
-    Map<number, "current" | "historical">
-  >(() => new Map());
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const selectionDirtyRef = useRef(false);
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,9 +102,11 @@ export function BrowseShell({
 
   const saveContactPatch = useCallback(
     async (patch: {
-      display?: boolean;
-      status?: "current" | "historical";
+      exclude?: boolean;
       tags?: string[];
+      firstName?: string | null;
+      lastName?: string | null;
+      phones?: string[];
     }): Promise<boolean> => {
       if (!contactId) return false;
       setSaving(true);
@@ -172,6 +176,8 @@ export function BrowseShell({
       setContactId(id);
       setMessages([]);
       setActiveThread(null);
+      setContactEditing(false);
+      setEditDraft(null);
       const params = new URLSearchParams(searchParams.toString());
       params.set("c", String(id));
       params.delete("y");
@@ -184,9 +190,10 @@ export function BrowseShell({
   useEffect(() => {
     setSelectedIds(new Set());
     setTagOverrides(new Map());
-    setDisplayOverrides(new Map());
-    setStatusOverrides(new Map());
+    setExcludeOverrides(new Map());
     selectionDirtyRef.current = false;
+    setContactEditing(false);
+    setEditDraft(null);
   }, [section, query]);
 
   useEffect(() => {
@@ -330,6 +337,38 @@ export function BrowseShell({
     [sorted, selectedIds],
   );
   const hasSelection = selectedContacts.length > 0;
+  const canEditGroups = !contactEditing && (hasSelection || !!detail);
+
+  useEffect(() => {
+    if (!hasSelection) return;
+    setContactEditing(false);
+    setEditDraft(null);
+  }, [hasSelection]);
+
+  const beginContactEdit = useCallback(() => {
+    if (!detail || hasSelection) return;
+    setEditDraft(seedContactEditDraft(detail));
+    setContactEditing(true);
+  }, [detail, hasSelection]);
+
+  const cancelContactEdit = useCallback(() => {
+    setContactEditing(false);
+    setEditDraft(null);
+  }, []);
+
+  const saveContactEdit = useCallback(async () => {
+    if (!editDraft || !contactId) return;
+    const ok = await saveContactPatch({
+      firstName: editDraft.firstName.trim() || null,
+      lastName: editDraft.lastName.trim() || null,
+      phones: phonesForSave(editDraft.phones),
+      exclude: editDraft.exclude,
+    });
+    if (!ok) return;
+    setContactEditing(false);
+    setEditDraft(null);
+    router.refresh();
+  }, [editDraft, contactId, saveContactPatch, router]);
 
   const tagsFor = useCallback(
     (id: number, fallback: string[]) => tagOverrides.get(id) ?? fallback,
@@ -479,64 +518,44 @@ export function BrowseShell({
       if (!selectionDirtyRef.current) return;
       selectionDirtyRef.current = false;
       setTagOverrides(new Map());
-      setDisplayOverrides(new Map());
-      setStatusOverrides(new Map());
+      setExcludeOverrides(new Map());
       router.refresh();
     },
     [router],
   );
 
   const selectionFieldTargets = useMemo(() => {
-    return selectedContacts.map((c) => ({
-      id: c.id,
-      display: displayOverrides.get(c.id) ?? c.display,
-      status:
-        statusOverrides.get(c.id) ??
-        (c.status === "historical" ? "historical" : "current"),
-    }));
-  }, [selectedContacts, displayOverrides, statusOverrides]);
+    if (hasSelection) {
+      return selectedContacts.map((c) => ({
+        id: c.id,
+        exclude: excludeOverrides.get(c.id) ?? c.exclude,
+      }));
+    }
+    if (detail) {
+      return [
+        {
+          id: detail.id,
+          exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
+        },
+      ];
+    }
+    return [] as Array<{ id: number; exclude: boolean }>;
+  }, [hasSelection, selectedContacts, detail, excludeOverrides]);
 
-  const hiddenCheck = useMemo((): GroupCheckState => {
+  const excludedCheck = useMemo((): GroupCheckState => {
     const n = selectionFieldTargets.length;
     if (n === 0) return "off";
-    let hidden = 0;
+    let excluded = 0;
     for (const p of selectionFieldTargets) {
-      if (!p.display) hidden++;
+      if (p.exclude) excluded++;
     }
-    if (hidden === 0) return "off";
-    if (hidden === n) return "on";
-    return "mixed";
-  }, [selectionFieldTargets]);
-
-  const currentCheck = useMemo((): GroupCheckState => {
-    const n = selectionFieldTargets.length;
-    if (n === 0) return "off";
-    let count = 0;
-    for (const p of selectionFieldTargets) {
-      if (p.status === "current") count++;
-    }
-    if (count === 0) return "off";
-    if (count === n) return "on";
-    return "mixed";
-  }, [selectionFieldTargets]);
-
-  const historicalCheck = useMemo((): GroupCheckState => {
-    const n = selectionFieldTargets.length;
-    if (n === 0) return "off";
-    let count = 0;
-    for (const p of selectionFieldTargets) {
-      if (p.status === "historical") count++;
-    }
-    if (count === 0) return "off";
-    if (count === n) return "on";
+    if (excluded === 0) return "off";
+    if (excluded === n) return "on";
     return "mixed";
   }, [selectionFieldTargets]);
 
   const patchContactFields = useCallback(
-    async (
-      id: number,
-      patch: { display?: boolean; status?: "current" | "historical" },
-    ) => {
+    async (id: number, patch: { exclude?: boolean }) => {
       const res = await fetch(`/api/contacts/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -549,21 +568,20 @@ export function BrowseShell({
     [contactId],
   );
 
-  const toggleHiddenForSelection = useCallback(async () => {
+  const toggleExcludedForSelection = useCallback(async () => {
     const targets = selectionFieldTargets;
     if (targets.length === 0) return;
-    const hideAll = hiddenCheck !== "on";
-    const nextDisplay = !hideAll;
+    const excludeAll = excludedCheck !== "on";
     let changed = 0;
     for (const p of targets) {
-      if (p.display !== nextDisplay) changed++;
+      if (p.exclude !== excludeAll) changed++;
     }
     if (changed === 0) return;
 
-    setDisplayOverrides((prev) => {
+    setExcludeOverrides((prev) => {
       const next = new Map(prev);
       for (const p of targets) {
-        next.set(p.id, nextDisplay);
+        next.set(p.id, excludeAll);
       }
       return next;
     });
@@ -571,62 +589,29 @@ export function BrowseShell({
 
     const noun = changed === 1 ? "contact" : "contacts";
     queueStatusMessage(
-      hideAll ? `Hid ${changed} ${noun}` : `Unhid ${changed} ${noun}`,
+      excludeAll
+        ? `Excluded ${changed} ${noun}`
+        : `Included ${changed} ${noun}`,
     );
 
     try {
       for (const p of targets) {
-        if (p.display === nextDisplay) continue;
-        await patchContactFields(p.id, { display: nextDisplay });
+        if (p.exclude === excludeAll) continue;
+        await patchContactFields(p.id, { exclude: excludeAll });
       }
     } catch (err) {
       console.error(err);
       selectionDirtyRef.current = true;
       router.refresh();
-      setDisplayOverrides(new Map());
+      setExcludeOverrides(new Map());
     }
   }, [
     selectionFieldTargets,
-    hiddenCheck,
+    excludedCheck,
     queueStatusMessage,
     patchContactFields,
     router,
   ]);
-
-  const setStatusForSelection = useCallback(
-    async (status: "current" | "historical") => {
-      const targets = selectionFieldTargets;
-      if (targets.length === 0) return;
-      let changed = 0;
-      for (const p of targets) {
-        if (p.status !== status) changed++;
-      }
-      if (changed === 0) return;
-
-      setStatusOverrides((prev) => {
-        const next = new Map(prev);
-        for (const p of targets) next.set(p.id, status);
-        return next;
-      });
-      selectionDirtyRef.current = true;
-
-      const noun = changed === 1 ? "contact" : "contacts";
-      queueStatusMessage(`Set ${changed} ${noun} to ${status}`);
-
-      try {
-        for (const p of targets) {
-          if (p.status === status) continue;
-          await patchContactFields(p.id, { status });
-        }
-      } catch (err) {
-        console.error(err);
-        selectionDirtyRef.current = true;
-        router.refresh();
-        setStatusOverrides(new Map());
-      }
-    },
-    [selectionFieldTargets, queueStatusMessage, patchContactFields, router],
-  );
 
   const activeThreadMeta = useMemo(() => {
     if (!activeThread) return null;
@@ -795,63 +780,74 @@ export function BrowseShell({
         className="flex min-w-0 flex-1 flex-col"
       >
         <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border px-5">
-          <button
-            type="button"
-            onClick={() => setEditing((v) => !v)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
-              editing
-                ? "bg-accent/20 text-accent"
-                : "bg-elevated text-muted hover:text-text"
-            }`}
-          >
-            <PencilIcon className="size-3.5" />
-            {editing ? "Read only" : "Edit"}
-          </button>
-          <GroupsMenu
-            allGroups={menuGroups}
-            checks={groupChecks}
-            disabled={groupTargets.length === 0}
-            onToggle={toggleGroup}
-            onCreate={createAndAssignGroup}
-            onOpenChange={onSelectionMenuOpenChange}
-          />
-          {hasSelection && (
+          {contactEditing ? (
             <>
-              <HiddenMenu
-                state={hiddenCheck}
-                onToggle={() => void toggleHiddenForSelection()}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void saveContactEdit()}
+                className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18 disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={cancelContactEdit}
+                className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-white/14 hover:text-text disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={!detail || hasSelection}
+                onClick={beginContactEdit}
+                className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2.5 py-1 text-[12px] text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <PencilIcon className="size-3.5" />
+                Edit
+              </button>
+              <GroupsMenu
+                allGroups={menuGroups}
+                checks={groupChecks}
+                excludedCheck={excludedCheck}
+                disabled={!canEditGroups}
+                onToggle={toggleGroup}
+                onToggleExcluded={() => void toggleExcludedForSelection()}
+                onCreate={createAndAssignGroup}
                 onOpenChange={onSelectionMenuOpenChange}
               />
-              <StatusMenu
-                currentState={currentCheck}
-                historicalState={historicalCheck}
-                onSelect={(status) => void setStatusForSelection(status)}
-                onOpenChange={onSelectionMenuOpenChange}
-              />
+              {statusMsg && (
+                <span className="truncate text-[12px] text-muted">{statusMsg}</span>
+              )}
             </>
           )}
-          {statusMsg && (
-            <span className="truncate text-[12px] text-muted">{statusMsg}</span>
-          )}
         </div>
 
-        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
-          {hasSelection ? null : detail && !loadingThreads ? (
-            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-              {detail.displayName}
-            </h1>
-          ) : (
-            <span className="text-[13px] text-muted">
-              {!contactId
-                ? "Choose a contact"
-                : loadingThreads
-                  ? "Loading…"
-                  : ""}
-            </span>
-          )}
-        </div>
+        {!contactEditing && (
+          <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
+            {hasSelection ? null : detail && !loadingThreads ? (
+              <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+                {detail.displayName}
+              </h1>
+            ) : (
+              <span className="text-[13px] text-muted">
+                {!contactId
+                  ? "Choose a contact"
+                  : loadingThreads
+                    ? "Loading…"
+                    : ""}
+              </span>
+            )}
+          </div>
+        )}
 
-        {hasSelection ? (
+        {contactEditing && editDraft ? (
+          <ContactEditPane draft={editDraft} onChange={setEditDraft} />
+        ) : hasSelection ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg px-5 pt-8 pb-5">
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
@@ -866,13 +862,11 @@ export function BrowseShell({
                     if (selectionDirtyRef.current) {
                       selectionDirtyRef.current = false;
                       setTagOverrides(new Map());
-                      setDisplayOverrides(new Map());
-                      setStatusOverrides(new Map());
+                      setExcludeOverrides(new Map());
                       router.refresh();
                     } else {
                       setTagOverrides(new Map());
-                      setDisplayOverrides(new Map());
-                      setStatusOverrides(new Map());
+                      setExcludeOverrides(new Map());
                     }
                   }}
                   className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
@@ -957,53 +951,13 @@ export function BrowseShell({
 
                   <DetailRow
                     icon={<StatusIcon className="size-4 shrink-0 text-muted" />}
-                    label="Hidden"
+                    label="Excluded"
                   >
-                    {editing ? (
-                      <label className="inline-flex items-center gap-2 text-[13px] text-text">
-                        <input
-                          type="checkbox"
-                          checked={!detail.display}
-                          disabled={saving}
-                          onChange={(e) =>
-                            saveContactPatch({ display: !e.target.checked })
-                          }
-                          className="size-3.5 rounded border-border"
-                        />
-                        {!detail.display ? "TRUE" : "FALSE"}
-                      </label>
-                    ) : (
-                      <span className="text-[13px] text-text">
-                        {!detail.display ? "TRUE" : "FALSE"}
-                      </span>
-                    )}
-                  </DetailRow>
-
-                  <DetailRow
-                    icon={<StatusIcon className="size-4 shrink-0 text-muted" />}
-                    label="Status"
-                  >
-                    {editing ? (
-                      <select
-                        value={
-                          detail.status === "historical" ? "historical" : "current"
-                        }
-                        disabled={saving}
-                        onChange={(e) =>
-                          saveContactPatch({
-                            status: e.target.value as "current" | "historical",
-                          })
-                        }
-                        className="rounded-md border border-border bg-elevated px-2 py-1 text-[13px] text-text outline-none focus:border-accent"
-                      >
-                        <option value="current">current</option>
-                        <option value="historical">historical</option>
-                      </select>
-                    ) : (
-                      <span className="text-[13px] capitalize text-text">
-                        {detail.status || "current"}
-                      </span>
-                    )}
+                    <span className="text-[13px] text-text">
+                      {(excludeOverrides.get(detail.id) ?? detail.exclude)
+                        ? "TRUE"
+                        : "FALSE"}
+                    </span>
                   </DetailRow>
 
                   {detail.dateStart && detail.dateEnd && (

@@ -65,14 +65,7 @@ function PersonIcon({ className }: { className?: string }) {
   );
 }
 
-/** Clockwise cycle with check — Current. Flip horizontally for Historical. */
-function CycleCheckIcon({
-  className,
-  flipped = false,
-}: {
-  className?: string;
-  flipped?: boolean;
-}) {
+function AddressBookIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -83,11 +76,29 @@ function CycleCheckIcon({
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
-      style={flipped ? { transform: "scaleX(-1)" } : undefined}
     >
-      <path d="M19.5 12a7.5 7.5 0 1 1-2.05-5.2" />
-      <path d="M19.5 4.75v4.1h-4.1" />
-      <path d="M8.75 12.25 11.1 14.6 15.4 9.75" />
+      <path d="M6.5 3.5h11A1.5 1.5 0 0 1 19 5v14a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5Z" />
+      <path d="M5 7.5h2M5 12h2M5 16.5h2" />
+      <circle cx="13" cy="10" r="2.25" />
+      <path d="M9.75 16.25c.55-1.85 1.95-2.75 3.25-2.75s2.7.9 3.25 2.75" />
+    </svg>
+  );
+}
+
+function ProhibitedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M6.2 6.2 17.8 17.8" />
     </svg>
   );
 }
@@ -327,7 +338,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
       setMenuFor(null);
       router.refresh();
       if (pathname === `/tag/${tagSlug(name)}`) {
-        router.push("/current");
+        router.push("/all");
       }
     } catch (err) {
       console.error(err);
@@ -500,23 +511,17 @@ export function AppSidebar({
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-        <NavLink href="/all" label="All contacts" active={active === "/all"} />
         <NavLink
-          href="/current"
-          label="Current"
-          active={active === "/current"}
-          icon={<CycleCheckIcon className="size-3.5 shrink-0 opacity-80" />}
+          href="/all"
+          label="All Contacts"
+          active={active === "/all"}
+          icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
         />
         <NavLink
-          href="/historical"
-          label="Historical"
-          active={active === "/historical"}
-          icon={
-            <CycleCheckIcon
-              className="size-3.5 shrink-0 opacity-80"
-              flipped
-            />
-          }
+          href="/excluded"
+          label="Excluded"
+          active={active === "/excluded"}
+          icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
         />
 
         <GroupsNav tags={tags} />

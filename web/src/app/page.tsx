@@ -9,9 +9,8 @@ export default function HomePage() {
   const tags = listTags();
 
   const cards = [
-    { href: "/all", label: "All", value: stats.all },
-    { href: "/current", label: "Current", value: stats.current },
-    { href: "/historical", label: "Historical", value: stats.historical },
+    { href: "/all", label: "All Contacts", value: stats.all },
+    { href: "/excluded", label: "Excluded", value: stats.excluded },
     { href: "/groups", label: "Group chats", value: stats.groups },
   ];
 
@@ -21,10 +20,10 @@ export default function HomePage() {
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-bg px-8 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Message Vault</h1>
         <p className="mt-2 max-w-xl text-[14px] text-muted">
-          Browse your imported messages by people, history, and groups.
+          Browse your imported messages by people and groups.
         </p>
 
-        <div className="mt-8 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mt-8 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3">
           {cards.map((c) => (
             <Link
               key={c.href}

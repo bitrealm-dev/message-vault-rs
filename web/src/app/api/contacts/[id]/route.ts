@@ -1,5 +1,5 @@
 import { getContact } from "@/lib/db";
-import { patchContact } from "@/lib/contactsWrite";
+import { patchContact, type ContactPatch } from "@/lib/contactsWrite";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -26,34 +26,43 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
 
-  let body: { display?: unknown; status?: unknown; tags?: unknown };
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const patch: {
-    display?: boolean;
-    status?: "current" | "historical";
-    tags?: string[];
-  } = {};
-  if (typeof body.display === "boolean") {
-    patch.display = body.display;
-  }
-  if (body.status === "current" || body.status === "historical") {
-    patch.status = body.status;
+  const patch: ContactPatch = {};
+  if (typeof body.exclude === "boolean") {
+    patch.exclude = body.exclude;
   }
   if (Array.isArray(body.tags) && body.tags.every((t) => typeof t === "string")) {
     patch.tags = body.tags.map((t) => t.trim()).filter(Boolean);
   }
+  if (body.firstName === null || typeof body.firstName === "string") {
+    patch.firstName = body.firstName;
+  }
+  if (body.lastName === null || typeof body.lastName === "string") {
+    patch.lastName = body.lastName;
+  }
   if (
-    patch.display === undefined &&
-    patch.status === undefined &&
-    patch.tags === undefined
+    Array.isArray(body.phones) &&
+    body.phones.every((p) => typeof p === "string")
+  ) {
+    patch.phones = body.phones.map((p) => p.trim()).filter(Boolean);
+  }
+  if (
+    patch.exclude === undefined &&
+    patch.tags === undefined &&
+    patch.firstName === undefined &&
+    patch.lastName === undefined &&
+    patch.phones === undefined
   ) {
     return NextResponse.json(
-      { error: "display, status, and/or tags required" },
+      {
+        error: "exclude, tags, firstName, lastName, and/or phones required",
+      },
       { status: 400 },
     );
   }
