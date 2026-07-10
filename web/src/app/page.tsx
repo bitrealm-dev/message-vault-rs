@@ -1,4 +1,4 @@
-import { TopNav } from "@/components/TopNav";
+import { AppSidebar } from "@/components/AppSidebar";
 import { homeStats, listTags } from "@/lib/db";
 import Link from "next/link";
 
@@ -12,13 +12,13 @@ export default function HomePage() {
     { href: "/all", label: "All", value: stats.all },
     { href: "/current", label: "Current", value: stats.current },
     { href: "/historical", label: "Historical", value: stats.historical },
-    { href: "/groups", label: "Groups", value: stats.groups },
+    { href: "/groups", label: "Group chats", value: stats.groups },
   ];
 
   return (
-    <div className="flex h-full flex-col">
-      <TopNav active="/" tags={tags} />
-      <main className="min-h-0 flex-1 overflow-y-auto bg-bg px-8 py-10">
+    <div className="flex h-full min-h-0">
+      <AppSidebar active="/" tags={tags} />
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-bg px-8 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Message Vault</h1>
         <p className="mt-2 max-w-xl text-[14px] text-muted">
           Browse your imported messages by people, history, and groups.

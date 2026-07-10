@@ -73,7 +73,7 @@ phones,first_name,last_name,display,status,tags
 +14079021707,Matt,McCartney,TRUE,historical,
 +14073420777,Al,DiSanto,TRUE,historical,Toptech
 +19124011501,Kenneth,Gubert,FALSE,historical,
-+16034984174,Claire,Angus,TRUE,historical,CG
++16034984174,Claire,Angus,TRUE,historical,Connect Group
 +12392698693,Allyn,Tuff,TRUE,historical,
 +17278086380,Lindsay,Coile,TRUE,historical,Girls
 +14046937448,Leah,,FALSE,historical,
@@ -110,21 +110,21 @@ phones,first_name,last_name,display,status,tags
 +14074152905,Kristina,Cox,TRUE,historical,Summit
 +18083981064,Kane,Tomlin,TRUE,historical,Family
 +12398212767,Riley,Tuff,TRUE,historical,
-+17165105998,Megan,Wasneechak,TRUE,historical,CG
++17165105998,Megan,Wasneechak,TRUE,historical,Connect Group
 +18155662601,Andrea,Bennett,TRUE,historical,
 +14079029954,Kyle,Kubic,TRUE,historical,
-+14078032664,Caitlin,Crosley,TRUE,historical,CG
++14078032664,Caitlin,Crosley,TRUE,historical,Connect Group
 +14077176459,Elisabeth,Niemetschek,TRUE,historical,
 +14074326419,Jay,Velez,TRUE,historical,
 +14078100192,Joshua,Walker,FALSE,historical,reGroup
 +15154604600;+18008675309,Robert,Newkirk,TRUE,historical,reGroup
 +17039091220,Ross,Miller,TRUE,historical,
 +19412231450,Andre,Willard,TRUE,historical,
-+14073766590,Stephanie,Fry,TRUE,historical,CG
++14073766590,Stephanie,Fry,TRUE,historical,Connect Group
 +13048394300,Jared,Tomlin,FALSE,historical,Family
 +19542908070,Jason,Chandler,TRUE,historical,
 +972546832651,David,Ross,TRUE,,
-+14074468520,Haley,Kelley,TRUE,historical,MG
++14074468520,Haley,Kelley,TRUE,historical,Mens Group
 +19412238191,Drew,,TRUE,historical,
 +17863618909,Clayton,Adkins,FALSE,historical,Grace
 +14074849469,Mike,Allen,TRUE,historical,Summit
@@ -366,7 +366,7 @@ phones,first_name,last_name,display,status,tags
 +19062509223,Sara,,FALSE,historical,Mallory Friend MI
 +14079498537,Jordan,Clear,TRUE,current,
 +13216632724,Liz,Aulds,TRUE,historical,New City
-+19419294674,Lamont,Andrews,TRUE,historical,Family
++19419294674,Lamont,Andrews,TRUE,current,Family
 +19412346990,Jennifer,Arp,TRUE,historical,Family
 +19126556849,Brian,Beisser,TRUE,historical,Family
 +19417163671,Sharon,Beisser,TRUE,historical,Family
@@ -497,7 +497,7 @@ phones,first_name,last_name,display,status,tags
 +19542583889,Drew,Goldfarb,TRUE,historical,Luminar
 +14074324890,Steve,Nelson,TRUE,historical,Luminar
 +13092136135;+19413130870,Mom,,TRUE,current,Family
-+19415256671,Devon,Andrews,TRUE,current,Family
++19415256671,Devon,Andrews,TRUE,historical,Family
 +19414749141;+19418096230,Cathy,Arp,TRUE,current,Family
 +14074091136,Mikayla,,TRUE,historical,
 +16046536868;+14074709616,Alastair,Sterne,TRUE,historical,reGroup

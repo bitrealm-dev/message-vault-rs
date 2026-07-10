@@ -1,5 +1,5 @@
+import { AppSidebar } from "@/components/AppSidebar";
 import { BrowseShell } from "@/components/BrowseShell";
-import { TopNav } from "@/components/TopNav";
 import { listContacts, listTags, tagSlug } from "@/lib/db";
 import type { ContactSection } from "@/lib/types";
 import { Suspense } from "react";
@@ -21,14 +21,15 @@ export function ContactBrowsePage({
     typeof section === "object" ? `tag-${tagSlug(section.tag)}` : section;
 
   return (
-    <div className="flex h-full flex-col">
-      <TopNav active={nav} tags={tags} />
-      <div className="min-h-0 flex-1">
+    <div className="flex h-full min-h-0">
+      <AppSidebar active={nav} tags={tags} />
+      <div className="min-h-0 min-w-0 flex-1">
         <Suspense fallback={<div className="p-4 text-sm text-muted">Loading…</div>}>
           <BrowseShell
             section={paneKey}
             sectionLabel={label}
             contacts={contacts}
+            allTags={tags}
             initialContactId={contactId}
           />
         </Suspense>

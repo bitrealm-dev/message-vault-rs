@@ -11,6 +11,9 @@ import type {
   MessageRow,
   YearThread,
 } from "./types";
+import { tagSlug } from "./tagSlug";
+
+export { tagSlug };
 
 let _db: Database.Database | null = null;
 
@@ -20,6 +23,14 @@ export function getDb(): Database.Database {
     _db.pragma("foreign_keys = ON");
   }
   return _db;
+}
+
+/** Close the cached readonly connection so the next read sees recent writes. */
+export function resetDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
 }
 
 function displayName(row: {
@@ -77,14 +88,6 @@ const RESERVED_TAG_LABELS = new Set(
   ["home", "all", "current", "historical", "groups"].map((s) => s.toLowerCase()),
 );
 
-export function tagSlug(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 export function listTags(): string[] {
   const db = getDb();
   const rows = db
@@ -110,6 +113,8 @@ export function tagFromSlug(slug: string): string | null {
 function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
   const hasMsg = hasMessagesSql();
   if (typeof section === "object" && "tag" in section) {
+    // Tag filters list everyone with the tag (displayable), even if they
+    // have no imported messages yet — otherwise Travel/Celebration/etc. look empty.
     return {
       sql: `
         SELECT DISTINCT c.*
@@ -117,7 +122,6 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         JOIN contact_tags ct ON ct.contact_id = c.id
         JOIN tags t ON t.id = ct.tag_id AND t.name = ?
         WHERE c.display = 1
-          ${hasMsg}
       `,
       params: [section.tag],
     };
