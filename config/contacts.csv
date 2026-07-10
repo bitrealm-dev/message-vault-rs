@@ -294,7 +294,7 @@ phones,first_name,middle_name,last_name,nickname,email,hidden,groups
 +14079635279,Evan,,Pederson,,,false,NC;People
 +14072428847,Priscilla,,Pederson,,prisped8@gmail.com,false,NC;People
 +14072800793,Tom,,Swartz,,tomswartz10@gmail.com,false,Historical;NC;People
-+14076761646,Pat,,Swartz,,,false,NC;People
++14076761646,Pat,,Swartz,,,false,NC;Historical;People
 +18632211449,Mark,,Rupert,,,false,NC;People
 +14076902506,D'Anna,,Rupert,,,false,NC;People
 +13214399360,Jimmy,,Crandall,,,false,NC;People
@@ -303,7 +303,7 @@ phones,first_name,middle_name,last_name,nickname,email,hidden,groups
 +12069488573,Jonathan,,Hrehov,,,false,NC;People
 +14076902089,Madison,,Thomas,,,false,Historical;People
 +14077251023,Julian,,Perez,,,false,People
-+13346188886,Sara,,York,,sarabea126@aol.com,false,People
++13346188886,Sara,,York,,sarabea126@aol.com,false,Historical;People
 +13366887850,Karl,,Hengeveld,,karl.hengeveld@cru.org,false,Historical;People
 +14078260216,Ben,,Rivera,,,false,Historical;People
 +16892389652,Thomas,,Hester,,,false,Historical;People
@@ -500,7 +500,7 @@ phones,first_name,middle_name,last_name,nickname,email,hidden,groups
 +19415256671,Devon,,Andrews,,devon.ducheneau@gmail.com,false,Fam;People
 +19414749141;+19418096230,Cathy,,Arp,,cmarp@aol.com,false,Fam;People
 +14074091136,,,,Mikayla,,false,People
-+16046536868;+14074709616,Alastair,,Sterne,,asterne@stpetersfireside.org,false,People
++16046536868;+14074709616,Alastair,,Sterne,,asterne@stpetersfireside.org,false,Historical;People
 +14077587670,,,,Jared,,false,Historical;People;TT
 +14075798984;+13055825394,2 Wheel Heaven,,,,,false,Historical;People
 +14076130544;+14076130936;+14079272966,Akil,,Meade,,,false,DBSA;Historical;People
