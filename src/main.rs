@@ -55,6 +55,10 @@ enum Commands {
         /// Delete and reload contacts from CSV even if the table is non-empty
         #[arg(long)]
         overwrite_contacts: bool,
+
+        /// Import mode: replace (wipe production) or append (dedupe by guid)
+        #[arg(long, default_value = "replace")]
+        mode: String,
     },
 
     /// Convert a message-vault contacts.vcf into contacts.csv
@@ -97,6 +101,7 @@ fn main() -> Result<()> {
             contacts_csv,
             blacklist_csv,
             overwrite_contacts,
+            mode,
         } => {
             let cfg = Config::load(&config)?;
             let export_dir = export_dir.unwrap_or(cfg.paths.export_dir);
@@ -104,6 +109,7 @@ fn main() -> Result<()> {
             let assets_dir = assets_dir.unwrap_or(cfg.paths.assets_dir);
             let contacts_csv = contacts_csv.unwrap_or(cfg.paths.contacts_csv);
             let blacklist_csv = blacklist_csv.unwrap_or(cfg.paths.blacklist_csv);
+            let mode = import::ImportMode::parse(&mode)?;
 
             let stats = import::import_export(
                 &export_dir,
@@ -112,9 +118,11 @@ fn main() -> Result<()> {
                 &contacts_csv,
                 &blacklist_csv,
                 overwrite_contacts,
+                mode,
             )?;
             println!("Imported into {}", db.display());
             println!("  config:        {}", config.display());
+            println!("  mode:          {}", stats.mode);
             println!(
                 "  owner:         {} ({})",
                 cfg.owner.display_name, cfg.owner.phone_e164
@@ -133,6 +141,10 @@ fn main() -> Result<()> {
             println!("  conversations: {}", stats.conversations);
             println!("  participants:  {}", stats.participants);
             println!("  messages:      {}", stats.messages);
+            println!("  messages deduped: {}", stats.messages_deduped);
+            if stats.mode == "append" {
+                println!("  messages appended: {}", stats.messages_appended);
+            }
             println!("  attachments:   {}", stats.attachments);
             println!("  tapbacks:      {}", stats.tapbacks);
             println!("  excl. convos:  {}", stats.conversations_excluded);

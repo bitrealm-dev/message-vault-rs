@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::assets::{self, AssetStats, StoredAsset};
 use crate::contacts;
@@ -10,6 +11,29 @@ use crate::exclude::ExcludeSet;
 use crate::models::{clean_body, AttachmentRecord, ExportRecord, MessageRecord};
 use crate::ndjson;
 use crate::schema;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportMode {
+    Replace,
+    Append,
+}
+
+impl ImportMode {
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "replace" => Ok(Self::Replace),
+            "append" => Ok(Self::Append),
+            other => bail!("invalid import mode '{other}' (expected replace or append)"),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Replace => "replace",
+            Self::Append => "append",
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct ImportStats {
@@ -29,6 +53,9 @@ pub struct ImportStats {
     pub conversations_excluded: u64,
     pub messages_excluded: u64,
     pub participants_excluded: u64,
+    pub messages_deduped: u64,
+    pub messages_appended: u64,
+    pub mode: String,
 }
 
 struct PreparedAttachment {
@@ -43,6 +70,7 @@ pub fn import_export(
     contacts_csv: &Path,
     blacklist_csv: &Path,
     overwrite_contacts: bool,
+    mode: ImportMode,
 ) -> Result<ImportStats> {
     if !export_dir.is_dir() {
         bail!("export directory does not exist: {}", export_dir.display());
@@ -65,7 +93,10 @@ pub fn import_export(
         contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
     let exclude = ExcludeSet::load(blacklist_csv)?;
 
-    schema::recreate_messages(&conn)?;
+    schema::recreate_staging(&conn)?;
+    if mode == ImportMode::Append {
+        schema::ensure_messages_schema(&conn)?;
+    }
 
     let mut paths: Vec<_> = fs::read_dir(export_dir)
         .with_context(|| format!("failed to read {}", export_dir.display()))?
@@ -84,23 +115,42 @@ pub fn import_export(
         contact_phones: contact_stats.phones,
         contact_tag_links: contact_stats.tags,
         contacts_skipped: contact_stats.skipped,
+        mode: mode.as_str().to_string(),
         ..Default::default()
     };
     let mut asset_stats = AssetStats::default();
 
     for path in paths {
         let file_stats =
-            import_file(&mut conn, export_dir, assets_dir, &path, &exclude, &mut asset_stats)?;
+            import_file_to_staging(&mut conn, export_dir, assets_dir, &path, &exclude, &mut asset_stats)?;
         stats.conversations += file_stats.conversations;
         stats.participants += file_stats.participants;
         stats.messages += file_stats.messages;
         stats.attachments += file_stats.attachments;
         stats.tapbacks += file_stats.tapbacks;
+        stats.messages_deduped += file_stats.messages_deduped;
         stats.conversations_excluded += file_stats.conversations_excluded;
         stats.messages_excluded += file_stats.messages_excluded;
         stats.participants_excluded += file_stats.participants_excluded;
         stats.files += 1;
     }
+
+    let promote_stats = match mode {
+        ImportMode::Replace => promote_replace(&mut conn)?,
+        ImportMode::Append => promote_append(&mut conn)?,
+    };
+    stats.messages_deduped += promote_stats.messages_deduped;
+    stats.messages_appended = promote_stats.messages_appended;
+    if mode == ImportMode::Append {
+        // Staging load counts are not production inserts; report what was appended.
+        stats.conversations = promote_stats.conversations;
+        stats.participants = promote_stats.participants;
+        stats.messages = promote_stats.messages;
+        stats.attachments = promote_stats.attachments;
+        stats.tapbacks = promote_stats.tapbacks;
+    }
+
+    schema::clear_staging(&conn)?;
 
     stats.assets_copied = asset_stats.copied;
     stats.assets_deduped = asset_stats.deduped;
@@ -136,7 +186,7 @@ fn prepare_attachments(
     Ok(prepared)
 }
 
-fn import_file(
+fn import_file_to_staging(
     conn: &mut Connection,
     export_dir: &Path,
     assets_dir: &Path,
@@ -266,7 +316,7 @@ fn import_file(
 
     tx.execute(
         r#"
-        INSERT INTO conversations (
+        INSERT INTO staging_conversations (
             chat_identifier, service, conv_type, group_title, exported_at, source_file
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         "#,
@@ -285,7 +335,7 @@ fn import_file(
     for (handle, name_hint) in kept_participants {
         tx.execute(
             r#"
-            INSERT INTO participants (conversation_id, handle, name_hint)
+            INSERT INTO staging_participants (conversation_id, handle, name_hint)
             VALUES (?1, ?2, ?3)
             "#,
             params![conversation_id, handle, name_hint],
@@ -301,9 +351,9 @@ fn import_file(
             clean_body(msg.text.as_deref())
         };
 
-        tx.execute(
+        let inserted = tx.execute(
             r#"
-            INSERT INTO messages (
+            INSERT OR IGNORE INTO staging_messages (
                 conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
                 subject, body, is_announcement, is_reply, thread_originator_guid,
                 thread_originator_part, num_replies, sort_order
@@ -328,6 +378,12 @@ fn import_file(
                 sort_order as i64,
             ],
         )?;
+
+        if inserted == 0 {
+            stats.messages_deduped += 1;
+            continue;
+        }
+
         let message_id = tx.last_insert_rowid();
         stats.messages += 1;
 
@@ -344,7 +400,7 @@ fn import_file(
 
             tx.execute(
                 r#"
-                INSERT INTO attachments (
+                INSERT INTO staging_attachments (
                     message_id, path, original_name, mime_type, is_sticker, transcription,
                     sha256, assets_path
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -366,7 +422,7 @@ fn import_file(
         for tap in msg.tapbacks {
             tx.execute(
                 r#"
-                INSERT INTO tapbacks (
+                INSERT INTO staging_tapbacks (
                     message_id, part_index, kind, emoji, is_from_me, sender
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                 "#,
@@ -381,6 +437,367 @@ fn import_file(
             )?;
             stats.tapbacks += 1;
         }
+    }
+
+    tx.commit()?;
+    Ok(stats)
+}
+
+#[derive(Debug, Default)]
+struct PromoteStats {
+    conversations: u64,
+    participants: u64,
+    messages: u64,
+    attachments: u64,
+    tapbacks: u64,
+    messages_deduped: u64,
+    messages_appended: u64,
+}
+
+fn promote_replace(conn: &mut Connection) -> Result<PromoteStats> {
+    schema::recreate_messages(conn)?;
+
+    let tx = conn.transaction()?;
+    tx.execute_batch(
+        r#"
+        INSERT INTO conversations
+            SELECT * FROM staging_conversations;
+        INSERT INTO participants
+            SELECT * FROM staging_participants;
+        INSERT INTO messages
+            SELECT * FROM staging_messages;
+        INSERT INTO attachments
+            SELECT * FROM staging_attachments;
+        INSERT INTO tapbacks
+            SELECT * FROM staging_tapbacks;
+        "#,
+    )?;
+    tx.commit()?;
+    Ok(PromoteStats::default())
+}
+
+fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
+    let mut stats = PromoteStats::default();
+    let tx = conn.transaction()?;
+
+    let mut staging_convs = tx.prepare(
+        r#"
+        SELECT id, chat_identifier, service, conv_type, group_title, exported_at, source_file
+        FROM staging_conversations
+        ORDER BY id
+        "#,
+    )?;
+
+    let staging_conv_rows: Vec<(
+        i64,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+    )> = staging_convs
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(staging_convs);
+
+    let mut conv_map: HashMap<i64, i64> = HashMap::new();
+
+    for (staging_id, chat_identifier, service, conv_type, group_title, exported_at, source_file) in
+        staging_conv_rows
+    {
+        let existing: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM conversations WHERE chat_identifier = ?1",
+                params![chat_identifier],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let prod_id = if let Some(id) = existing {
+            tx.execute(
+                r#"
+                UPDATE conversations SET
+                    service = COALESCE(?2, service),
+                    conv_type = ?3,
+                    group_title = COALESCE(?4, group_title),
+                    exported_at = COALESCE(?5, exported_at),
+                    source_file = ?6
+                WHERE id = ?1
+                "#,
+                params![id, service, conv_type, group_title, exported_at, source_file],
+            )?;
+            id
+        } else {
+            tx.execute(
+                r#"
+                INSERT INTO conversations (
+                    chat_identifier, service, conv_type, group_title, exported_at, source_file
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+                params![
+                    chat_identifier,
+                    service,
+                    conv_type,
+                    group_title,
+                    exported_at,
+                    source_file,
+                ],
+            )?;
+            stats.conversations += 1;
+            tx.last_insert_rowid()
+        };
+        conv_map.insert(staging_id, prod_id);
+    }
+
+    let mut staging_parts = tx.prepare(
+        "SELECT conversation_id, handle, name_hint FROM staging_participants ORDER BY id",
+    )?;
+    let staging_part_rows: Vec<(i64, String, Option<String>)> = staging_parts
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(staging_parts);
+
+    for (staging_conv_id, handle, name_hint) in staging_part_rows {
+        let Some(&prod_conv_id) = conv_map.get(&staging_conv_id) else {
+            continue;
+        };
+        let inserted = tx.execute(
+            r#"
+            INSERT OR IGNORE INTO participants (conversation_id, handle, name_hint)
+            VALUES (?1, ?2, ?3)
+            "#,
+            params![prod_conv_id, handle, name_hint],
+        )?;
+        if inserted > 0 {
+            stats.participants += 1;
+        }
+    }
+
+    let mut staging_msgs = tx.prepare(
+        r#"
+        SELECT id, conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
+               subject, body, is_announcement, is_reply, thread_originator_guid,
+               thread_originator_part, num_replies, sort_order
+        FROM staging_messages
+        ORDER BY id
+        "#,
+    )?;
+
+    let staging_msg_rows: Vec<(
+        i64,
+        i64,
+        Option<String>,
+        String,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        i64,
+        Option<String>,
+        Option<i64>,
+        i64,
+        i64,
+    )> = staging_msgs
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+                row.get(8)?,
+                row.get(9)?,
+                row.get(10)?,
+                row.get(11)?,
+                row.get(12)?,
+                row.get(13)?,
+                row.get(14)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(staging_msgs);
+
+    let mut msg_map: HashMap<i64, i64> = HashMap::new();
+
+    for (
+        staging_msg_id,
+        staging_conv_id,
+        guid,
+        timestamp,
+        timestamp_utc,
+        is_from_me,
+        sender,
+        subject,
+        body,
+        is_announcement,
+        is_reply,
+        thread_originator_guid,
+        thread_originator_part,
+        num_replies,
+        sort_order,
+    ) in staging_msg_rows
+    {
+        let Some(&prod_conv_id) = conv_map.get(&staging_conv_id) else {
+            continue;
+        };
+
+        let guid_nonempty = guid.as_deref().is_some_and(|g| !g.is_empty());
+        if guid_nonempty {
+            let exists: bool = tx.query_row(
+                "SELECT COUNT(*) > 0 FROM messages WHERE guid = ?1",
+                params![guid],
+                |row| row.get(0),
+            )?;
+            if exists {
+                stats.messages_deduped += 1;
+                continue;
+            }
+        }
+
+        tx.execute(
+            r#"
+            INSERT INTO messages (
+                conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
+                subject, body, is_announcement, is_reply, thread_originator_guid,
+                thread_originator_part, num_replies, sort_order
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+            )
+            "#,
+            params![
+                prod_conv_id,
+                guid,
+                timestamp,
+                timestamp_utc,
+                is_from_me,
+                sender,
+                subject,
+                body,
+                is_announcement,
+                is_reply,
+                thread_originator_guid,
+                thread_originator_part,
+                num_replies,
+                sort_order,
+            ],
+        )?;
+        let prod_msg_id = tx.last_insert_rowid();
+        msg_map.insert(staging_msg_id, prod_msg_id);
+        stats.messages += 1;
+        stats.messages_appended += 1;
+    }
+
+    let mut staging_atts = tx.prepare(
+        r#"
+        SELECT message_id, path, original_name, mime_type, is_sticker, transcription,
+               sha256, assets_path
+        FROM staging_attachments
+        ORDER BY id
+        "#,
+    )?;
+    let staging_att_rows: Vec<(
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = staging_atts
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(staging_atts);
+
+    for (staging_msg_id, path, original_name, mime_type, is_sticker, transcription, sha256, assets_path) in
+        staging_att_rows
+    {
+        let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
+            continue;
+        };
+        tx.execute(
+            r#"
+            INSERT INTO attachments (
+                message_id, path, original_name, mime_type, is_sticker, transcription,
+                sha256, assets_path
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+            params![
+                prod_msg_id,
+                path,
+                original_name,
+                mime_type,
+                is_sticker,
+                transcription,
+                sha256,
+                assets_path,
+            ],
+        )?;
+        stats.attachments += 1;
+    }
+
+    let mut staging_taps = tx.prepare(
+        r#"
+        SELECT message_id, part_index, kind, emoji, is_from_me, sender
+        FROM staging_tapbacks
+        ORDER BY id
+        "#,
+    )?;
+    let staging_tap_rows: Vec<(i64, i64, String, Option<String>, i64, Option<String>)> =
+        staging_taps
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+    drop(staging_taps);
+
+    for (staging_msg_id, part_index, kind, emoji, is_from_me, sender) in staging_tap_rows {
+        let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
+            continue;
+        };
+        tx.execute(
+            r#"
+            INSERT INTO tapbacks (
+                message_id, part_index, kind, emoji, is_from_me, sender
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+            params![prod_msg_id, part_index, kind, emoji, is_from_me, sender],
+        )?;
+        stats.tapbacks += 1;
     }
 
     tx.commit()?;
