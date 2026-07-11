@@ -26,7 +26,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Import imessage-exporter NDJSON into SQLite
+    /// Import imessage-json NDJSON into SQLite
     Import {
         /// Path to config.toml
         #[arg(long, default_value = "config/config.toml")]

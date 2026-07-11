@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "record", rename_all = "snake_case")]
@@ -30,13 +31,25 @@ pub struct MessageRecord {
     pub guid: Option<String>,
     pub timestamp: String,
     pub timestamp_utc: Option<String>,
+    pub timestamp_read: Option<String>,
+    pub timestamp_delivered: Option<String>,
     pub is_from_me: bool,
     pub sender: Option<String>,
+    pub service: Option<String>,
     pub subject: Option<String>,
     pub text: Option<String>,
     #[serde(default)]
     pub is_announcement: bool,
     pub announcement: Option<String>,
+    #[serde(default)]
+    pub is_deleted: bool,
+    pub expressive: Option<String>,
+    pub shared_location: Option<String>,
+    pub balloon: Option<Value>,
+    #[serde(default)]
+    pub parts: Vec<Value>,
+    #[serde(default)]
+    pub edits: Vec<Value>,
     #[serde(default)]
     pub attachments: Vec<AttachmentRecord>,
     #[serde(default)]
@@ -57,6 +70,8 @@ pub struct AttachmentRecord {
     #[serde(default)]
     pub is_sticker: bool,
     pub transcription: Option<String>,
+    pub genmoji_prompt: Option<String>,
+    pub sticker_effect: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,4 +89,20 @@ pub struct TapbackRecord {
 pub fn clean_body(text: Option<&str>) -> Option<String> {
     text.map(|s| s.replace('\u{FFFC}', "").trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// Serialize a non-empty JSON array to a TEXT column value.
+pub fn json_array_column(values: &[Value]) -> Option<String> {
+    if values.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(values).expect("serde_json::Value serializes"))
+    }
+}
+
+/// Serialize an optional JSON object to a TEXT column value.
+pub fn json_value_column(value: &Option<Value>) -> Option<String> {
+    value
+        .as_ref()
+        .map(|v| serde_json::to_string(v).expect("serde_json::Value serializes"))
 }

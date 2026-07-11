@@ -4,7 +4,7 @@ Import iMessage exports into SQLite and browse them in a local web UI — with o
 
 ## Features
 
-- **Import from imessage-exporter NDJSON** into a single SQLite database
+- **Import from [imessage-json](https://github.com/bitrealm-dev/imessage-json) NDJSON** (schema v3) into a single SQLite database
 - **Replace or append** imports via a staging area (dedupe by message `guid`; no run/version concept)
 - **Content-addressed originals** in `data/assets` (SHA-256; never overwritten by processing)
 - **Derived media** via `@napi-rs/image` + ffmpeg into `data/derived` (pick at render time)
@@ -19,7 +19,7 @@ Import iMessage exports into SQLite and browse them in a local web UI — with o
 | Node.js 20+ | Web UI + `process-assets` |
 | [ffmpeg](https://ffmpeg.org/) (+ HEIF/libheif on Linux for HEIC) | Video/audio derived media; Linux HEIC decode |
 
-Export your messages with [imessage-exporter](https://github.com/ReagentX/imessage-exporter) in NDJSON form and point `paths.export_dir` at that folder.
+Export your messages with [imessage-json](https://github.com/bitrealm-dev/imessage-json) (`-f json`) and point `paths.export_dir` at that folder. Schema v2 exports still import; unknown/missing v3 fields are stored as NULL. Nested v3 payloads (`parts`, `edits`, `balloon`) are kept as JSON TEXT columns. To backfill new columns on an existing DB, reimport with `--mode replace`.
 
 ## Installation
 
@@ -144,7 +144,7 @@ blacklist_csv = "config/blacklist.csv"
 
 ```mermaid
 flowchart LR
-  export[imessage-exporter NDJSON] --> import[Rust import]
+  export[imessage-json NDJSON v3] --> import[Rust import]
   import --> assets[data/assets originals]
   import --> db[(SQLite)]
   db --> process[npm run process-assets]
@@ -169,6 +169,7 @@ Pull requests welcome. Please:
 
 ## Acknowledgments
 
-- [imessage-exporter](https://github.com/ReagentX/imessage-exporter) for NDJSON exports
+- [imessage-json](https://github.com/bitrealm-dev/imessage-json) for NDJSON schema v3 exports
+- [imessage-exporter](https://github.com/ReagentX/imessage-exporter) (upstream of the JSON fork)
 - [@napi-rs/image](https://image.napi.rs/) for image convert/compress
 - Inspired by the earlier [message-vault](https://github.com/bitrealm-dev/message-vault) Python pipeline
