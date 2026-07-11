@@ -40,3 +40,5 @@ target
 !/sources/.gitkeep
 /staging/*
 !/staging/.gitkeep
+
+message-exporter/
