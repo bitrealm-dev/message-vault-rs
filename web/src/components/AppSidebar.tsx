@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { useSourceFilter } from "./SourceFilter";
 
 function PeopleGroupIcon({ className }: { className?: string }) {
   return (
@@ -541,6 +542,7 @@ export function AppSidebar({
   tags?: string[];
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { sources, source, setSource } = useSourceFilter();
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
@@ -579,14 +581,33 @@ export function AppSidebar({
           )}
         </button>
         {!collapsed && (
-          <Link
-            href="/"
-            className="min-w-0 truncate text-[14px] font-semibold tracking-tight text-text hover:text-accent"
-          >
+          <span className="truncate text-[13px] font-medium text-text">
             Message Vault
-          </Link>
+          </span>
         )}
       </div>
+      {!collapsed && sources.length > 0 && (
+        <div className="border-b border-border px-2 py-2">
+          <label className="block text-[10px] font-medium tracking-wide text-muted uppercase">
+            Source
+          </label>
+          <select
+            className="mt-1 w-full rounded-md border border-border bg-elevated px-2 py-1.5 text-[12px] text-text outline-none"
+            value={source ?? "all"}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSource(v === "all" ? null : v);
+            }}
+          >
+            <option value="all">All (combined)</option>
+            {sources.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">

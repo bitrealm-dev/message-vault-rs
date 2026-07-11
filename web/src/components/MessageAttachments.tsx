@@ -8,33 +8,35 @@ function isVideoMime(mime: string | null): boolean {
   return Boolean(mime?.startsWith("video/"));
 }
 
-function mediaVariant(): "lq" | "hq" {
-  // Client components: Next inlines NEXT_PUBLIC_* at build time.
+function mediaVariant(): "converted" | "original" {
   const raw = (
     process.env.NEXT_PUBLIC_MEDIA_VARIANT ??
     process.env.MEDIA_VARIANT ??
-    "lq"
+    "converted"
   )
     .trim()
     .toLowerCase();
-  if (raw === "hq" || raw === "original") return "hq";
-  return "lq";
+  if (raw === "hq" || raw === "original" || raw === "assets") return "original";
+  return "converted";
 }
 
-function resolveAttachmentMedia(a: AttachmentRow): {
+function resolveAttachmentMedia(
+  source: string,
+  a: AttachmentRow,
+): {
   url: string | null;
   mimeType: string | null;
 } {
-  const preferLq = mediaVariant() === "lq";
-  if (preferLq && a.derivedAssetsPath) {
+  const preferConverted = mediaVariant() === "converted";
+  if (preferConverted && a.derivedAssetsPath) {
     return {
-      url: `/api/assets_lq/${a.derivedAssetsPath}`,
+      url: `/api/assets_converted/${encodeURIComponent(source)}/${a.derivedAssetsPath}`,
       mimeType: a.derivedMimeType ?? a.mimeType,
     };
   }
   if (a.assetsPath) {
     return {
-      url: `/api/assets_hq/${a.assetsPath}`,
+      url: `/api/assets/${encodeURIComponent(source)}/${a.assetsPath}`,
       mimeType: a.mimeType,
     };
   }
@@ -81,9 +83,11 @@ function MissingMediaPlaceholder({
 }
 
 export function MessageAttachments({
+  source,
   attachments,
   hasBody,
 }: {
+  source: string;
   attachments: AttachmentRow[];
   hasBody?: boolean;
 }) {
@@ -92,7 +96,7 @@ export function MessageAttachments({
   return (
     <div className={`${hasBody ? "mt-2" : ""} space-y-1.5`}>
       {attachments.map((a) => {
-        const { url, mimeType } = resolveAttachmentMedia(a);
+        const { url, mimeType } = resolveAttachmentMedia(source, a);
         if (url && isImageMime(mimeType)) {
           return (
             // eslint-disable-next-line @next/next/no-img-element

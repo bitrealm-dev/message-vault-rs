@@ -262,11 +262,17 @@ export function contactPhones(contactId: number): string[] {
   ).map((r) => r.phone_e164);
 }
 
-export function contactYearlyThreads(contactId: number): YearThread[] {
+export function contactYearlyThreads(
+  contactId: number,
+  source?: string | null,
+): YearThread[] {
   const phones = contactPhones(contactId);
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
+  const sourceSql = source ? " AND m.source = ?" : "";
+  const params: Array<string | number> = [...phones];
+  if (source) params.push(source);
   const rows = db
     .prepare(
       `SELECT CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
@@ -277,11 +283,11 @@ export function contactYearlyThreads(contactId: number): YearThread[] {
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'individual'
-         AND c.chat_identifier IN (${placeholders})
+         AND c.chat_identifier IN (${placeholders})${sourceSql}
        GROUP BY year
        ORDER BY year DESC`,
     )
-    .all(...phones) as Array<{
+    .all(...params) as Array<{
     year: number;
     message_count: number;
     date_start: string;
@@ -442,11 +448,17 @@ function groupPeopleTitles(
   return out;
 }
 
-export function contactGroupThreads(contactId: number): GroupThread[] {
+export function contactGroupThreads(
+  contactId: number,
+  source?: string | null,
+): GroupThread[] {
   const phones = contactPhones(contactId);
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
+  const sourceSql = source ? " AND m.source = ?" : "";
+  const params: Array<string | number> = [...phones];
+  if (source) params.push(source);
   const rows = db
     .prepare(
       `SELECT c.id AS conversation_id,
@@ -458,11 +470,11 @@ export function contactGroupThreads(contactId: number): GroupThread[] {
        JOIN participants p ON p.conversation_id = c.id
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'group'
-         AND p.handle IN (${placeholders})
+         AND p.handle IN (${placeholders})${sourceSql}
        GROUP BY c.id, year
        ORDER BY year DESC, c.id`,
     )
-    .all(...phones) as Array<{
+    .all(...params) as Array<{
     conversation_id: number;
     year: number;
     message_count: number;
@@ -544,8 +556,14 @@ export function listGroups(): GroupListItem[] {
   return items;
 }
 
-export function groupYearlyThreads(conversationId: number): YearThread[] {
+export function groupYearlyThreads(
+  conversationId: number,
+  source?: string | null,
+): YearThread[] {
   const db = getDb();
+  const sourceSql = source ? " AND source = ?" : "";
+  const params: Array<string | number> = [conversationId];
+  if (source) params.push(source);
   const rows = db
     .prepare(
       `SELECT conversation_id,
@@ -554,11 +572,11 @@ export function groupYearlyThreads(conversationId: number): YearThread[] {
               MIN(substr(timestamp, 1, 10)) AS date_start,
               MAX(substr(timestamp, 1, 10)) AS date_end
        FROM messages
-       WHERE conversation_id = ?
+       WHERE conversation_id = ?${sourceSql}
        GROUP BY year
        ORDER BY year DESC`,
     )
-    .all(conversationId) as Array<{
+    .all(...params) as Array<{
     conversation_id: number;
     year: number;
     message_count: number;
@@ -578,6 +596,7 @@ export function groupYearlyThreads(conversationId: number): YearThread[] {
 export function messagesForConversationYear(
   conversationIds: number | number[],
   year: number,
+  source?: string | null,
 ): MessageRow[] {
   const ids = (Array.isArray(conversationIds) ? conversationIds : [conversationIds]).filter(
     (id) => Number.isFinite(id),
@@ -586,9 +605,12 @@ export function messagesForConversationYear(
   const db = getDb();
   const owner = loadOwner();
   const placeholders = ids.map(() => "?").join(",");
+  const sourceSql = source ? " AND m.source = ?" : "";
+  const params: Array<string | number> = [...ids, year];
+  if (source) params.push(source);
   const rows = db
     .prepare(
-      `SELECT m.id, m.timestamp, m.is_from_me, m.sender, m.body, m.is_announcement,
+      `SELECT m.id, m.source, m.timestamp, m.is_from_me, m.sender, m.body, m.is_announcement,
               c.first_name, c.last_name, c.preferred_phone,
               p.name_hint
        FROM messages m
@@ -597,11 +619,12 @@ export function messagesForConversationYear(
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
        WHERE m.conversation_id IN (${placeholders})
-         AND CAST(substr(m.timestamp, 1, 4) AS INTEGER) = ?
+         AND CAST(substr(m.timestamp, 1, 4) AS INTEGER) = ?${sourceSql}
        ORDER BY m.timestamp, m.sort_order`,
     )
-    .all(...ids, year) as Array<{
+    .all(...params) as Array<{
     id: number;
+    source: string;
     timestamp: string;
     is_from_me: number;
     sender: string | null;
@@ -659,6 +682,7 @@ export function messagesForConversationYear(
 
     return {
       id: r.id,
+      source: r.source,
       timestamp: r.timestamp,
       isFromMe,
       sender: r.sender,

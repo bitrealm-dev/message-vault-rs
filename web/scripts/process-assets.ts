@@ -1,10 +1,10 @@
 #!/usr/bin/env npx tsx
 /**
- * Generate low-quality media beside high-quality originals.
+ * Generate converted media beside originals for each configured source.
  *
  * Usage (from web/):
  *   npm run process-assets -- [--force] [--dry-run] [--skip-image] [--skip-video] [--skip-audio]
- *     [--db PATH] [--assets-hq PATH] [--assets-lq PATH]
+ *     [--db PATH] [--source ID]
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -62,8 +62,13 @@ type Flags = {
   skipVideo: boolean;
   skipAudio: boolean;
   db?: string;
-  assetsHq?: string;
-  assetsLq?: string;
+  source?: string;
+};
+
+type SourcePaths = {
+  id: string;
+  assetsDir: string;
+  assetsConvertedDir: string;
 };
 
 type AssetRow = {
@@ -82,37 +87,69 @@ type DerivedBlob = {
 
 function repoRoot(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  // web/scripts -> repo root
   return path.resolve(here, "../..");
 }
 
-function loadPaths(flags: Flags) {
+function loadConfig(flags: Flags): { db: string; sources: SourcePaths[] } {
   const root = repoRoot();
   const configPath = path.join(root, "config", "config.toml");
   const text = fs.readFileSync(configPath, "utf8");
   const cfg = parse(text) as {
     paths?: {
       db?: string;
-      assets_hq?: string;
-      assets_lq?: string;
+      data_dir?: string;
       assets_dir?: string;
-      derived_dir?: string;
+      assets_converted_dir?: string;
+      export_dir?: string;
     };
+    sources?: Array<{
+      id?: string;
+      assets_dir?: string;
+      assets_converted_dir?: string;
+    }>;
   };
   const resolve = (rel: string | undefined, fallback: string) => {
     const value = (rel?.trim() || fallback).trim();
     return path.isAbsolute(value) ? value : path.join(root, value);
   };
+  const dataDir = resolve(cfg.paths?.data_dir, "data");
+  const assetsName = cfg.paths?.assets_dir?.trim() || "assets";
+  const convertedName = cfg.paths?.assets_converted_dir?.trim() || "assets_converted";
+
+  let sources: SourcePaths[] = (cfg.sources ?? [])
+    .filter((s) => s.id?.trim())
+    .map((s) => {
+      const id = s.id!.trim();
+      const assetsDir = s.assets_dir?.trim()
+        ? resolve(s.assets_dir, path.join(dataDir, id, assetsName))
+        : path.join(dataDir, id, assetsName);
+      const assetsConvertedDir = s.assets_converted_dir?.trim()
+        ? resolve(s.assets_converted_dir, path.join(dataDir, id, convertedName))
+        : path.join(dataDir, id, convertedName);
+      return { id, assetsDir, assetsConvertedDir };
+    });
+
+  if (!sources.length && cfg.paths?.export_dir) {
+    const id = "default";
+    sources = [
+      {
+        id,
+        assetsDir: path.join(dataDir, id, assetsName),
+        assetsConvertedDir: path.join(dataDir, id, convertedName),
+      },
+    ];
+  }
+
+  if (flags.source) {
+    sources = sources.filter((s) => s.id === flags.source);
+    if (!sources.length) {
+      throw new Error(`unknown source '${flags.source}'`);
+    }
+  }
+
   return {
-    db: flags.db
-      ? path.resolve(flags.db)
-      : resolve(cfg.paths?.db, "data/imessage.db"),
-    assetsHq: flags.assetsHq
-      ? path.resolve(flags.assetsHq)
-      : resolve(cfg.paths?.assets_hq ?? cfg.paths?.assets_dir, "data/assets_hq"),
-    assetsLq: flags.assetsLq
-      ? path.resolve(flags.assetsLq)
-      : resolve(cfg.paths?.assets_lq ?? cfg.paths?.derived_dir, "data/assets_lq"),
+    db: flags.db ? path.resolve(flags.db) : resolve(cfg.paths?.db, "data/vault.db"),
+    sources,
   };
 }
 
@@ -130,11 +167,8 @@ function parseFlags(argv: string[]): Flags {
     if (a === "--db" && next) {
       flags.db = next;
       i++;
-    } else if ((a === "--assets-hq" || a === "--assets-dir") && next) {
-      flags.assetsHq = next;
-      i++;
-    } else if ((a === "--assets-lq" || a === "--derived-dir") && next) {
-      flags.assetsLq = next;
+    } else if (a === "--source" && next) {
+      flags.source = next;
       i++;
     }
   }
@@ -376,16 +410,14 @@ function deriveAudio(sourcePath: string, workDir: string): string | null {
 
 async function main() {
   const flags = parseFlags(process.argv.slice(2));
-  const { db: dbPath, assetsHq, assetsLq } = loadPaths(flags);
+  const { db: dbPath, sources } = loadConfig(flags);
 
   if (!fs.existsSync(dbPath)) {
     throw new Error(`database not found: ${dbPath}`);
   }
-  if (!fs.existsSync(assetsHq)) {
-    throw new Error(`assets_hq dir not found: ${assetsHq}`);
+  if (!sources.length) {
+    throw new Error("no sources configured in config.toml");
   }
-
-  fs.mkdirSync(assetsLq, { recursive: true });
 
   const db = new Database(dbPath);
   db.pragma("foreign_keys = ON");
@@ -399,7 +431,6 @@ async function main() {
     throw new Error(`no attachments table in ${dbPath} — run import first`);
   }
 
-  // Ensure derived columns exist (for DBs created before this feature).
   const cols = db.prepare(`PRAGMA table_info(attachments)`).all() as Array<{ name: string }>;
   const names = new Set(cols.map((c) => c.name));
   if (!names.has("derived_sha256")) {
@@ -410,22 +441,12 @@ async function main() {
     `);
   }
 
-  const rows = db
-    .prepare(
-      `
-      SELECT DISTINCT sha256, assets_path, mime_type, derived_sha256, derived_assets_path
-      FROM attachments
-      WHERE sha256 IS NOT NULL AND sha256 != '' AND assets_path IS NOT NULL AND assets_path != ''
-      ORDER BY sha256
-    `,
-    )
-    .all() as AssetRow[];
-
-  const update = db.prepare(`
-    UPDATE attachments
-    SET derived_sha256 = ?, derived_assets_path = ?, derived_mime_type = ?
-    WHERE sha256 = ?
-  `);
+  const msgCols = db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>;
+  if (!msgCols.some((c) => c.name === "source")) {
+    throw new Error(
+      "messages.source missing — re-import with the multi-source schema before process-assets",
+    );
+  }
 
   let scanned = 0;
   let skipped = 0;
@@ -435,96 +456,129 @@ async function main() {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "mv-derived-"));
 
   try {
-    for (const row of rows) {
-      scanned += 1;
-      const kind = kindOf(row.assets_path, row.mime_type);
+    for (const src of sources) {
+      console.log(`source ${src.id}: assets=${src.assetsDir}`);
+      if (!fs.existsSync(src.assetsDir)) {
+        console.warn(`  skip — assets dir missing`);
+        continue;
+      }
+      fs.mkdirSync(src.assetsConvertedDir, { recursive: true });
 
-      if (kind === "image" && flags.skipImage) {
-        skipped += 1;
-        continue;
-      }
-      if (kind === "video" && flags.skipVideo) {
-        skipped += 1;
-        continue;
-      }
-      if (kind === "audio" && flags.skipAudio) {
-        skipped += 1;
-        continue;
-      }
-      if (kind === "other") {
-        skipped += 1;
-        continue;
-      }
+      const rows = db
+        .prepare(
+          `
+          SELECT DISTINCT a.sha256, a.assets_path, a.mime_type, a.derived_sha256, a.derived_assets_path
+          FROM attachments a
+          JOIN messages m ON m.id = a.message_id
+          WHERE m.source = ?
+            AND a.sha256 IS NOT NULL AND a.sha256 != ''
+            AND a.assets_path IS NOT NULL AND a.assets_path != ''
+          ORDER BY a.sha256
+        `,
+        )
+        .all(src.id) as AssetRow[];
 
-      if (
-        !flags.force &&
-        row.derived_assets_path &&
-        fs.existsSync(path.join(assetsLq, row.derived_assets_path))
-      ) {
-        skipped += 1;
-        continue;
-      }
+      const update = db.prepare(`
+        UPDATE attachments
+        SET derived_sha256 = ?, derived_assets_path = ?, derived_mime_type = ?
+        WHERE sha256 = ?
+          AND message_id IN (SELECT id FROM messages WHERE source = ?)
+      `);
 
-      const sourcePath = path.join(assetsHq, row.assets_path);
-      if (!fs.existsSync(sourcePath)) {
-        console.warn(`missing original: ${row.assets_path}`);
-        errors += 1;
-        continue;
-      }
+      for (const row of rows) {
+        scanned += 1;
+        const kind = kindOf(row.assets_path, row.mime_type);
 
-      try {
-        let blob: DerivedBlob | null = null;
-
-        if (kind === "image") {
-          const jpeg = await deriveImage(sourcePath);
-          if (!jpeg) {
-            skipped += 1;
-            continue;
-          }
-          if (flags.dryRun) {
-            console.log(`[dry-run] image ${row.assets_path} -> jpeg ${jpeg.length} bytes`);
-            derived += 1;
-            continue;
-          }
-          blob = storeDerived(assetsLq, jpeg, ".jpg");
-        } else if (kind === "video") {
-          const out = deriveVideo(sourcePath, workDir);
-          if (!out) {
-            skipped += 1;
-            continue;
-          }
-          if (flags.dryRun) {
-            console.log(`[dry-run] video ${row.assets_path} -> mp4`);
-            derived += 1;
-            fs.unlinkSync(out);
-            continue;
-          }
-          blob = storeDerivedFile(assetsLq, out, ".mp4");
-          fs.unlinkSync(out);
-        } else if (kind === "audio") {
-          const out = deriveAudio(sourcePath, workDir);
-          if (!out) {
-            skipped += 1;
-            continue;
-          }
-          if (flags.dryRun) {
-            console.log(`[dry-run] audio ${row.assets_path} -> mp3`);
-            derived += 1;
-            fs.unlinkSync(out);
-            continue;
-          }
-          blob = storeDerivedFile(assetsLq, out, ".mp3");
-          fs.unlinkSync(out);
+        if (kind === "image" && flags.skipImage) {
+          skipped += 1;
+          continue;
+        }
+        if (kind === "video" && flags.skipVideo) {
+          skipped += 1;
+          continue;
+        }
+        if (kind === "audio" && flags.skipAudio) {
+          skipped += 1;
+          continue;
+        }
+        if (kind === "other") {
+          skipped += 1;
+          continue;
         }
 
-        if (blob) {
-          update.run(blob.sha256, blob.assetsPath, blob.mimeType, row.sha256);
-          derived += 1;
-          console.log(`${row.assets_path} -> ${blob.assetsPath}`);
+        if (
+          !flags.force &&
+          row.derived_assets_path &&
+          fs.existsSync(path.join(src.assetsConvertedDir, row.derived_assets_path))
+        ) {
+          skipped += 1;
+          continue;
         }
-      } catch (err) {
-        errors += 1;
-        console.error(`failed ${row.assets_path}:`, err instanceof Error ? err.message : err);
+
+        const sourcePath = path.join(src.assetsDir, row.assets_path);
+        if (!fs.existsSync(sourcePath)) {
+          console.warn(`missing original: ${src.id}/${row.assets_path}`);
+          errors += 1;
+          continue;
+        }
+
+        try {
+          let blob: DerivedBlob | null = null;
+
+          if (kind === "image") {
+            const jpeg = await deriveImage(sourcePath);
+            if (!jpeg) {
+              skipped += 1;
+              continue;
+            }
+            if (flags.dryRun) {
+              console.log(`[dry-run] image ${src.id}/${row.assets_path} -> jpeg ${jpeg.length} bytes`);
+              derived += 1;
+              continue;
+            }
+            blob = storeDerived(src.assetsConvertedDir, jpeg, ".jpg");
+          } else if (kind === "video") {
+            const out = deriveVideo(sourcePath, workDir);
+            if (!out) {
+              skipped += 1;
+              continue;
+            }
+            if (flags.dryRun) {
+              console.log(`[dry-run] video ${src.id}/${row.assets_path} -> mp4`);
+              derived += 1;
+              fs.unlinkSync(out);
+              continue;
+            }
+            blob = storeDerivedFile(src.assetsConvertedDir, out, ".mp4");
+            fs.unlinkSync(out);
+          } else if (kind === "audio") {
+            const out = deriveAudio(sourcePath, workDir);
+            if (!out) {
+              skipped += 1;
+              continue;
+            }
+            if (flags.dryRun) {
+              console.log(`[dry-run] audio ${src.id}/${row.assets_path} -> mp3`);
+              derived += 1;
+              fs.unlinkSync(out);
+              continue;
+            }
+            blob = storeDerivedFile(src.assetsConvertedDir, out, ".mp3");
+            fs.unlinkSync(out);
+          }
+
+          if (blob) {
+            update.run(blob.sha256, blob.assetsPath, blob.mimeType, row.sha256, src.id);
+            derived += 1;
+            console.log(`${src.id}/${row.assets_path} -> ${blob.assetsPath}`);
+          }
+        } catch (err) {
+          errors += 1;
+          console.error(
+            `failed ${src.id}/${row.assets_path}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
     }
   } finally {

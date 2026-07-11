@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { SourceFilterProvider } from "@/components/SourceFilter";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} h-full`}>
       <body className="h-full overflow-hidden bg-bg text-text antialiased">
-        {children}
+        <SourceFilterProvider>{children}</SourceFilterProvider>
       </body>
     </html>
   );

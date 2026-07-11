@@ -1,12 +1,28 @@
 [owner]
 display_name = "Matt Beisser"
 phone_e164 = "+19412660605"
-emails = ["mjbeisser@gmail.com"]
+emails = ["mjbeisser@gmail.com", "beissemj@gmail.com", "mbeisser@fastmail.com", "mbeisser_archive@fastmail.com"]
 
 [paths]
-export_dir = "sources/imessage/2026-05-15/export"
-db = "data/imessage.db"
-assets_hq = "data/assets_hq"
-assets_lq = "data/assets_lq"
+db = "data/vault.db"
+data_dir = "data"
+assets_dir = "assets"
+assets_converted_dir = "assets_converted"
 contacts_csv = "config/contacts.csv"
 blacklist_csv = "config/blacklist.csv"
+
+[[sources]]
+id = "imessage"
+export_dir = "staging/imessage"
+
+[[sources]]
+id = "sms-backup-plus"
+export_dir = "staging/sms-backup-plus-eml"
+
+[[sources]]
+id = "go-sms-pro"
+export_dir = "staging/go-sms-pro"
+
+[[sources]]
+id = "sms-backup-restore"
+export_dir = "staging/sms-backup-restore"

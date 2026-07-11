@@ -4,6 +4,7 @@ import type { GroupListItem, MessageRow } from "@/lib/types";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageAttachments } from "./MessageAttachments";
+import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
 
 type YearThread = {
@@ -24,6 +25,7 @@ export function GroupsShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { sourceQuery } = useSourceFilter();
   const [groupId, setGroupId] = useState<number | null>(initialGroupId);
   const [years, setYears] = useState<YearThread[]>([]);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -53,7 +55,7 @@ export function GroupsShell({
     }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/groups/${groupId}/threads`)
+    fetch(`/api/groups/${groupId}/threads${sourceQuery ? `?${sourceQuery.slice(1)}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setYears(data.yearly ?? []);
@@ -64,13 +66,13 @@ export function GroupsShell({
     return () => {
       cancelled = true;
     };
-  }, [groupId]);
+  }, [groupId, sourceQuery]);
 
   const loadYear = (year: number, conversationIds: number[]) => {
     setActiveYear(year);
     setLoading(true);
     const ids = conversationIds.join(",");
-    fetch(`/api/messages?conversationIds=${ids}&year=${year}`)
+    fetch(`/api/messages?conversationIds=${ids}&year=${year}${sourceQuery}`)
       .then((r) => r.json())
       .then((data) => setMessages(data.messages ?? []))
       .finally(() => setLoading(false));
@@ -236,6 +238,7 @@ export function GroupsShell({
                       <p className="whitespace-pre-wrap break-words">{m.body}</p>
                     )}
                     <MessageAttachments
+                      source={m.source}
                       attachments={m.attachments}
                       hasBody={Boolean(m.body)}
                     />

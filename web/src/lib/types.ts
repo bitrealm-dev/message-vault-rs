@@ -67,6 +67,7 @@ export type AttachmentRow = {
 
 export type MessageRow = {
   id: number;
+  source: string;
   timestamp: string;
   isFromMe: boolean;
   sender: string | null;

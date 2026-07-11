@@ -71,7 +71,11 @@ pub fn import_export(
     blacklist_csv: &Path,
     overwrite_contacts: bool,
     mode: ImportMode,
+    source: &str,
 ) -> Result<ImportStats> {
+    if source.trim().is_empty() {
+        bail!("import source id must not be empty");
+    }
     if !export_dir.is_dir() {
         bail!("export directory does not exist: {}", export_dir.display());
     }
@@ -93,9 +97,10 @@ pub fn import_export(
         contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
     let exclude = ExcludeSet::load(blacklist_csv)?;
 
+    schema::ensure_messages_schema(&conn)?;
     schema::recreate_staging(&conn)?;
-    if mode == ImportMode::Append {
-        schema::ensure_messages_schema(&conn)?;
+    if mode == ImportMode::Replace {
+        schema::delete_messages_for_source(&conn, source)?;
     }
 
     let mut paths: Vec<_> = fs::read_dir(export_dir)
@@ -121,8 +126,15 @@ pub fn import_export(
     let mut asset_stats = AssetStats::default();
 
     for path in paths {
-        let file_stats =
-            import_file_to_staging(&mut conn, export_dir, assets_dir, &path, &exclude, &mut asset_stats)?;
+        let file_stats = import_file_to_staging(
+            &mut conn,
+            export_dir,
+            assets_dir,
+            &path,
+            &exclude,
+            &mut asset_stats,
+            source,
+        )?;
         stats.conversations += file_stats.conversations;
         stats.participants += file_stats.participants;
         stats.messages += file_stats.messages;
@@ -135,14 +147,11 @@ pub fn import_export(
         stats.files += 1;
     }
 
-    let promote_stats = match mode {
-        ImportMode::Replace => promote_replace(&mut conn)?,
-        ImportMode::Append => promote_append(&mut conn)?,
-    };
+    // Always merge staging into production (replace already deleted this source's rows).
+    let promote_stats = promote_append(&mut conn)?;
     stats.messages_deduped += promote_stats.messages_deduped;
     stats.messages_appended = promote_stats.messages_appended;
     if mode == ImportMode::Append {
-        // Staging load counts are not production inserts; report what was appended.
         stats.conversations = promote_stats.conversations;
         stats.participants = promote_stats.participants;
         stats.messages = promote_stats.messages;
@@ -193,6 +202,7 @@ fn import_file_to_staging(
     path: &Path,
     exclude: &ExcludeSet,
     asset_stats: &mut AssetStats,
+    source: &str,
 ) -> Result<ImportStats> {
     let source_file = path
         .file_name()
@@ -354,15 +364,16 @@ fn import_file_to_staging(
         let inserted = tx.execute(
             r#"
             INSERT OR IGNORE INTO staging_messages (
-                conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
+                conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
                 subject, body, is_announcement, is_reply, thread_originator_guid,
                 thread_originator_part, num_replies, sort_order
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
             )
             "#,
             params![
                 conversation_id,
+                source,
                 msg.guid,
                 msg.timestamp,
                 msg.timestamp_utc,
@@ -452,28 +463,6 @@ struct PromoteStats {
     tapbacks: u64,
     messages_deduped: u64,
     messages_appended: u64,
-}
-
-fn promote_replace(conn: &mut Connection) -> Result<PromoteStats> {
-    schema::recreate_messages(conn)?;
-
-    let tx = conn.transaction()?;
-    tx.execute_batch(
-        r#"
-        INSERT INTO conversations
-            SELECT * FROM staging_conversations;
-        INSERT INTO participants
-            SELECT * FROM staging_participants;
-        INSERT INTO messages
-            SELECT * FROM staging_messages;
-        INSERT INTO attachments
-            SELECT * FROM staging_attachments;
-        INSERT INTO tapbacks
-            SELECT * FROM staging_tapbacks;
-        "#,
-    )?;
-    tx.commit()?;
-    Ok(PromoteStats::default())
 }
 
 fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
@@ -586,7 +575,7 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
 
     let mut staging_msgs = tx.prepare(
         r#"
-        SELECT id, conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
+        SELECT id, conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
                subject, body, is_announcement, is_reply, thread_originator_guid,
                thread_originator_part, num_replies, sort_order
         FROM staging_messages
@@ -597,6 +586,7 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
     let staging_msg_rows: Vec<(
         i64,
         i64,
+        String,
         Option<String>,
         String,
         Option<String>,
@@ -628,6 +618,7 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
                 row.get(12)?,
                 row.get(13)?,
                 row.get(14)?,
+                row.get(15)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -638,6 +629,7 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
     for (
         staging_msg_id,
         staging_conv_id,
+        source,
         guid,
         timestamp,
         timestamp_utc,
@@ -660,8 +652,8 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         let guid_nonempty = guid.as_deref().is_some_and(|g| !g.is_empty());
         if guid_nonempty {
             let exists: bool = tx.query_row(
-                "SELECT COUNT(*) > 0 FROM messages WHERE guid = ?1",
-                params![guid],
+                "SELECT COUNT(*) > 0 FROM messages WHERE source = ?1 AND guid = ?2",
+                params![source, guid],
                 |row| row.get(0),
             )?;
             if exists {
@@ -673,15 +665,16 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         tx.execute(
             r#"
             INSERT INTO messages (
-                conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
+                conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
                 subject, body, is_announcement, is_reply, thread_originator_guid,
                 thread_originator_part, num_replies, sort_order
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
             )
             "#,
             params![
                 prod_conv_id,
+                source,
                 guid,
                 timestamp,
                 timestamp_utc,

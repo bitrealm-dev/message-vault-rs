@@ -23,6 +23,7 @@ CREATE TABLE participants (
 CREATE TABLE messages (
     id INTEGER PRIMARY KEY,
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
     guid TEXT,
     timestamp TEXT NOT NULL,
     timestamp_utc TEXT,
@@ -40,8 +41,10 @@ CREATE TABLE messages (
 
 CREATE INDEX ix_messages_conversation_timestamp
     ON messages (conversation_id, timestamp);
-CREATE UNIQUE INDEX ix_messages_guid
-    ON messages (guid)
+CREATE INDEX ix_messages_conversation_source_timestamp
+    ON messages (conversation_id, source, timestamp);
+CREATE UNIQUE INDEX ix_messages_source_guid
+    ON messages (source, guid)
     WHERE guid IS NOT NULL AND guid != '';
 
 CREATE TABLE attachments (
@@ -94,6 +97,7 @@ CREATE TABLE staging_participants (
 CREATE TABLE staging_messages (
     id INTEGER PRIMARY KEY,
     conversation_id INTEGER NOT NULL REFERENCES staging_conversations(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
     guid TEXT,
     timestamp TEXT NOT NULL,
     timestamp_utc TEXT,
@@ -111,8 +115,8 @@ CREATE TABLE staging_messages (
 
 CREATE INDEX ix_staging_messages_conversation_timestamp
     ON staging_messages (conversation_id, timestamp);
-CREATE UNIQUE INDEX ix_staging_messages_guid
-    ON staging_messages (guid)
+CREATE UNIQUE INDEX ix_staging_messages_source_guid
+    ON staging_messages (source, guid)
     WHERE guid IS NOT NULL AND guid != '';
 
 CREATE TABLE staging_attachments (
@@ -144,6 +148,7 @@ CREATE TABLE staging_tapbacks (
 "#;
 
 /// Drop and recreate production message-related tables. Does not touch contacts or staging.
+#[allow(dead_code)]
 pub fn recreate_messages(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -161,6 +166,7 @@ pub fn recreate_messages(conn: &Connection) -> Result<()> {
 }
 
 /// Create production message tables if they do not already exist (for append on a fresh DB).
+/// Migrates older schemas that lack `messages.source`.
 pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
     let exists: bool = conn.query_row(
         "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'conversations'",
@@ -170,8 +176,38 @@ pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
     if !exists {
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(MESSAGE_TABLES_DDL)?;
+        return Ok(());
+    }
+    migrate_messages_source(conn)?;
+    Ok(())
+}
+
+fn migrate_messages_source(conn: &Connection) -> Result<()> {
+    let has_source: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('messages') WHERE name = 'source'",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_source {
+        conn.execute_batch(
+            r#"
+            ALTER TABLE messages ADD COLUMN source TEXT NOT NULL DEFAULT 'default';
+            DROP INDEX IF EXISTS ix_messages_guid;
+            CREATE INDEX IF NOT EXISTS ix_messages_conversation_source_timestamp
+                ON messages (conversation_id, source, timestamp);
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_messages_source_guid
+                ON messages (source, guid)
+                WHERE guid IS NOT NULL AND guid != '';
+            "#,
+        )?;
     }
     Ok(())
+}
+
+/// Delete all production messages (and cascaded rows) for one import source.
+pub fn delete_messages_for_source(conn: &Connection, source: &str) -> Result<u64> {
+    let n = conn.execute("DELETE FROM messages WHERE source = ?1", [source])?;
+    Ok(n as u64)
 }
 
 /// Drop and recreate staging message tables.

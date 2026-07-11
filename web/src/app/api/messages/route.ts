@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const year = Number(url.searchParams.get("year"));
+  const source = url.searchParams.get("source");
   const rawIds =
     url.searchParams.get("conversationIds") ??
     url.searchParams.get("conversationId") ??
@@ -21,6 +22,6 @@ export async function GET(req: Request) {
       { status: 400 },
     );
   }
-  const messages = messagesForConversationYear(conversationIds, year);
+  const messages = messagesForConversationYear(conversationIds, year, source);
   return NextResponse.json({ messages });
 }

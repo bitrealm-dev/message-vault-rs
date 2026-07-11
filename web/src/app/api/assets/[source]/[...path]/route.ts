@@ -1,11 +1,11 @@
-import { assetsLqRoot } from "@/lib/paths";
+import { sourceById } from "@/lib/paths";
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-type Params = { params: Promise<{ path: string[] }> };
+type Params = { params: Promise<{ source: string; path: string[] }> };
 
 const MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -21,13 +21,11 @@ const MIME: Record<string, string> = {
   ".m4a": "audio/mp4",
 };
 
-export async function GET(_req: Request, { params }: Params) {
-  const { path: parts } = await params;
+function serveFromRoot(root: string, parts: string[]) {
   const rel = parts.join("/");
   if (rel.includes("..") || path.isAbsolute(rel)) {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
   }
-  const root = assetsLqRoot();
   const full = path.resolve(root, rel);
   if (!full.startsWith(path.resolve(root))) {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
@@ -44,4 +42,13 @@ export async function GET(_req: Request, { params }: Params) {
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });
+}
+
+export async function GET(_req: Request, { params }: Params) {
+  const { source, path: parts } = await params;
+  const src = sourceById(source);
+  if (!src) {
+    return NextResponse.json({ error: "unknown source" }, { status: 404 });
+  }
+  return serveFromRoot(src.assetsDir, parts);
 }

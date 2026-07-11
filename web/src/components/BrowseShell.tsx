@@ -15,6 +15,7 @@ import {
   type ContactEditDraft,
 } from "./ContactEditPane";
 import { MessageAttachments } from "./MessageAttachments";
+import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
 
 type YearThread = {
@@ -78,6 +79,7 @@ export function BrowseShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { sourceQuery } = useSourceFilter();
   const [sort, setSort] = useState<SortMode>("last");
   const [query, setQuery] = useState("");
   const [contactId, setContactId] = useState<number | null>(initialContactId);
@@ -317,7 +319,7 @@ export function BrowseShell({
     }
     let cancelled = false;
     setLoadingThreads(true);
-    fetch(`/api/contacts/${contactId}/threads`)
+    fetch(`/api/contacts/${contactId}/threads${sourceQuery ? `?${sourceQuery.slice(1)}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -331,19 +333,19 @@ export function BrowseShell({
     return () => {
       cancelled = true;
     };
-  }, [contactId]);
+  }, [contactId, sourceQuery]);
 
   const loadMessages = useCallback(
     (conversationIds: number[], year: number, key: string) => {
       setActiveThread(key);
       setLoadingMessages(true);
       const ids = conversationIds.join(",");
-      fetch(`/api/messages?conversationIds=${ids}&year=${year}`)
+      fetch(`/api/messages?conversationIds=${ids}&year=${year}${sourceQuery}`)
         .then((r) => r.json())
         .then((data) => setMessages(data.messages ?? []))
         .finally(() => setLoadingMessages(false));
     },
-    [],
+    [sourceQuery],
   );
 
   const groupsByYear = useMemo(() => {
@@ -1487,6 +1489,7 @@ function MessageBubble({ message }: { message: MessageRow }) {
       <div className={`max-w-[75%] px-3 py-2 text-[14px] leading-snug ${bubble}`}>
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
         <MessageAttachments
+          source={message.source}
           attachments={message.attachments}
           hasBody={Boolean(message.body)}
         />

@@ -2,9 +2,10 @@ import fs from "fs";
 import path from "path";
 import { parse } from "smol-toml";
 
-const DEFAULT_DB = "data/imessage.db";
-const DEFAULT_ASSETS_HQ = "data/assets_hq";
-const DEFAULT_ASSETS_LQ = "data/assets_lq";
+const DEFAULT_DB = "data/vault.db";
+const DEFAULT_DATA_DIR = "data";
+const DEFAULT_ASSETS_DIR = "assets";
+const DEFAULT_ASSETS_CONVERTED_DIR = "assets_converted";
 
 /** Repo root (parent of web/), detected via config/config.toml. */
 export function repoRoot(): string {
@@ -32,66 +33,111 @@ function resolveConfiguredPath(
   return path.join(repoRoot(), rel);
 }
 
-type PathsConfig = {
-  db?: string;
-  assets_hq?: string;
-  assets_lq?: string;
-  /** @deprecated use assets_hq */
-  assets_dir?: string;
-  /** @deprecated use assets_lq */
-  derived_dir?: string;
+export type SourcePaths = {
+  id: string;
+  exportDir: string;
+  assetsDir: string;
+  assetsConvertedDir: string;
 };
 
-function loadPathsConfig(): PathsConfig {
+type RawConfig = {
+  paths?: {
+    db?: string;
+    data_dir?: string;
+    assets_dir?: string;
+    assets_converted_dir?: string;
+    export_dir?: string;
+  };
+  sources?: Array<{
+    id?: string;
+    export_dir?: string;
+    assets_dir?: string;
+    assets_converted_dir?: string;
+  }>;
+};
+
+function loadRawConfig(): RawConfig {
   const configPath = configTomlPath();
   if (!fs.existsSync(configPath)) {
     return {};
   }
   try {
     const text = fs.readFileSync(configPath, "utf8");
-    const cfg = parse(text) as { paths?: PathsConfig };
-    return cfg.paths ?? {};
+    return parse(text) as RawConfig;
   } catch {
     return {};
   }
 }
 
 export function dbPath(): string {
-  const paths = loadPathsConfig();
-  return resolveConfiguredPath(paths.db, DEFAULT_DB);
+  const cfg = loadRawConfig();
+  return resolveConfiguredPath(cfg.paths?.db, DEFAULT_DB);
 }
 
-/** High-quality / original attachment root. */
-export function assetsHqRoot(): string {
-  const paths = loadPathsConfig();
-  return resolveConfiguredPath(
-    paths.assets_hq ?? paths.assets_dir,
-    DEFAULT_ASSETS_HQ,
+export function dataDir(): string {
+  const cfg = loadRawConfig();
+  return resolveConfiguredPath(cfg.paths?.data_dir, DEFAULT_DATA_DIR);
+}
+
+export function assetsDirName(): string {
+  return loadRawConfig().paths?.assets_dir?.trim() || DEFAULT_ASSETS_DIR;
+}
+
+export function assetsConvertedDirName(): string {
+  return (
+    loadRawConfig().paths?.assets_converted_dir?.trim() ||
+    DEFAULT_ASSETS_CONVERTED_DIR
   );
 }
 
-/** Low-quality / derived attachment root. */
-export function assetsLqRoot(): string {
-  const paths = loadPathsConfig();
-  return resolveConfiguredPath(
-    paths.assets_lq ?? paths.derived_dir,
-    DEFAULT_ASSETS_LQ,
-  );
+/** Configured import sources with resolved asset roots. */
+export function loadSources(): SourcePaths[] {
+  const cfg = loadRawConfig();
+  const root = repoRoot();
+  const data = dataDir();
+  const assetsName = assetsDirName();
+  const convertedName = assetsConvertedDirName();
+
+  const raw = cfg.sources ?? [];
+  if (!raw.length && cfg.paths?.export_dir) {
+    const id = "default";
+    return [
+      {
+        id,
+        exportDir: resolveConfiguredPath(cfg.paths.export_dir, "staging/default"),
+        assetsDir: path.join(data, id, assetsName),
+        assetsConvertedDir: path.join(data, id, convertedName),
+      },
+    ];
+  }
+
+  return raw
+    .filter((s) => s.id?.trim())
+    .map((s) => {
+      const id = s.id!.trim();
+      const resolveOptional = (p: string | undefined, fallback: string) => {
+        if (!p?.trim()) return fallback;
+        return path.isAbsolute(p) ? p : path.join(root, p);
+      };
+      return {
+        id,
+        exportDir: resolveConfiguredPath(s.export_dir, `staging/${id}`),
+        assetsDir: resolveOptional(s.assets_dir, path.join(data, id, assetsName)),
+        assetsConvertedDir: resolveOptional(
+          s.assets_converted_dir,
+          path.join(data, id, convertedName),
+        ),
+      };
+    });
 }
 
-/** @deprecated use assetsHqRoot */
-export function assetsRoot(): string {
-  return assetsHqRoot();
+export function sourceById(id: string): SourcePaths | undefined {
+  return loadSources().find((s) => s.id === id);
 }
 
-/** @deprecated use assetsLqRoot */
-export function derivedRoot(): string {
-  return assetsLqRoot();
-}
-
-/** Prefer LQ media when present unless MEDIA_VARIANT=hq (or original). */
-export function mediaVariant(): "lq" | "hq" {
-  const raw = (process.env.MEDIA_VARIANT ?? "lq").trim().toLowerCase();
-  if (raw === "hq" || raw === "original") return "hq";
-  return "lq";
+/** Prefer converted media when present unless MEDIA_VARIANT=hq (or original). */
+export function mediaVariant(): "converted" | "original" {
+  const raw = (process.env.MEDIA_VARIANT ?? "converted").trim().toLowerCase();
+  if (raw === "hq" || raw === "original" || raw === "assets") return "original";
+  return "converted";
 }

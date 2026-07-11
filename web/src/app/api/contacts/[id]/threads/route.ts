@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const { id: idStr } = await params;
   const id = Number(idStr);
   if (!Number.isFinite(id)) {
@@ -15,9 +15,10 @@ export async function GET(_req: Request, { params }: Params) {
   if (!contact) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  const source = new URL(req.url).searchParams.get("source");
   return NextResponse.json({
     contact,
-    yearly: contactYearlyThreads(id),
-    groups: contactGroupThreads(id),
+    yearly: contactYearlyThreads(id, source),
+    groups: contactGroupThreads(id, source),
   });
 }

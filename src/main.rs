@@ -11,7 +11,7 @@ mod vcf_to_contacts;
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 
 use crate::config::Config;
@@ -26,13 +26,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Import imessage-json NDJSON into SQLite
+    /// Import NDJSON export(s) into SQLite
     Import {
         /// Path to config.toml
         #[arg(long, default_value = "config/config.toml")]
         config: PathBuf,
 
-        /// Directory containing NDJSON conversation files (overrides config)
+        /// Import one configured source by id
+        #[arg(long)]
+        source: Option<String>,
+
+        /// Import every configured source
+        #[arg(long)]
+        all: bool,
+
+        /// Directory containing NDJSON conversation files (overrides selected source export_dir)
         #[arg(long)]
         export_dir: Option<PathBuf>,
 
@@ -40,9 +48,9 @@ enum Commands {
         #[arg(long)]
         db: Option<PathBuf>,
 
-        /// High-quality (original) asset store directory (overrides config)
+        /// Originals asset store directory (overrides selected source assets dir)
         #[arg(long)]
-        assets_hq: Option<PathBuf>,
+        assets_dir: Option<PathBuf>,
 
         /// Contacts CSV path (overrides config; default config/contacts.csv)
         #[arg(long)]
@@ -56,7 +64,7 @@ enum Commands {
         #[arg(long)]
         overwrite_contacts: bool,
 
-        /// Import mode: replace (wipe production) or append (dedupe by guid)
+        /// Import mode: replace (wipe this source's messages) or append (dedupe by source+guid)
         #[arg(long, default_value = "replace")]
         mode: String,
     },
@@ -110,64 +118,107 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Import {
             config,
+            source,
+            all,
             export_dir,
             db,
-            assets_hq,
+            assets_dir,
             contacts_csv,
             blacklist_csv,
             overwrite_contacts,
             mode,
         } => {
             let cfg = Config::load(&config)?;
-            let export_dir = export_dir.unwrap_or(cfg.paths.export_dir);
-            let db = db.unwrap_or(cfg.paths.db);
-            let assets_hq = assets_hq.unwrap_or(cfg.paths.assets_hq);
-            let contacts_csv = contacts_csv.unwrap_or(cfg.paths.contacts_csv);
-            let blacklist_csv = blacklist_csv.unwrap_or(cfg.paths.blacklist_csv);
+            let db = db.unwrap_or_else(|| cfg.paths.db.clone());
+            let contacts_csv = contacts_csv.unwrap_or_else(|| cfg.paths.contacts_csv.clone());
+            let blacklist_csv = blacklist_csv.unwrap_or_else(|| cfg.paths.blacklist_csv.clone());
             let mode = import::ImportMode::parse(&mode)?;
 
-            let stats = import::import_export(
-                &export_dir,
-                &db,
-                &assets_hq,
-                &contacts_csv,
-                &blacklist_csv,
-                overwrite_contacts,
-                mode,
-            )?;
-            println!("Imported into {}", db.display());
+            if all && source.is_some() {
+                bail!("use either --source <id> or --all, not both");
+            }
+
+            let sources: Vec<&config::SourceConfig> = if all {
+                cfg.sources.iter().collect()
+            } else if let Some(id) = source.as_deref() {
+                vec![cfg.source(id)?]
+            } else if cfg.sources.len() == 1 {
+                vec![&cfg.sources[0]]
+            } else {
+                bail!(
+                    "multiple sources configured; pass --source <id> or --all (ids: {})",
+                    cfg.sources
+                        .iter()
+                        .map(|s| s.id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            };
+
+            if sources.len() > 1 && (export_dir.is_some() || assets_dir.is_some()) {
+                bail!("--export-dir / --assets-dir only apply when importing a single source");
+            }
+
+            println!("Importing into {}", db.display());
             println!("  config:        {}", config.display());
-            println!("  mode:          {}", stats.mode);
+            println!("  mode:          {}", mode.as_str());
             println!(
                 "  owner:         {} ({})",
                 cfg.owner.display_name, cfg.owner.phone_e164
             );
-            println!("  assets hq:     {}", assets_hq.display());
             println!("  contacts csv:  {}", contacts_csv.display());
             println!("  blacklist csv: {}", blacklist_csv.display());
-            if stats.contacts_skipped {
-                println!("  contacts:      (skipped — already loaded; use --overwrite-contacts)");
-            } else {
-                println!("  contacts:      {}", stats.contacts);
-                println!("  contact phones:{}", stats.contact_phones);
-                println!("  contact tags:  {}", stats.contact_tag_links);
+
+            let mut overwrite = overwrite_contacts;
+            for src in sources {
+                let export = export_dir
+                    .clone()
+                    .unwrap_or_else(|| src.export_dir.clone());
+                let assets = assets_dir
+                    .clone()
+                    .unwrap_or_else(|| src.resolved_assets_dir(&cfg.paths));
+
+                let stats = import::import_export(
+                    &export,
+                    &db,
+                    &assets,
+                    &contacts_csv,
+                    &blacklist_csv,
+                    overwrite,
+                    mode,
+                    &src.id,
+                )?;
+                // Only overwrite contacts on the first source of a batch.
+                overwrite = false;
+
+                println!();
+                println!("Source '{}'", src.id);
+                println!("  export_dir:    {}", export.display());
+                println!("  assets:        {}", assets.display());
+                if stats.contacts_skipped {
+                    println!("  contacts:      (skipped — already loaded; use --overwrite-contacts)");
+                } else {
+                    println!("  contacts:      {}", stats.contacts);
+                    println!("  contact phones:{}", stats.contact_phones);
+                    println!("  contact tags:  {}", stats.contact_tag_links);
+                }
+                println!("  files:         {}", stats.files);
+                println!("  conversations: {}", stats.conversations);
+                println!("  participants:  {}", stats.participants);
+                println!("  messages:      {}", stats.messages);
+                println!("  messages deduped: {}", stats.messages_deduped);
+                if stats.mode == "append" {
+                    println!("  messages appended: {}", stats.messages_appended);
+                }
+                println!("  attachments:   {}", stats.attachments);
+                println!("  tapbacks:      {}", stats.tapbacks);
+                println!("  excl. convos:  {}", stats.conversations_excluded);
+                println!("  excl. msgs:    {}", stats.messages_excluded);
+                println!("  excl. parts:   {}", stats.participants_excluded);
+                println!("  assets copied: {}", stats.assets_copied);
+                println!("  assets deduped:{}", stats.assets_deduped);
+                println!("  assets missing:{}", stats.assets_missing);
             }
-            println!("  files:         {}", stats.files);
-            println!("  conversations: {}", stats.conversations);
-            println!("  participants:  {}", stats.participants);
-            println!("  messages:      {}", stats.messages);
-            println!("  messages deduped: {}", stats.messages_deduped);
-            if stats.mode == "append" {
-                println!("  messages appended: {}", stats.messages_appended);
-            }
-            println!("  attachments:   {}", stats.attachments);
-            println!("  tapbacks:      {}", stats.tapbacks);
-            println!("  excl. convos:  {}", stats.conversations_excluded);
-            println!("  excl. msgs:    {}", stats.messages_excluded);
-            println!("  excl. parts:   {}", stats.participants_excluded);
-            println!("  assets copied: {}", stats.assets_copied);
-            println!("  assets deduped:{}", stats.assets_deduped);
-            println!("  assets missing:{}", stats.assets_missing);
         }
 
         Commands::ImportContacts {
