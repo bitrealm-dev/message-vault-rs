@@ -1,4 +1,4 @@
-import { assetsRoot } from "@/lib/paths";
+import { assetsHqRoot } from "@/lib/paths";
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: Params) {
   if (rel.includes("..") || path.isAbsolute(rel)) {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
   }
-  const root = assetsRoot();
+  const root = assetsHqRoot();
   const full = path.resolve(root, rel);
   if (!full.startsWith(path.resolve(root))) {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });

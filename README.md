@@ -6,8 +6,8 @@ Import iMessage exports into SQLite and browse them in a local web UI — with o
 
 - **Import from [imessage-json](https://github.com/bitrealm-dev/imessage-json) NDJSON** (including schema v3) into a single SQLite database
 - **Replace or append** imports via a staging area (dedupe by message `guid`; no run/version concept)
-- **Content-addressed originals** in `data/assets` (SHA-256; never overwritten by processing)
-- **Derived media** via `@napi-rs/image` + ffmpeg into `data/derived` (pick at render time)
+- **Content-addressed originals** in `data/assets_hq` (SHA-256; never overwritten by processing)
+- **Low-quality media** via `@napi-rs/image` + ffmpeg into `data/assets_lq` (pick at render time)
 - **Contacts + blacklist** from CSV; optional VCF → CSV helper for migrating from message-vault
 - **Next.js browse UI** for conversations, contacts, and tags
 
@@ -34,15 +34,15 @@ cargo build --release
 cd web && npm ci && cd ..
 ```
 
-Edit [`config/config.toml`](config/config.toml) for owner info and paths (`export_dir`, `db`, `assets_dir`, `derived_dir`, contacts/blacklist CSVs).
+Edit [`config/config.toml`](config/config.toml) for owner info and paths (`export_dir`, `db`, `assets_hq`, `assets_lq`, contacts/blacklist CSVs).
 
 ## Quick start
 
 ```bash
-# 1. Import originals into SQLite + data/assets
+# 1. Import originals into SQLite + data/assets_hq
 cargo run --release -- import --mode replace
 
-# 2. Generate low-def derivatives (optional, after import)
+# 2. Generate low-quality copies (optional, after import)
 cd web && npm run process-assets && cd ..
 
 # 3. Browse
@@ -77,45 +77,58 @@ cargo run --release -- import --mode append    # merge; skip guids already in pr
 | `--config` | Path to `config.toml` | `config/config.toml` |
 | `--export-dir` | NDJSON export directory | from config |
 | `--db` | SQLite database path | from config |
-| `--assets-dir` | Original asset store | from config |
+| `--assets-hq` | High-quality (original) asset store | from config |
 | `--contacts-csv` | Contacts CSV | from config |
 | `--blacklist-csv` | Blacklist CSV | from config |
 | `--overwrite-contacts` | Reload contacts even if table is non-empty | off |
 
 Flow: NDJSON → **staging** tables → promote to production → clear staging. Contacts are skipped if already loaded unless `--overwrite-contacts`.
 
-### Process assets (derived media)
+### Process assets (low-quality media)
 
-Run **after** import. Originals in `data/assets` are never deleted or replaced.
+Run **after** import. Originals in `data/assets_hq` are never deleted or replaced.
 
 ```bash
 cd web
 npm run process-assets
-npm run process-assets -- --force          # rebuild derived even if present
+npm run process-assets -- --force          # rebuild LQ even if present
 npm run process-assets -- --dry-run
 npm run process-assets -- --skip-video     # images only
 ```
 
 | Flag | Description |
 | --- | --- |
-| `--force` | Regenerate derived blobs |
+| `--force` | Regenerate LQ blobs |
 | `--dry-run` | Log work without writing |
 | `--skip-image` / `--skip-video` / `--skip-audio` | Skip a media kind |
-| `--db` / `--assets-dir` / `--derived-dir` | Override config paths |
+| `--db` / `--assets-hq` / `--assets-lq` | Override config paths |
 
 Images use [@napi-rs/image](https://image.napi.rs/) (HEIC via OS codecs on macOS/Windows; **ffmpeg** on Linux). Video/audio use ffmpeg (720p H.264 / MP3).
 
 ### Web UI media variant
 
-By default the UI prefers derived files when present:
+By default the UI prefers low-quality files when present:
 
 ```bash
-# Prefer originals instead
-NEXT_PUBLIC_MEDIA_VARIANT=original npm run dev
+# Prefer high-quality originals instead
+NEXT_PUBLIC_MEDIA_VARIANT=hq npm run dev
 ```
 
-- `/api/assets/...` — originals (`data/assets`)
-- `/api/derived/...` — derived (`data/derived`)
+- `/api/assets_hq/...` — originals (`data/assets_hq`)
+- `/api/assets_lq/...` — low-quality (`data/assets_lq`)
+
+### Contacts
+
+Default source is [`config/contacts.csv`](config/contacts.csv).
+
+```bash
+# Contacts only (reloads from CSV)
+cargo run --release -- import-contacts
+
+# Or with a full message import (skipped if contacts already loaded)
+cargo run --release -- import --mode replace
+cargo run --release -- import --mode append --overwrite-contacts
+```
 
 ### VCF → contacts.csv
 
@@ -136,8 +149,8 @@ emails = ["you@example.com"]
 [paths]
 export_dir = "sources/imessage/export"
 db = "data/imessage.db"
-assets_dir = "data/assets"
-derived_dir = "data/derived"
+assets_hq = "data/assets_hq"
+assets_lq = "data/assets_lq"
 contacts_csv = "config/contacts.csv"
 blacklist_csv = "config/blacklist.csv"
 ```
@@ -145,14 +158,14 @@ blacklist_csv = "config/blacklist.csv"
 ```mermaid
 flowchart LR
   export[imessage-json NDJSON incl. v3] --> import[Rust import]
-  import --> assets[data/assets originals]
+  import --> assetsHq[data/assets_hq originals]
   import --> db[(SQLite)]
   db --> process[npm run process-assets]
-  assets --> process
-  process --> derived[data/derived]
+  assetsHq --> process
+  process --> assetsLq[data/assets_lq]
   db --> web[Next.js UI]
-  assets --> web
-  derived --> web
+  assetsHq --> web
+  assetsLq --> web
 ```
 
 ## Contributing

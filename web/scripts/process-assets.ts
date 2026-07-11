@@ -1,10 +1,10 @@
 #!/usr/bin/env npx tsx
 /**
- * Generate low-def derived media beside originals.
+ * Generate low-quality media beside high-quality originals.
  *
  * Usage (from web/):
  *   npm run process-assets -- [--force] [--dry-run] [--skip-image] [--skip-video] [--skip-audio]
- *     [--db PATH] [--assets-dir PATH] [--derived-dir PATH]
+ *     [--db PATH] [--assets-hq PATH] [--assets-lq PATH]
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -20,13 +20,13 @@ import { parse } from "smol-toml";
 const JPEG_MIN_BYTES = 500 * 1024;
 const MP3_MIN_BYTES = 100 * 1024;
 const MP4_MIN_BYTES = 10 * 1024 * 1024;
+const GIF_MIN_BYTES = 200 * 1024;
 const JPEG_QUALITY = 85;
 
 const IMAGE_EXTS = new Set([
   ".jpg",
   ".jpeg",
   ".png",
-  ".gif",
   ".webp",
   ".bmp",
   ".tif",
@@ -62,8 +62,8 @@ type Flags = {
   skipVideo: boolean;
   skipAudio: boolean;
   db?: string;
-  assetsDir?: string;
-  derivedDir?: string;
+  assetsHq?: string;
+  assetsLq?: string;
 };
 
 type AssetRow = {
@@ -93,6 +93,8 @@ function loadPaths(flags: Flags) {
   const cfg = parse(text) as {
     paths?: {
       db?: string;
+      assets_hq?: string;
+      assets_lq?: string;
       assets_dir?: string;
       derived_dir?: string;
     };
@@ -105,12 +107,12 @@ function loadPaths(flags: Flags) {
     db: flags.db
       ? path.resolve(flags.db)
       : resolve(cfg.paths?.db, "data/imessage.db"),
-    assetsDir: flags.assetsDir
-      ? path.resolve(flags.assetsDir)
-      : resolve(cfg.paths?.assets_dir, "data/assets"),
-    derivedDir: flags.derivedDir
-      ? path.resolve(flags.derivedDir)
-      : resolve(cfg.paths?.derived_dir, "data/derived"),
+    assetsHq: flags.assetsHq
+      ? path.resolve(flags.assetsHq)
+      : resolve(cfg.paths?.assets_hq ?? cfg.paths?.assets_dir, "data/assets_hq"),
+    assetsLq: flags.assetsLq
+      ? path.resolve(flags.assetsLq)
+      : resolve(cfg.paths?.assets_lq ?? cfg.paths?.derived_dir, "data/assets_lq"),
   };
 }
 
@@ -128,11 +130,11 @@ function parseFlags(argv: string[]): Flags {
     if (a === "--db" && next) {
       flags.db = next;
       i++;
-    } else if (a === "--assets-dir" && next) {
-      flags.assetsDir = next;
+    } else if ((a === "--assets-hq" || a === "--assets-dir") && next) {
+      flags.assetsHq = next;
       i++;
-    } else if (a === "--derived-dir" && next) {
-      flags.derivedDir = next;
+    } else if ((a === "--assets-lq" || a === "--derived-dir") && next) {
+      flags.assetsLq = next;
       i++;
     }
   }
@@ -145,6 +147,8 @@ function extOf(p: string): string {
 
 function kindOf(assetsPath: string, mime: string | null): "image" | "video" | "audio" | "other" {
   const ext = extOf(assetsPath);
+  // Keep animated GIFs as-is; do not re-encode to JPEG.
+  if (ext === ".gif" || mime === "image/gif") return "other";
   if (IMAGE_EXTS.has(ext) || mime?.startsWith("image/")) return "image";
   if (VIDEO_EXTS.has(ext) || mime?.startsWith("video/")) return "video";
   if (AUDIO_EXTS.has(ext) || mime?.startsWith("audio/")) return "audio";
@@ -372,16 +376,16 @@ function deriveAudio(sourcePath: string, workDir: string): string | null {
 
 async function main() {
   const flags = parseFlags(process.argv.slice(2));
-  const { db: dbPath, assetsDir, derivedDir } = loadPaths(flags);
+  const { db: dbPath, assetsHq, assetsLq } = loadPaths(flags);
 
   if (!fs.existsSync(dbPath)) {
     throw new Error(`database not found: ${dbPath}`);
   }
-  if (!fs.existsSync(assetsDir)) {
-    throw new Error(`assets dir not found: ${assetsDir}`);
+  if (!fs.existsSync(assetsHq)) {
+    throw new Error(`assets_hq dir not found: ${assetsHq}`);
   }
 
-  fs.mkdirSync(derivedDir, { recursive: true });
+  fs.mkdirSync(assetsLq, { recursive: true });
 
   const db = new Database(dbPath);
   db.pragma("foreign_keys = ON");
@@ -455,13 +459,13 @@ async function main() {
       if (
         !flags.force &&
         row.derived_assets_path &&
-        fs.existsSync(path.join(derivedDir, row.derived_assets_path))
+        fs.existsSync(path.join(assetsLq, row.derived_assets_path))
       ) {
         skipped += 1;
         continue;
       }
 
-      const sourcePath = path.join(assetsDir, row.assets_path);
+      const sourcePath = path.join(assetsHq, row.assets_path);
       if (!fs.existsSync(sourcePath)) {
         console.warn(`missing original: ${row.assets_path}`);
         errors += 1;
@@ -482,7 +486,7 @@ async function main() {
             derived += 1;
             continue;
           }
-          blob = storeDerived(derivedDir, jpeg, ".jpg");
+          blob = storeDerived(assetsLq, jpeg, ".jpg");
         } else if (kind === "video") {
           const out = deriveVideo(sourcePath, workDir);
           if (!out) {
@@ -495,7 +499,7 @@ async function main() {
             fs.unlinkSync(out);
             continue;
           }
-          blob = storeDerivedFile(derivedDir, out, ".mp4");
+          blob = storeDerivedFile(assetsLq, out, ".mp4");
           fs.unlinkSync(out);
         } else if (kind === "audio") {
           const out = deriveAudio(sourcePath, workDir);
@@ -509,7 +513,7 @@ async function main() {
             fs.unlinkSync(out);
             continue;
           }
-          blob = storeDerivedFile(derivedDir, out, ".mp3");
+          blob = storeDerivedFile(assetsLq, out, ".mp3");
           fs.unlinkSync(out);
         }
 

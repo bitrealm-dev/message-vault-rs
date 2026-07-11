@@ -40,11 +40,11 @@ enum Commands {
         #[arg(long)]
         db: Option<PathBuf>,
 
-        /// Content-addressed asset store directory (overrides config)
+        /// High-quality (original) asset store directory (overrides config)
         #[arg(long)]
-        assets_dir: Option<PathBuf>,
+        assets_hq: Option<PathBuf>,
 
-        /// Contacts CSV path (overrides config)
+        /// Contacts CSV path (overrides config; default config/contacts.csv)
         #[arg(long)]
         contacts_csv: Option<PathBuf>,
 
@@ -59,6 +59,21 @@ enum Commands {
         /// Import mode: replace (wipe production) or append (dedupe by guid)
         #[arg(long, default_value = "replace")]
         mode: String,
+    },
+
+    /// Load contacts from config/contacts.csv (or --contacts-csv) into the database
+    ImportContacts {
+        /// Path to config.toml
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
+
+        /// Contacts CSV path (overrides config; default config/contacts.csv)
+        #[arg(long)]
+        contacts_csv: Option<PathBuf>,
+
+        /// Output SQLite database path (overrides config)
+        #[arg(long)]
+        db: Option<PathBuf>,
     },
 
     /// Convert a message-vault contacts.vcf into contacts.csv
@@ -97,7 +112,7 @@ fn main() -> Result<()> {
             config,
             export_dir,
             db,
-            assets_dir,
+            assets_hq,
             contacts_csv,
             blacklist_csv,
             overwrite_contacts,
@@ -106,7 +121,7 @@ fn main() -> Result<()> {
             let cfg = Config::load(&config)?;
             let export_dir = export_dir.unwrap_or(cfg.paths.export_dir);
             let db = db.unwrap_or(cfg.paths.db);
-            let assets_dir = assets_dir.unwrap_or(cfg.paths.assets_dir);
+            let assets_hq = assets_hq.unwrap_or(cfg.paths.assets_hq);
             let contacts_csv = contacts_csv.unwrap_or(cfg.paths.contacts_csv);
             let blacklist_csv = blacklist_csv.unwrap_or(cfg.paths.blacklist_csv);
             let mode = import::ImportMode::parse(&mode)?;
@@ -114,7 +129,7 @@ fn main() -> Result<()> {
             let stats = import::import_export(
                 &export_dir,
                 &db,
-                &assets_dir,
+                &assets_hq,
                 &contacts_csv,
                 &blacklist_csv,
                 overwrite_contacts,
@@ -127,7 +142,7 @@ fn main() -> Result<()> {
                 "  owner:         {} ({})",
                 cfg.owner.display_name, cfg.owner.phone_e164
             );
-            println!("  assets dir:    {}", assets_dir.display());
+            println!("  assets hq:     {}", assets_hq.display());
             println!("  contacts csv:  {}", contacts_csv.display());
             println!("  blacklist csv: {}", blacklist_csv.display());
             if stats.contacts_skipped {
@@ -153,6 +168,33 @@ fn main() -> Result<()> {
             println!("  assets copied: {}", stats.assets_copied);
             println!("  assets deduped:{}", stats.assets_deduped);
             println!("  assets missing:{}", stats.assets_missing);
+        }
+
+        Commands::ImportContacts {
+            config,
+            contacts_csv,
+            db,
+        } => {
+            let cfg = Config::load(&config)?;
+            let db = db.unwrap_or(cfg.paths.db);
+            let contacts_csv = contacts_csv.unwrap_or(cfg.paths.contacts_csv);
+
+            if let Some(parent) = db.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+
+            let mut conn = rusqlite::Connection::open(&db)?;
+            conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+            let stats = contacts::load_contacts_if_needed(&mut conn, &contacts_csv, true)?;
+
+            println!("Imported contacts into {}", db.display());
+            println!("  config:       {}", config.display());
+            println!("  contacts csv: {}", contacts_csv.display());
+            println!("  contacts:     {}", stats.contacts);
+            println!("  phones:       {}", stats.phones);
+            println!("  tag links:    {}", stats.tags);
         }
 
         Commands::VcfToContacts {

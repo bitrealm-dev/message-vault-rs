@@ -8,28 +8,33 @@ function isVideoMime(mime: string | null): boolean {
   return Boolean(mime?.startsWith("video/"));
 }
 
-function mediaVariant(): "derived" | "original" {
+function mediaVariant(): "lq" | "hq" {
   // Client components: Next inlines NEXT_PUBLIC_* at build time.
-  const raw = (process.env.NEXT_PUBLIC_MEDIA_VARIANT ?? process.env.MEDIA_VARIANT ?? "derived")
+  const raw = (
+    process.env.NEXT_PUBLIC_MEDIA_VARIANT ??
+    process.env.MEDIA_VARIANT ??
+    "lq"
+  )
     .trim()
     .toLowerCase();
-  return raw === "original" ? "original" : "derived";
+  if (raw === "hq" || raw === "original") return "hq";
+  return "lq";
 }
 
 function resolveAttachmentMedia(a: AttachmentRow): {
   url: string | null;
   mimeType: string | null;
 } {
-  const preferDerived = mediaVariant() === "derived";
-  if (preferDerived && a.derivedAssetsPath) {
+  const preferLq = mediaVariant() === "lq";
+  if (preferLq && a.derivedAssetsPath) {
     return {
-      url: `/api/derived/${a.derivedAssetsPath}`,
+      url: `/api/assets_lq/${a.derivedAssetsPath}`,
       mimeType: a.derivedMimeType ?? a.mimeType,
     };
   }
   if (a.assetsPath) {
     return {
-      url: `/api/assets/${a.assetsPath}`,
+      url: `/api/assets_hq/${a.assetsPath}`,
       mimeType: a.mimeType,
     };
   }

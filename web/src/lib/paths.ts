@@ -3,8 +3,8 @@ import path from "path";
 import { parse } from "smol-toml";
 
 const DEFAULT_DB = "data/imessage.db";
-const DEFAULT_ASSETS_DIR = "data/assets";
-const DEFAULT_DERIVED_DIR = "data/derived";
+const DEFAULT_ASSETS_HQ = "data/assets_hq";
+const DEFAULT_ASSETS_LQ = "data/assets_lq";
 
 /** Repo root (parent of web/), detected via config/config.toml. */
 export function repoRoot(): string {
@@ -34,7 +34,11 @@ function resolveConfiguredPath(
 
 type PathsConfig = {
   db?: string;
+  assets_hq?: string;
+  assets_lq?: string;
+  /** @deprecated use assets_hq */
   assets_dir?: string;
+  /** @deprecated use assets_lq */
   derived_dir?: string;
 };
 
@@ -57,18 +61,37 @@ export function dbPath(): string {
   return resolveConfiguredPath(paths.db, DEFAULT_DB);
 }
 
+/** High-quality / original attachment root. */
+export function assetsHqRoot(): string {
+  const paths = loadPathsConfig();
+  return resolveConfiguredPath(
+    paths.assets_hq ?? paths.assets_dir,
+    DEFAULT_ASSETS_HQ,
+  );
+}
+
+/** Low-quality / derived attachment root. */
+export function assetsLqRoot(): string {
+  const paths = loadPathsConfig();
+  return resolveConfiguredPath(
+    paths.assets_lq ?? paths.derived_dir,
+    DEFAULT_ASSETS_LQ,
+  );
+}
+
+/** @deprecated use assetsHqRoot */
 export function assetsRoot(): string {
-  const paths = loadPathsConfig();
-  return resolveConfiguredPath(paths.assets_dir, DEFAULT_ASSETS_DIR);
+  return assetsHqRoot();
 }
 
+/** @deprecated use assetsLqRoot */
 export function derivedRoot(): string {
-  const paths = loadPathsConfig();
-  return resolveConfiguredPath(paths.derived_dir, DEFAULT_DERIVED_DIR);
+  return assetsLqRoot();
 }
 
-/** Prefer derived media when present unless MEDIA_VARIANT=original. */
-export function mediaVariant(): "derived" | "original" {
-  const raw = (process.env.MEDIA_VARIANT ?? "derived").trim().toLowerCase();
-  return raw === "original" ? "original" : "derived";
+/** Prefer LQ media when present unless MEDIA_VARIANT=hq (or original). */
+export function mediaVariant(): "lq" | "hq" {
+  const raw = (process.env.MEDIA_VARIANT ?? "lq").trim().toLowerCase();
+  if (raw === "hq" || raw === "original") return "hq";
+  return "lq";
 }
