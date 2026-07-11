@@ -614,7 +614,8 @@ export function messagesForConversationYear(
   }>;
 
   const attStmt = db.prepare(
-    `SELECT id, mime_type, original_name, assets_path, sha256
+    `SELECT id, mime_type, original_name, assets_path, sha256,
+            derived_mime_type, derived_assets_path, derived_sha256
      FROM attachments WHERE message_id = ?`,
   );
 
@@ -641,6 +642,9 @@ export function messagesForConversationYear(
         original_name: string | null;
         assets_path: string | null;
         sha256: string | null;
+        derived_mime_type: string | null;
+        derived_assets_path: string | null;
+        derived_sha256: string | null;
       }>
     ).map((a) => ({
       id: a.id,
@@ -648,6 +652,9 @@ export function messagesForConversationYear(
       originalName: a.original_name,
       assetsPath: a.assets_path,
       sha256: a.sha256,
+      derivedMimeType: a.derived_mime_type,
+      derivedAssetsPath: a.derived_assets_path,
+      derivedSha256: a.derived_sha256,
     }));
 
     return {

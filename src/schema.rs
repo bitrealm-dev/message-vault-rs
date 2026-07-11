@@ -53,7 +53,10 @@ CREATE TABLE attachments (
     is_sticker INTEGER NOT NULL DEFAULT 0,
     transcription TEXT,
     sha256 TEXT,
-    assets_path TEXT
+    assets_path TEXT,
+    derived_sha256 TEXT,
+    derived_assets_path TEXT,
+    derived_mime_type TEXT
 );
 
 CREATE INDEX ix_attachments_sha256 ON attachments (sha256);
@@ -121,7 +124,10 @@ CREATE TABLE staging_attachments (
     is_sticker INTEGER NOT NULL DEFAULT 0,
     transcription TEXT,
     sha256 TEXT,
-    assets_path TEXT
+    assets_path TEXT,
+    derived_sha256 TEXT,
+    derived_assets_path TEXT,
+    derived_mime_type TEXT
 );
 
 CREATE INDEX ix_staging_attachments_sha256 ON staging_attachments (sha256);

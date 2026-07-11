@@ -24,9 +24,16 @@ pub struct PathsConfig {
     pub export_dir: PathBuf,
     pub db: PathBuf,
     pub assets_dir: PathBuf,
+    #[serde(default = "default_derived_dir")]
+    #[allow(dead_code)]
+    pub derived_dir: PathBuf,
     pub contacts_csv: PathBuf,
     #[serde(default = "default_blacklist_csv")]
     pub blacklist_csv: PathBuf,
+}
+
+fn default_derived_dir() -> PathBuf {
+    PathBuf::from("data/derived")
 }
 
 fn default_blacklist_csv() -> PathBuf {

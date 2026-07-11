@@ -8,6 +8,34 @@ function isVideoMime(mime: string | null): boolean {
   return Boolean(mime?.startsWith("video/"));
 }
 
+function mediaVariant(): "derived" | "original" {
+  // Client components: Next inlines NEXT_PUBLIC_* at build time.
+  const raw = (process.env.NEXT_PUBLIC_MEDIA_VARIANT ?? process.env.MEDIA_VARIANT ?? "derived")
+    .trim()
+    .toLowerCase();
+  return raw === "original" ? "original" : "derived";
+}
+
+function resolveAttachmentMedia(a: AttachmentRow): {
+  url: string | null;
+  mimeType: string | null;
+} {
+  const preferDerived = mediaVariant() === "derived";
+  if (preferDerived && a.derivedAssetsPath) {
+    return {
+      url: `/api/derived/${a.derivedAssetsPath}`,
+      mimeType: a.derivedMimeType ?? a.mimeType,
+    };
+  }
+  if (a.assetsPath) {
+    return {
+      url: `/api/assets/${a.assetsPath}`,
+      mimeType: a.mimeType,
+    };
+  }
+  return { url: null, mimeType: a.mimeType };
+}
+
 function MissingMediaPlaceholder({
   attachment,
 }: {
@@ -58,29 +86,34 @@ export function MessageAttachments({
 
   return (
     <div className={`${hasBody ? "mt-2" : ""} space-y-1.5`}>
-      {attachments.map((a) =>
-        a.assetsPath && isImageMime(a.mimeType) ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={a.id}
-            src={`/api/assets/${a.assetsPath}`}
-            alt={a.originalName ?? "attachment"}
-            className="max-h-64 max-w-full rounded-lg"
-          />
-        ) : a.assetsPath ? (
-          <a
-            key={a.id}
-            href={`/api/assets/${a.assetsPath}`}
-            className="block text-[12px] underline opacity-90"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {a.originalName ?? a.assetsPath}
-          </a>
-        ) : (
-          <MissingMediaPlaceholder key={a.id} attachment={a} />
-        ),
-      )}
+      {attachments.map((a) => {
+        const { url, mimeType } = resolveAttachmentMedia(a);
+        if (url && isImageMime(mimeType)) {
+          return (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={a.id}
+              src={url}
+              alt={a.originalName ?? "attachment"}
+              className="max-h-64 max-w-full rounded-lg"
+            />
+          );
+        }
+        if (url) {
+          return (
+            <a
+              key={a.id}
+              href={url}
+              className="block text-[12px] underline opacity-90"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {a.originalName ?? url}
+            </a>
+          );
+        }
+        return <MissingMediaPlaceholder key={a.id} attachment={a} />;
+      })}
     </div>
   );
 }

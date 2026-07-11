@@ -60,6 +60,9 @@ export type AttachmentRow = {
   originalName: string | null;
   assetsPath: string | null;
   sha256: string | null;
+  derivedMimeType: string | null;
+  derivedAssetsPath: string | null;
+  derivedSha256: string | null;
 };
 
 export type MessageRow = {

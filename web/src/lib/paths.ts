@@ -4,6 +4,7 @@ import { parse } from "smol-toml";
 
 const DEFAULT_DB = "data/imessage.db";
 const DEFAULT_ASSETS_DIR = "data/assets";
+const DEFAULT_DERIVED_DIR = "data/derived";
 
 /** Repo root (parent of web/), detected via config/config.toml. */
 export function repoRoot(): string {
@@ -34,6 +35,7 @@ function resolveConfiguredPath(
 type PathsConfig = {
   db?: string;
   assets_dir?: string;
+  derived_dir?: string;
 };
 
 function loadPathsConfig(): PathsConfig {
@@ -58,4 +60,15 @@ export function dbPath(): string {
 export function assetsRoot(): string {
   const paths = loadPathsConfig();
   return resolveConfiguredPath(paths.assets_dir, DEFAULT_ASSETS_DIR);
+}
+
+export function derivedRoot(): string {
+  const paths = loadPathsConfig();
+  return resolveConfiguredPath(paths.derived_dir, DEFAULT_DERIVED_DIR);
+}
+
+/** Prefer derived media when present unless MEDIA_VARIANT=original. */
+export function mediaVariant(): "derived" | "original" {
+  const raw = (process.env.MEDIA_VARIANT ?? "derived").trim().toLowerCase();
+  return raw === "original" ? "original" : "derived";
 }
