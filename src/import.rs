@@ -8,9 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::assets::{self, AssetStats, StoredAsset};
 use crate::contacts;
 use crate::exclude::ExcludeSet;
-use crate::models::{
-    clean_body, json_array_column, json_value_column, AttachmentRecord, ExportRecord, MessageRecord,
-};
+use crate::models::{clean_body, AttachmentRecord, ExportRecord, MessageRecord};
 use crate::ndjson;
 use crate::schema;
 
@@ -353,22 +351,14 @@ fn import_file_to_staging(
             clean_body(msg.text.as_deref())
         };
 
-        let parts_json = json_array_column(&msg.parts);
-        let edits_json = json_array_column(&msg.edits);
-        let balloon_json = json_value_column(&msg.balloon);
-
         let inserted = tx.execute(
             r#"
             INSERT OR IGNORE INTO staging_messages (
                 conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
                 subject, body, is_announcement, is_reply, thread_originator_guid,
-                thread_originator_part, num_replies,
-                timestamp_read, timestamp_delivered, service, is_deleted, expressive,
-                shared_location, parts_json, edits_json, balloon_json,
-                sort_order
+                thread_originator_part, num_replies, sort_order
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
             )
             "#,
             params![
@@ -385,15 +375,6 @@ fn import_file_to_staging(
                 msg.thread_originator_guid,
                 msg.thread_originator_part,
                 msg.num_replies,
-                msg.timestamp_read,
-                msg.timestamp_delivered,
-                msg.service,
-                msg.is_deleted as i64,
-                msg.expressive,
-                msg.shared_location,
-                parts_json,
-                edits_json,
-                balloon_json,
                 sort_order as i64,
             ],
         )?;
@@ -421,8 +402,8 @@ fn import_file_to_staging(
                 r#"
                 INSERT INTO staging_attachments (
                     message_id, path, original_name, mime_type, is_sticker, transcription,
-                    genmoji_prompt, sticker_effect, sha256, assets_path
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                    sha256, assets_path
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                 "#,
                 params![
                     message_id,
@@ -431,8 +412,6 @@ fn import_file_to_staging(
                     mime_type,
                     att.is_sticker as i64,
                     att.transcription,
-                    att.genmoji_prompt,
-                    att.sticker_effect,
                     sha256,
                     assets_path,
                 ],
@@ -609,43 +588,29 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         r#"
         SELECT id, conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
                subject, body, is_announcement, is_reply, thread_originator_guid,
-               thread_originator_part, num_replies,
-               timestamp_read, timestamp_delivered, service, is_deleted, expressive,
-               shared_location, parts_json, edits_json, balloon_json,
-               sort_order
+               thread_originator_part, num_replies, sort_order
         FROM staging_messages
         ORDER BY id
         "#,
     )?;
 
-    type StagingMsgRow = (
-        i64,             // staging_msg_id
-        i64,             // staging_conv_id
-        Option<String>,  // guid
-        String,          // timestamp
-        Option<String>,  // timestamp_utc
-        i64,             // is_from_me
-        Option<String>,  // sender
-        Option<String>,  // subject
-        Option<String>,  // body
-        i64,             // is_announcement
-        i64,             // is_reply
-        Option<String>,  // thread_originator_guid
-        Option<i64>,     // thread_originator_part
-        i64,             // num_replies
-        Option<String>,  // timestamp_read
-        Option<String>,  // timestamp_delivered
-        Option<String>,  // service
-        i64,             // is_deleted
-        Option<String>,  // expressive
-        Option<String>,  // shared_location
-        Option<String>,  // parts_json
-        Option<String>,  // edits_json
-        Option<String>,  // balloon_json
-        i64,             // sort_order
-    );
-
-    let staging_msg_rows: Vec<StagingMsgRow> = staging_msgs
+    let staging_msg_rows: Vec<(
+        i64,
+        i64,
+        Option<String>,
+        String,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        i64,
+        Option<String>,
+        Option<i64>,
+        i64,
+        i64,
+    )> = staging_msgs
         .query_map([], |row| {
             Ok((
                 row.get(0)?,
@@ -663,15 +628,6 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
                 row.get(12)?,
                 row.get(13)?,
                 row.get(14)?,
-                row.get(15)?,
-                row.get(16)?,
-                row.get(17)?,
-                row.get(18)?,
-                row.get(19)?,
-                row.get(20)?,
-                row.get(21)?,
-                row.get(22)?,
-                row.get(23)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -694,15 +650,6 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         thread_originator_guid,
         thread_originator_part,
         num_replies,
-        timestamp_read,
-        timestamp_delivered,
-        service,
-        is_deleted,
-        expressive,
-        shared_location,
-        parts_json,
-        edits_json,
-        balloon_json,
         sort_order,
     ) in staging_msg_rows
     {
@@ -728,13 +675,9 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
             INSERT INTO messages (
                 conversation_id, guid, timestamp, timestamp_utc, is_from_me, sender,
                 subject, body, is_announcement, is_reply, thread_originator_guid,
-                thread_originator_part, num_replies,
-                timestamp_read, timestamp_delivered, service, is_deleted, expressive,
-                shared_location, parts_json, edits_json, balloon_json,
-                sort_order
+                thread_originator_part, num_replies, sort_order
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
             )
             "#,
             params![
@@ -751,15 +694,6 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
                 thread_originator_guid,
                 thread_originator_part,
                 num_replies,
-                timestamp_read,
-                timestamp_delivered,
-                service,
-                is_deleted,
-                expressive,
-                shared_location,
-                parts_json,
-                edits_json,
-                balloon_json,
                 sort_order,
             ],
         )?;
@@ -772,7 +706,7 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
     let mut staging_atts = tx.prepare(
         r#"
         SELECT message_id, path, original_name, mime_type, is_sticker, transcription,
-               genmoji_prompt, sticker_effect, sha256, assets_path
+               sha256, assets_path
         FROM staging_attachments
         ORDER BY id
         "#,
@@ -783,8 +717,6 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         Option<String>,
         Option<String>,
         i64,
-        Option<String>,
-        Option<String>,
         Option<String>,
         Option<String>,
         Option<String>,
@@ -799,25 +731,13 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
                 row.get(5)?,
                 row.get(6)?,
                 row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     drop(staging_atts);
 
-    for (
-        staging_msg_id,
-        path,
-        original_name,
-        mime_type,
-        is_sticker,
-        transcription,
-        genmoji_prompt,
-        sticker_effect,
-        sha256,
-        assets_path,
-    ) in staging_att_rows
+    for (staging_msg_id, path, original_name, mime_type, is_sticker, transcription, sha256, assets_path) in
+        staging_att_rows
     {
         let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
             continue;
@@ -826,8 +746,8 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
             r#"
             INSERT INTO attachments (
                 message_id, path, original_name, mime_type, is_sticker, transcription,
-                genmoji_prompt, sticker_effect, sha256, assets_path
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                sha256, assets_path
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
             params![
                 prod_msg_id,
@@ -836,8 +756,6 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
                 mime_type,
                 is_sticker,
                 transcription,
-                genmoji_prompt,
-                sticker_effect,
                 sha256,
                 assets_path,
             ],

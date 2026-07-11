@@ -35,15 +35,6 @@ CREATE TABLE messages (
     thread_originator_guid TEXT,
     thread_originator_part INTEGER,
     num_replies INTEGER NOT NULL DEFAULT 0,
-    timestamp_read TEXT,
-    timestamp_delivered TEXT,
-    service TEXT,
-    is_deleted INTEGER NOT NULL DEFAULT 0,
-    expressive TEXT,
-    shared_location TEXT,
-    parts_json TEXT,
-    edits_json TEXT,
-    balloon_json TEXT,
     sort_order INTEGER NOT NULL
 );
 
@@ -61,8 +52,6 @@ CREATE TABLE attachments (
     mime_type TEXT,
     is_sticker INTEGER NOT NULL DEFAULT 0,
     transcription TEXT,
-    genmoji_prompt TEXT,
-    sticker_effect TEXT,
     sha256 TEXT,
     assets_path TEXT,
     derived_sha256 TEXT,
@@ -117,15 +106,6 @@ CREATE TABLE staging_messages (
     thread_originator_guid TEXT,
     thread_originator_part INTEGER,
     num_replies INTEGER NOT NULL DEFAULT 0,
-    timestamp_read TEXT,
-    timestamp_delivered TEXT,
-    service TEXT,
-    is_deleted INTEGER NOT NULL DEFAULT 0,
-    expressive TEXT,
-    shared_location TEXT,
-    parts_json TEXT,
-    edits_json TEXT,
-    balloon_json TEXT,
     sort_order INTEGER NOT NULL
 );
 
@@ -143,8 +123,6 @@ CREATE TABLE staging_attachments (
     mime_type TEXT,
     is_sticker INTEGER NOT NULL DEFAULT 0,
     transcription TEXT,
-    genmoji_prompt TEXT,
-    sticker_effect TEXT,
     sha256 TEXT,
     assets_path TEXT,
     derived_sha256 TEXT,
