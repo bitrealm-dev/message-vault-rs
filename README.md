@@ -33,10 +33,10 @@ One shared SQLite DB holds all sources. Each message row has a `source` column. 
 ./message-exporter/build-staging.sh
 # or: ./message-exporter/build-staging.sh imessage
 
-# 2. Import staging into data/vault.db
-./message-exporter/import-staging.sh                 # all sources, replace
-./message-exporter/import-staging.sh --append        # all sources, append
-./message-exporter/import-staging.sh imessage        # one source, replace
+# 2. Import into data/vault.db, then soft-hide cross-source duplicates
+./message-exporter/import-staging.sh                 # all sources, replace + dedupe
+./message-exporter/import-staging.sh --append        # all sources, append + dedupe
+./message-exporter/import-staging.sh imessage        # one source, replace + dedupe
 ./message-exporter/import-staging.sh --append go-sms-pro
 
 # 3. Generate converted media under data/<source>/assets_converted/
@@ -47,14 +47,31 @@ cd web && npm run process-assets
 npm run dev
 ```
 
-`replace` deletes that source’s messages then reloads; `append` keeps existing rows and dedupes by `(source, guid)`. Other sources are left alone.
+### Import modes
 
-Equivalent cargo commands:
+- **replace** — delete that source’s messages, then reload from staging.
+- **append** — keep existing rows; skip when the same `(source, guid)` already exists.
+
+Other sources are left alone.
+
+### Cross-source dedupe
+
+`import-staging.sh` finishes with `dedupe-cross-source`. That pass:
+
+1. Rebuilds every message **content key** (chat + UTC epoch seconds + direction + normalized body + attachment hashes).
+2. Soft-hides exact cross-source matches (`duplicate_of`).
+3. Soft-hides near matches in the same conversation within ±2 seconds (same body or same attachment hashes).
+
+Rows are not deleted. **All (combined)** hides soft-hidden copies. A single-source filter still shows every row for that archive.
+
+Full walkthrough with diagrams: [docs/dedupe.md](docs/dedupe.md).
 
 ```bash
 cargo run --release -- import --source imessage --mode replace
 cargo run --release -- import --all --mode replace
 cargo run --release -- import --source go-sms-pro --mode append
+cargo run --release -- dedupe-cross-source
+# optional: --window-secs 2
 ```
 
 ## Web

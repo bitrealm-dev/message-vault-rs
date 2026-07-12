@@ -36,7 +36,9 @@ CREATE TABLE messages (
     thread_originator_guid TEXT,
     thread_originator_part INTEGER,
     num_replies INTEGER NOT NULL DEFAULT 0,
-    sort_order INTEGER NOT NULL
+    sort_order INTEGER NOT NULL,
+    content_key TEXT,
+    duplicate_of INTEGER REFERENCES messages(id) ON DELETE SET NULL
 );
 
 CREATE INDEX ix_messages_conversation_timestamp
@@ -46,6 +48,12 @@ CREATE INDEX ix_messages_conversation_source_timestamp
 CREATE UNIQUE INDEX ix_messages_source_guid
     ON messages (source, guid)
     WHERE guid IS NOT NULL AND guid != '';
+CREATE INDEX ix_messages_content_key
+    ON messages (content_key)
+    WHERE content_key IS NOT NULL AND content_key != '';
+CREATE INDEX ix_messages_duplicate_of
+    ON messages (duplicate_of)
+    WHERE duplicate_of IS NOT NULL;
 
 CREATE TABLE attachments (
     id INTEGER PRIMARY KEY,
@@ -166,7 +174,7 @@ pub fn recreate_messages(conn: &Connection) -> Result<()> {
 }
 
 /// Create production message tables if they do not already exist (for append on a fresh DB).
-/// Migrates older schemas that lack `messages.source`.
+/// Migrates older schemas that lack `messages.source` / cross-source dedupe columns.
 pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
     let exists: bool = conn.query_row(
         "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'conversations'",
@@ -179,16 +187,21 @@ pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
         return Ok(());
     }
     migrate_messages_source(conn)?;
+    migrate_messages_dedupe_columns(conn)?;
     Ok(())
 }
 
-fn migrate_messages_source(conn: &Connection) -> Result<()> {
-    let has_source: bool = conn.query_row(
-        "SELECT COUNT(*) > 0 FROM pragma_table_info('messages') WHERE name = 'source'",
-        [],
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        [column],
         |row| row.get(0),
     )?;
-    if !has_source {
+    Ok(n > 0)
+}
+
+fn migrate_messages_source(conn: &Connection) -> Result<()> {
+    if !table_has_column(conn, "messages", "source")? {
         conn.execute_batch(
             r#"
             ALTER TABLE messages ADD COLUMN source TEXT NOT NULL DEFAULT 'default';
@@ -201,6 +214,28 @@ fn migrate_messages_source(conn: &Connection) -> Result<()> {
             "#,
         )?;
     }
+    Ok(())
+}
+
+fn migrate_messages_dedupe_columns(conn: &Connection) -> Result<()> {
+    if !table_has_column(conn, "messages", "content_key")? {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN content_key TEXT;")?;
+    }
+    if !table_has_column(conn, "messages", "duplicate_of")? {
+        conn.execute_batch(
+            "ALTER TABLE messages ADD COLUMN duplicate_of INTEGER REFERENCES messages(id) ON DELETE SET NULL;",
+        )?;
+    }
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS ix_messages_content_key
+            ON messages (content_key)
+            WHERE content_key IS NOT NULL AND content_key != '';
+        CREATE INDEX IF NOT EXISTS ix_messages_duplicate_of
+            ON messages (duplicate_of)
+            WHERE duplicate_of IS NOT NULL;
+        "#,
+    )?;
     Ok(())
 }
 

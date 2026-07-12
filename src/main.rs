@@ -1,6 +1,7 @@
 mod assets;
 mod config;
 mod contacts;
+mod dedupe;
 mod exclude;
 mod import;
 mod models;
@@ -67,6 +68,21 @@ enum Commands {
         /// Import mode: replace (wipe this source's messages) or append (dedupe by source+guid)
         #[arg(long, default_value = "replace")]
         mode: String,
+    },
+
+    /// Soft-hide the same SMS when it appears under more than one import source
+    DedupeCrossSource {
+        /// Path to config.toml
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
+
+        /// Output SQLite database path (overrides config)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Near-time window in seconds for Pass B (default 2)
+        #[arg(long, default_value_t = 2)]
+        window_secs: i64,
     },
 
     /// Load contacts from config/contacts.csv (or --contacts-csv) into the database
@@ -219,6 +235,30 @@ fn main() -> Result<()> {
                 println!("  assets deduped:{}", stats.assets_deduped);
                 println!("  assets missing:{}", stats.assets_missing);
             }
+        }
+
+        Commands::DedupeCrossSource {
+            config,
+            db,
+            window_secs,
+        } => {
+            let cfg = Config::load(&config)?;
+            let db = db.unwrap_or_else(|| cfg.paths.db.clone());
+            let priority: Vec<String> = cfg.sources.iter().map(|s| s.id.clone()).collect();
+            if window_secs < 0 {
+                bail!("--window-secs must be >= 0");
+            }
+
+            println!("Cross-source dedupe on {}", db.display());
+            println!("  config:       {}", config.display());
+            println!("  window_secs:  {}", window_secs);
+            println!("  priority:     {}", priority.join(", "));
+
+            let stats = dedupe::run_dedupe(&db, &priority, window_secs)?;
+            println!("  keys filled:  {}", stats.keys_filled);
+            println!("  exact groups: {}", stats.exact_groups);
+            println!("  exact flagged:{}", stats.exact_flagged);
+            println!("  near flagged: {}", stats.near_flagged);
         }
 
         Commands::ImportContacts {

@@ -16,11 +16,13 @@ import { tagSlug } from "./tagSlug";
 export { tagSlug };
 
 let _db: Database.Database | null = null;
+let _hasDuplicateOf: boolean | null = null;
 
 export function getDb(): Database.Database {
   if (!_db) {
     _db = new Database(dbPath(), { readonly: true, fileMustExist: true });
     _db.pragma("foreign_keys = ON");
+    _hasDuplicateOf = null;
   }
   return _db;
 }
@@ -31,6 +33,26 @@ export function resetDb(): void {
     _db.close();
     _db = null;
   }
+  _hasDuplicateOf = null;
+}
+
+function hasDuplicateOfColumn(): boolean {
+  if (_hasDuplicateOf !== null) return _hasDuplicateOf;
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM pragma_table_info('messages') WHERE name = 'duplicate_of'`,
+    )
+    .get() as { n: number };
+  _hasDuplicateOf = row.n > 0;
+  return _hasDuplicateOf;
+}
+
+/** When no source filter is set (All combined), hide soft-deduped cross-source copies. */
+function combinedDedupeSql(source?: string | null, alias?: string): string {
+  if (source || !hasDuplicateOfColumn()) return "";
+  const col = alias ? `${alias}.duplicate_of` : "duplicate_of";
+  return ` AND ${col} IS NULL`;
 }
 
 function displayName(row: {
@@ -240,13 +262,14 @@ function contactDateRange(
   if (!phones.length) return null;
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
+  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
   const row = db
     .prepare(
       `SELECT MIN(substr(m.timestamp, 1, 10)) AS start, MAX(substr(m.timestamp, 1, 10)) AS end
        FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
        WHERE c.conv_type = 'individual'
-         AND c.chat_identifier IN (${placeholders})`,
+         AND c.chat_identifier IN (${placeholders})${hideDupes}`,
     )
     .get(...phones) as { start: string | null; end: string | null } | undefined;
   if (!row?.start || !row?.end) return null;
@@ -283,7 +306,7 @@ export function contactYearlyThreads(
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'individual'
-         AND c.chat_identifier IN (${placeholders})${sourceSql}
+         AND c.chat_identifier IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
        GROUP BY year
        ORDER BY year DESC`,
     )
@@ -470,7 +493,7 @@ export function contactGroupThreads(
        JOIN participants p ON p.conversation_id = c.id
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'group'
-         AND p.handle IN (${placeholders})${sourceSql}
+         AND p.handle IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
        GROUP BY c.id, year
        ORDER BY year DESC, c.id`,
     )
@@ -510,6 +533,9 @@ export function contactGroupThreads(
 
 export function listGroups(): GroupListItem[] {
   const db = getDb();
+  const joinDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
   const rows = db
     .prepare(
       `SELECT c.id,
@@ -517,7 +543,7 @@ export function listGroups(): GroupListItem[] {
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
               MAX(substr(m.timestamp, 1, 10)) AS date_end
        FROM conversations c
-       LEFT JOIN messages m ON m.conversation_id = c.id
+       LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
        WHERE c.conv_type = 'group'
        GROUP BY c.id
        HAVING message_count > 0`,
@@ -572,7 +598,7 @@ export function groupYearlyThreads(
               MIN(substr(timestamp, 1, 10)) AS date_start,
               MAX(substr(timestamp, 1, 10)) AS date_end
        FROM messages
-       WHERE conversation_id = ?${sourceSql}
+       WHERE conversation_id = ?${sourceSql}${combinedDedupeSql(source)}
        GROUP BY year
        ORDER BY year DESC`,
     )
@@ -619,7 +645,7 @@ export function messagesForConversationYear(
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
        WHERE m.conversation_id IN (${placeholders})
-         AND CAST(substr(m.timestamp, 1, 4) AS INTEGER) = ?${sourceSql}
+         AND CAST(substr(m.timestamp, 1, 4) AS INTEGER) = ?${sourceSql}${combinedDedupeSql(source, "m")}
        ORDER BY m.timestamp, m.sort_order`,
     )
     .all(...params) as Array<{

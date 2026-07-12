@@ -12,6 +12,8 @@
 #   replace (default) — delete that source's messages, then import
 #   --append          — keep existing; dedupe by (source, guid)
 #
+# After import, runs `dedupe-cross-source` to soft-hide the same SMS across sources.
+#
 # Source ids must match [[sources]] in config/config.toml
 # (imessage, sms-backup-plus, go-sms-pro, sms-backup-restore, …).
 
@@ -94,3 +96,11 @@ else
 fi
 
 echo "Import finished (mode=${MODE})."
+
+dedupe_cmd=(
+  cargo run --release -- dedupe-cross-source
+  --config "${CONFIG}"
+)
+echo "+" "${dedupe_cmd[@]}"
+"${dedupe_cmd[@]}"
+echo "Cross-source dedupe finished."

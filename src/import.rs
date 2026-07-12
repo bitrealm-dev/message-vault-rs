@@ -793,6 +793,9 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         stats.tapbacks += 1;
     }
 
+    // Content keys need attachment sha256 rows; fill any missing before commit.
+    crate::dedupe::fill_missing_content_keys(&tx)?;
+
     tx.commit()?;
     Ok(stats)
 }
