@@ -79,10 +79,22 @@ export type MessageRow = {
   attachments: AttachmentRow[];
 };
 
+export type UnmatchedHandle = {
+  handle: string;
+  displayName: string;
+  nameHint: string | null;
+  messageCount: number;
+  dateStart: string | null;
+  dateEnd: string | null;
+  sortKey: string;
+  letter: string;
+};
+
 export type HomeStats = {
   all: number;
   excluded: number;
   noMessages: number;
+  unmatched: number;
   groups: number;
   messages: number;
   contacts: number;

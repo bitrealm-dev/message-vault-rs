@@ -9,6 +9,7 @@ import type {
   GroupThread,
   HomeStats,
   MessageRow,
+  UnmatchedHandle,
   YearThread,
 } from "./types";
 import { tagSlug } from "./tagSlug";
@@ -89,6 +90,7 @@ const RESERVED_TAG_LABELS = new Set(
     "excluded",
     "no-messages",
     "no messages",
+    "unmatched",
     "groups",
     "no-group",
     "no group",
@@ -1057,6 +1059,7 @@ export function homeStats(): HomeStats {
     all: listContacts("all").length,
     excluded: listContacts("excluded").length,
     noMessages: listContacts("no-messages").length,
+    unmatched: listUnmatchedHandles().length,
     groups: listGroups().length,
     messages: (
       getDb().prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
@@ -1065,4 +1068,160 @@ export function homeStats(): HomeStats {
       getDb().prepare(`SELECT COUNT(*) AS n FROM contacts`).get() as { n: number }
     ).n,
   };
+}
+
+/** 1:1 conversations with messages whose handle is not on any contact. */
+export function listUnmatchedHandles(): UnmatchedHandle[] {
+  const db = getDb();
+  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const rows = db
+    .prepare(
+      `SELECT c.chat_identifier AS handle,
+              MAX(p.name_hint) AS name_hint,
+              COUNT(m.id) AS message_count,
+              MIN(substr(m.timestamp, 1, 10)) AS date_start,
+              MAX(substr(m.timestamp, 1, 10)) AS date_end
+       FROM conversations c
+       JOIN messages m ON m.conversation_id = c.id
+       LEFT JOIN participants p
+         ON p.conversation_id = c.id AND p.handle = c.chat_identifier
+       WHERE c.conv_type = 'individual'
+         AND NOT EXISTS (
+           SELECT 1 FROM contact_phones cp WHERE cp.phone_e164 = c.chat_identifier
+         )${hideDupes}
+       GROUP BY c.id
+       HAVING message_count > 0
+       ORDER BY handle COLLATE NOCASE`,
+    )
+    .all() as Array<{
+    handle: string;
+    name_hint: string | null;
+    message_count: number;
+    date_start: string | null;
+    date_end: string | null;
+  }>;
+
+  return rows
+    .map((r) => {
+      const hint = r.name_hint?.trim() || null;
+      const hintUseful =
+        hint &&
+        !looksLikePhone(hint) &&
+        hint.toLowerCase() !== r.handle.toLowerCase() &&
+        !/^\(?unknown\)?$/i.test(hint)
+          ? hint
+          : null;
+      const displayName = hintUseful ?? r.handle;
+      const sortKey = hintUseful ? `${hintUseful}\0${r.handle}` : r.handle;
+      const ch = (hintUseful ?? r.handle).charAt(0).toUpperCase();
+      const letter = ch >= "A" && ch <= "Z" ? ch : "#";
+      return {
+        handle: r.handle,
+        displayName,
+        nameHint: hintUseful,
+        messageCount: r.message_count,
+        dateStart: r.date_start,
+        dateEnd: r.date_end,
+        sortKey,
+        letter,
+      };
+    })
+    .sort((a, b) =>
+      a.sortKey.localeCompare(b.sortKey, undefined, { sensitivity: "base" }),
+    );
+}
+
+export function unmatchedThreadsBundle(
+  handle: string,
+  source?: string | null,
+): {
+  handle: string;
+  yearly: YearThread[];
+  messageSources: string[];
+  sourceCounts: ContactSourceCounts;
+} | null {
+  const trimmed = handle.trim();
+  if (!trimmed) return null;
+  const db = getDb();
+  const conv = db
+    .prepare(
+      `SELECT id FROM conversations
+       WHERE conv_type = 'individual' AND chat_identifier = ?`,
+    )
+    .get(trimmed) as { id: number } | undefined;
+  if (!conv) return null;
+
+  const owned = db
+    .prepare(`SELECT 1 AS ok FROM contact_phones WHERE phone_e164 = ?`)
+    .get(trimmed) as { ok: number } | undefined;
+  if (owned) return null;
+
+  const hasMsgs = db
+    .prepare(
+      `SELECT 1 AS ok FROM messages WHERE conversation_id = ? LIMIT 1`,
+    )
+    .get(conv.id) as { ok: number } | undefined;
+  if (!hasMsgs) return null;
+
+  const ids = [conv.id];
+  const sourceCounts = contactMessageSourceCountsForConversations(ids);
+  return {
+    handle: trimmed,
+    yearly: contactYearlyThreadsForPhones([trimmed], source),
+    messageSources: Object.keys(sourceCounts.bySource).sort(),
+    sourceCounts,
+  };
+}
+
+/** All contacts for assign-to-existing pickers (includes excluded / no-messages). */
+export function listContactsForPicker(): ContactListItem[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, first_name, last_name, preferred_phone, exclude
+       FROM contacts`,
+    )
+    .all() as Array<{
+    id: number;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_phone: string | null;
+    exclude: number;
+  }>;
+
+  const tagRows = db
+    .prepare(
+      `SELECT ct.contact_id AS contact_id, t.name AS name
+       FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tag_id
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all() as Array<{ contact_id: number; name: string }>;
+  const tagsByContact = new Map<number, string[]>();
+  for (const row of tagRows) {
+    const list = tagsByContact.get(row.contact_id);
+    if (list) list.push(row.name);
+    else tagsByContact.set(row.contact_id, [row.name]);
+  }
+
+  return rows
+    .map((row) => {
+      const name = displayName(row);
+      const sorts = sortFields(row);
+      return {
+        id: row.id,
+        displayName: name,
+        preferredPhone: row.preferred_phone,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        tags: tagsByContact.get(row.id) ?? [],
+        exclude: row.exclude !== 0,
+        ...sorts,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" }) ||
+        a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" }),
+    );
 }

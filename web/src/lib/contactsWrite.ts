@@ -14,7 +14,12 @@ export type ContactPatch = {
   phones?: string[];
 };
 
-const RESERVED_GROUP_NAMES = new Set(["excluded", "no messages", "no-messages"]);
+const RESERVED_GROUP_NAMES = new Set([
+  "excluded",
+  "no messages",
+  "no-messages",
+  "unmatched",
+]);
 
 function assertAllowedTagName(name: string): void {
   const key = name.trim().toLowerCase();
@@ -22,7 +27,9 @@ function assertAllowedTagName(name: string): void {
     throw new Error(
       key === "excluded"
         ? "Excluded is a reserved group"
-        : "No messages is a reserved group",
+        : key === "unmatched"
+          ? "Unmatched is a reserved group"
+          : "No messages is a reserved group",
     );
   }
 }
@@ -602,6 +609,16 @@ export function patchContact(
     throw new Error("contact missing after update");
   }
   return updated;
+}
+
+/** Append a phone/email handle to an existing contact (for Unmatched assign). */
+export function addPhoneToContact(id: number, phone: string): ContactDetail {
+  const existing = getContact(id);
+  if (!existing) throw new Error("contact not found");
+  const trimmed = phone.trim();
+  if (!trimmed) throw new Error("phone required");
+  if (existing.phones.includes(trimmed)) return existing;
+  return patchContact(id, { phones: [...existing.phones, trimmed] });
 }
 
 function removeContactsCsv(

@@ -122,6 +122,25 @@ function EmptyChatIcon({ className }: { className?: string }) {
   );
 }
 
+function QuestionHandleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M9.6 9.4a2.4 2.4 0 1 1 3.5 2.1c-.7.4-1.1.9-1.1 1.7" />
+      <path d="M12 16.2h.01" />
+    </svg>
+  );
+}
+
 function PanelCollapseIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -646,6 +665,12 @@ export function AppSidebar({
             label="No messages"
             active={active === "/no-messages"}
             icon={<EmptyChatIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+          <NavLink
+            href="/unmatched"
+            label="Unmatched"
+            active={active === "/unmatched"}
+            icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 
           <GroupsNav tags={tags} />
