@@ -31,6 +31,7 @@ export default async function UnmatchedPage({
             handles={handles}
             assignContacts={assignContacts}
             initialHandle={initialHandle}
+            tags={tags}
           />
         </Suspense>
       </div>

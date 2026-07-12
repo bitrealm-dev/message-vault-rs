@@ -1175,7 +1175,7 @@ export function BrowseShell({
                       }}
                       className="min-w-0 flex-1 text-left"
                     >
-                      <span className="block truncate text-[13px] text-text">
+                      <span className="block truncate text-[13px] font-semibold text-text">
                         {c.displayName}
                       </span>
                       {c.preferredPhone && (

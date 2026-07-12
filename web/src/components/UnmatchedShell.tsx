@@ -10,10 +10,13 @@ import { searchContacts } from "@/lib/contactSearch";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  ContactPhoneList,
   draftHasName,
   emptyContactEditDraft,
+  phonesForSave,
   type ContactEditDraft,
 } from "./ContactEditPane";
+import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { MessageAttachments } from "./MessageAttachments";
 import {
   UnmatchedSortMenu,
@@ -45,11 +48,13 @@ export function UnmatchedShell({
   handles: initialHandles,
   assignContacts,
   initialHandle,
+  tags: allTags = [],
   mode = "unmatched",
 }: {
   handles: UnmatchedHandle[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
+  tags?: string[];
   mode?: "unmatched" | "trash";
 }) {
   const router = useRouter();
@@ -89,6 +94,7 @@ export function UnmatchedShell({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState<ContactEditDraft | null>(null);
+  const [extraGroups, setExtraGroups] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [assignMode, setAssignMode] = useState<
     null | "header" | { x: number; y: number }
@@ -189,8 +195,6 @@ export function UnmatchedShell({
       setHandle(next);
       setMessages([]);
       setActiveYear(null);
-      setCreating(false);
-      setCreateDraft(null);
       setAssignMode(null);
       setCtxMenu(null);
       setSelectedHandles(new Set());
@@ -201,6 +205,106 @@ export function UnmatchedShell({
     },
     [pathname, router, searchParams],
   );
+
+  // Default to create/edit when a single unmatched handle is focused.
+  const createHandleRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (mode !== "unmatched") {
+      createHandleRef.current = null;
+      setCreating(false);
+      setCreateDraft(null);
+      return;
+    }
+    if (multiSelected || !handle) {
+      createHandleRef.current = null;
+      setCreating(false);
+      setCreateDraft(null);
+      return;
+    }
+    setCreating(true);
+    if (createHandleRef.current === handle) return;
+    createHandleRef.current = handle;
+    const row = handles.find((h) => h.handle === handle);
+    setExtraGroups([]);
+    setCreateDraft({
+      ...emptyContactEditDraft(),
+      firstName: row?.nameHint?.trim() ?? "",
+      phones: [handle, ""],
+    });
+  }, [handle, mode, multiSelected, handles]);
+
+  const cancelCreate = useCallback(() => {
+    createHandleRef.current = null;
+    setCreating(false);
+    setCreateDraft(null);
+    setExtraGroups([]);
+    setHandle(null);
+    setYearly([]);
+    setMessages([]);
+    setActiveYear(null);
+    setMessageSources([]);
+    setSourceCounts({ all: 0, bySource: {} });
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("h");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const menuGroups = useMemo(() => {
+    const names = new Set([...allTags, ...extraGroups]);
+    for (const t of createDraft?.tags ?? []) names.add(t);
+    return [...names].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [allTags, extraGroups, createDraft?.tags]);
+
+  const draftGroupChecks = useMemo(() => {
+    const result: Record<string, GroupCheckState> = {};
+    const tags = createDraft?.tags ?? [];
+    for (const name of menuGroups) {
+      result[name] = tags.includes(name) ? "on" : "off";
+    }
+    return result;
+  }, [menuGroups, createDraft?.tags]);
+
+  const draftExcludedCheck = useMemo((): GroupCheckState => {
+    return createDraft?.exclude ? "on" : "off";
+  }, [createDraft?.exclude]);
+
+  const toggleDraftGroup = useCallback((name: string) => {
+    setCreateDraft((prev) => {
+      if (!prev) return prev;
+      const has = prev.tags.includes(name);
+      const tags = has
+        ? prev.tags.filter((t) => t !== name)
+        : [...prev.tags, name].sort((a, b) =>
+            a.localeCompare(b, undefined, { sensitivity: "base" }),
+          );
+      return { ...prev, tags };
+    });
+  }, []);
+
+  const createAndAssignDraftGroup = useCallback((name: string) => {
+    setExtraGroups((prev) =>
+      prev.includes(name) ? prev : [...prev, name],
+    );
+    setCreateDraft((prev) => {
+      if (!prev) return prev;
+      if (prev.tags.includes(name)) return prev;
+      return {
+        ...prev,
+        tags: [...prev.tags, name].sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" }),
+        ),
+      };
+    });
+  }, []);
+
+  const toggleDraftExcluded = useCallback(() => {
+    setCreateDraft((prev) =>
+      prev ? { ...prev, exclude: !prev.exclude } : prev,
+    );
+  }, []);
 
   const applyRangeSelect = useCallback(
     (target: string) => {
@@ -446,17 +550,6 @@ export function UnmatchedShell({
       .finally(() => setLoadingMessages(false));
   };
 
-  const beginCreate = () => {
-    if (!handle || multiSelected) return;
-    setAssignMode(null);
-    setCtxMenu(null);
-    setCreating(true);
-    setCreateDraft({
-      ...emptyContactEditDraft(),
-      phones: [handle, ""],
-    });
-  };
-
   const clearFocusAfterRemoval = (phones: string[]) => {
     const removed = new Set(phones);
     setHandles((prev) => prev.filter((h) => !removed.has(h.handle)));
@@ -477,12 +570,10 @@ export function UnmatchedShell({
     if (!createDraft || !handle || !draftHasName(createDraft)) return;
     setSaving(true);
     try {
-      const phones = [
-        handle,
-        ...createDraft.phones
-          .map((p) => p.trim())
-          .filter((p) => p && p !== handle),
-      ];
+      const fromDraft = phonesForSave(createDraft.phones);
+      const phones = fromDraft.includes(handle)
+        ? fromDraft
+        : [handle, ...fromDraft];
       const res = await fetch("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -490,8 +581,8 @@ export function UnmatchedShell({
           firstName: createDraft.firstName.trim() || null,
           lastName: createDraft.lastName.trim() || null,
           phones,
-          exclude: false,
-          tags: [],
+          exclude: createDraft.exclude,
+          tags: createDraft.tags,
         }),
       });
       const data = await res.json();
@@ -895,24 +986,21 @@ export function UnmatchedShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-[45px] shrink-0 items-center justify-between gap-3 border-b border-border bg-panel px-4">
-          <h1 className="truncate text-[15px] font-semibold text-text">
+          <h1 className="truncate text-xl font-semibold tracking-tight text-text">
             {multiSelected
               ? `${selectedHandles.size} selected`
-              : (selected?.displayName ??
-                (mode === "trash" ? "Trash" : "Unmatched"))}
+              : creating && createDraft
+                ? [createDraft.firstName, createDraft.lastName]
+                    .map((p) => p.trim())
+                    .filter(Boolean)
+                    .join(" ") ||
+                  selected?.displayName ||
+                  "New contact"
+                : (selected?.displayName ??
+                  (mode === "trash" ? "Trash" : "Unmatched"))}
           </h1>
-          {(multiSelected || (selected && !creating)) && (
+          {multiSelected && (
             <div className="flex shrink-0 items-center gap-2">
-              {!multiSelected && mode === "unmatched" && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => beginCreate()}
-                  className="rounded-md border border-border px-2.5 py-1 text-[12px] text-text hover:bg-white/15"
-                >
-                  Create contact
-                </button>
-              )}
               {mode === "unmatched" && (
                 <div className="relative">
                   <button
@@ -954,10 +1042,7 @@ export function UnmatchedShell({
                       setCtxMenu(null);
                       return;
                     }
-                    const target =
-                      multiSelected
-                        ? selectedItems[0]?.handle
-                        : handle;
+                    const target = selectedItems[0]?.handle;
                     if (!target) return;
                     openTrashMenu(r.right - 188, r.bottom + 4, target);
                   }}
@@ -968,26 +1053,79 @@ export function UnmatchedShell({
               )}
             </div>
           )}
-          {creating && !multiSelected && (
+          {creating && createDraft && !multiSelected && mode === "unmatched" && (
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                disabled={saving || !createDraft || !draftHasName(createDraft)}
+                disabled={saving || !draftHasName(createDraft)}
                 onClick={() => void saveCreate()}
-                className="rounded-md bg-accent px-2.5 py-1 text-[12px] text-white disabled:opacity-40"
+                className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18 disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Save"}
               </button>
               <button
                 type="button"
                 disabled={saving}
-                onClick={() => {
-                  setCreating(false);
-                  setCreateDraft(null);
-                }}
-                className="rounded-md border border-border px-2.5 py-1 text-[12px] text-text hover:bg-white/15"
+                onClick={cancelCreate}
+                className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-white/14 hover:text-text disabled:opacity-50"
               >
                 Cancel
+              </button>
+              <GroupsMenu
+                allGroups={menuGroups}
+                checks={draftGroupChecks}
+                excludedCheck={draftExcludedCheck}
+                onToggle={toggleDraftGroup}
+                onToggleExcluded={toggleDraftExcluded}
+                onCreate={createAndAssignDraftGroup}
+              />
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setAssignQuery("");
+                    setAssignMode((m) => (m === "header" ? null : "header"));
+                  }}
+                  className="rounded-md border border-border px-2.5 py-1 text-[12px] text-text hover:bg-white/15"
+                >
+                  Add to existing contact
+                </button>
+                {assignMode === "header" && (
+                  <div ref={assignRef} className="absolute right-0 z-30 mt-1">
+                    {assignSearch}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void moveToTrash()}
+                className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+          {mode === "trash" && selected && !multiSelected && (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                aria-label="Trash options"
+                aria-expanded={Boolean(ctxMenu)}
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  if (ctxMenu) {
+                    setCtxMenu(null);
+                    return;
+                  }
+                  if (!handle) return;
+                  openTrashMenu(r.right - 188, r.bottom + 4, handle);
+                }}
+                className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
+              >
+                <EllipsisIcon className="size-3.5" />
               </button>
             </div>
           )}
@@ -1048,159 +1186,284 @@ export function UnmatchedShell({
             <p className="text-[13px] text-muted">
               {mode === "trash"
                 ? "Choose a trashed number or email to read messages, or use Undelete / Delete permanently from the menu."
-                : "Choose an unmatched number or email to read messages, then create a contact or add the handle to someone existing."}
+                : "Choose an unmatched number or email to create a contact or add the handle to someone existing."}
             </p>
           ) : (
             <>
-              {creating && createDraft ? (
-                <div className="max-w-md space-y-3">
-                  <p className="text-[12px] text-muted">
-                    Creating contact for{" "}
-                    <span className="text-text">{handle}</span>
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block text-[11px] text-muted">
-                      First name
-                      <input
-                        value={createDraft.firstName}
-                        onChange={(e) =>
-                          setCreateDraft({
-                            ...createDraft,
-                            firstName: e.target.value,
-                          })
-                        }
-                        className="mt-0.5 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-[13px] text-text outline-none"
-                      />
-                    </label>
-                    <label className="block text-[11px] text-muted">
-                      Last name
-                      <input
-                        value={createDraft.lastName}
-                        onChange={(e) =>
-                          setCreateDraft({
-                            ...createDraft,
-                            lastName: e.target.value,
-                          })
-                        }
-                        className="mt-0.5 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-[13px] text-text outline-none"
-                      />
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <p className="text-[13px] text-muted">{selected.handle}</p>
-                  {selected.dateStart && selected.dateEnd && (
-                    <p className="mt-1 text-[12px] text-muted">
-                      {selected.dateStart === selected.dateEnd
-                        ? selected.dateStart
-                        : `${selected.dateStart} — ${selected.dateEnd}`}
-                    </p>
-                  )}
+              <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+                <h2 className="text-[13px] font-semibold text-text">
+                  Contact details
+                </h2>
+                <div className="mt-3">
+                  {creating && createDraft ? (
+                    <div className="mb-3 flex gap-3">
+                      <div className="pt-0.5">
+                        <PersonDetailIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">
+                          Name
+                        </div>
+                        <div className="mt-0.5 grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={createDraft.firstName}
+                            onChange={(e) =>
+                              setCreateDraft({
+                                ...createDraft,
+                                firstName: e.target.value,
+                              })
+                            }
+                            placeholder="First"
+                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+                          />
+                          <input
+                            type="text"
+                            value={createDraft.lastName}
+                            onChange={(e) =>
+                              setCreateDraft({
+                                ...createDraft,
+                                lastName: e.target.value,
+                              })
+                            }
+                            placeholder="Last"
+                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
-                  {sources.length > 0 && (
-                    <div className="mt-5">
-                      <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                        Message Sources
-                      </h3>
-                      <div className="mt-2 flex flex-wrap items-start gap-x-0 gap-y-2">
-                        {[
-                          {
-                            id: null as string | null,
-                            label: "Combined",
-                            enabled: true,
-                            count: sourceCounts.all,
-                          },
-                          ...sources.map((id) => ({
-                            id,
-                            label: formatSourceLabel(id),
-                            enabled: messageSources.includes(id),
-                            count: sourceCounts.bySource[id] ?? 0,
-                          })),
-                        ].map((opt, i) => {
-                          const active =
-                            opt.id === null
-                              ? source === null
-                              : source === opt.id;
-                          const disabled = !opt.enabled;
-                          return (
-                            <span
-                              key={opt.id ?? "all"}
-                              className="flex items-start"
-                            >
-                              {i > 0 && (
-                                <span
-                                  className="mx-2 pt-0.5 text-[13px] text-muted/50"
-                                  aria-hidden
-                                >
-                                  |
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="pt-0.5">
+                        <PeopleGroupIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">
+                          Groups
+                        </div>
+                        <div className="mt-0.5">
+                          {(() => {
+                            const shownTags = creating
+                              ? (createDraft?.tags ?? [])
+                              : [];
+                            if (shownTags.length === 0) {
+                              return (
+                                <span className="text-[13px] text-muted">
+                                  None
                                 </span>
-                              )}
-                              <button
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => {
-                                  if (disabled) return;
-                                  setSource(opt.id);
-                                }}
-                                className={`flex min-w-0 flex-col items-start text-left ${
-                                  disabled ? "cursor-default" : ""
-                                }`}
-                              >
-                                <span
-                                  className={`text-[13px] ${
-                                    disabled
-                                      ? "text-muted/40"
-                                      : active
-                                        ? "text-accent"
-                                        : "text-text hover:text-accent"
-                                  }`}
-                                >
-                                  {opt.label}
-                                </span>
-                                <span className="mt-0.5 w-[6ch] text-[11px] tabular-nums text-muted">
-                                  {opt.count.toLocaleString()}
-                                </span>
-                              </button>
+                              );
+                            }
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                {shownTags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="truncate text-[13px] text-text"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex min-w-0 gap-3">
+                      <div className="pt-0.5">
+                        <PhoneIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">
+                          {(creating && createDraft
+                            ? createDraft.phones.filter((p) => p.trim()).length
+                            : 1) === 1
+                            ? "Phone"
+                            : "Phones"}
+                        </div>
+                        <div className="mt-0.5">
+                          {creating && createDraft ? (
+                            <ContactPhoneList
+                              phones={createDraft.phones}
+                              onChange={(phones) =>
+                                setCreateDraft({ ...createDraft, phones })
+                              }
+                            />
+                          ) : (
+                            <span className="truncate text-[13px] text-text">
+                              {selected.handle}
                             </span>
-                          );
-                        })}
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
+                    <div className="pt-0.5">
+                      <ProhibitedIcon className="size-4 shrink-0 text-muted" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] tracking-wide text-muted">
+                        Excluded
+                      </div>
+                      <div className="mt-0.5">
+                        {creating && createDraft ? (
+                          <select
+                            value={createDraft.exclude ? "yes" : "no"}
+                            onChange={(e) =>
+                              setCreateDraft({
+                                ...createDraft,
+                                exclude: e.target.value === "yes",
+                              })
+                            }
+                            className="rounded-md border border-border bg-[#1c1c1e] px-2 py-1 text-[13px] text-text outline-none focus:border-accent/60"
+                          >
+                            <option value="no">No</option>
+                            <option value="yes">Yes</option>
+                          </select>
+                        ) : (
+                          <span className="text-[13px] text-text">No</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {selected.dateStart && selected.dateEnd && (
+                    <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
+                      <div className="pt-0.5">
+                        <RangeIcon className="size-4 shrink-0 text-muted" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] tracking-wide text-muted">
+                          Message range
+                        </div>
+                        <div className="mt-0.5 text-[13px] text-text">
+                          {selected.dateStart === selected.dateEnd
+                            ? selected.dateStart
+                            : `${selected.dateStart} — ${selected.dateEnd}`}
+                        </div>
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
 
-                  <h3 className="mt-5 text-[11px] font-semibold tracking-wider text-muted uppercase">
-                    Yearly messages
-                  </h3>
-                  {loadingThreads ? (
-                    <p className="mt-2 text-[12px] text-muted">Loading…</p>
-                  ) : yearly.length === 0 ? (
-                    <p className="mt-2 text-[12px] text-muted">
-                      No messages for this source
-                    </p>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap gap-3">
-                      {yearly.map((y) => (
+              <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+                {sources.length > 0 && (
+                  <div className="mb-5">
+                    <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+                      Message Sources
+                    </h3>
+                    <div className="mt-2 flex flex-wrap items-start gap-x-0 gap-y-2">
+                      {[
+                        {
+                          id: null as string | null,
+                          label: "Combined",
+                          enabled: true,
+                          count: sourceCounts.all,
+                        },
+                        ...sources.map((id) => ({
+                          id,
+                          label: formatSourceLabel(id),
+                          enabled: messageSources.includes(id),
+                          count: sourceCounts.bySource[id] ?? 0,
+                        })),
+                      ].map((opt, i) => {
+                        const active =
+                          opt.id === null
+                            ? source === null
+                            : source === opt.id;
+                        const disabled = !opt.enabled;
+                        return (
+                          <span
+                            key={opt.id ?? "all"}
+                            className="flex items-start"
+                          >
+                            {i > 0 && (
+                              <span
+                                className="mx-2 pt-0.5 text-[13px] text-muted/50"
+                                aria-hidden
+                              >
+                                |
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => {
+                                if (disabled) return;
+                                setSource(opt.id);
+                              }}
+                              className={`flex min-w-0 flex-col items-start text-left ${
+                                disabled ? "cursor-default" : ""
+                              }`}
+                            >
+                              <span
+                                className={`text-[13px] font-medium ${
+                                  disabled
+                                    ? "text-muted/40"
+                                    : active
+                                      ? "text-accent"
+                                      : "text-text hover:text-accent"
+                                }`}
+                              >
+                                {opt.label}
+                              </span>
+                              <span className="mt-0.5 w-[6ch] text-[11px] tabular-nums text-muted">
+                                {opt.count.toLocaleString()}
+                              </span>
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+                  Yearly messages
+                </h3>
+                {loadingThreads ? (
+                  <p className="mt-2 text-[12px] text-muted">Loading…</p>
+                ) : yearly.length === 0 ? (
+                  <p className="mt-2 text-[12px] text-muted">
+                    No messages for this source
+                  </p>
+                ) : (
+                  <div className="mt-2 flex flex-wrap items-center gap-y-1.5">
+                    {yearly.map((y, i) => (
+                      <span key={y.year} className="flex items-center">
+                        {i > 0 && (
+                          <span
+                            className="mx-2 text-[13px] text-muted/50"
+                            aria-hidden
+                          >
+                            |
+                          </span>
+                        )}
                         <button
-                          key={y.year}
                           type="button"
                           onClick={() => loadYear(y.year, y.conversationIds)}
-                          className={`text-[13px] ${
+                          className={`text-[13px] font-medium ${
                             activeYear === y.year
                               ? "text-accent"
                               : "text-text hover:text-accent"
                           }`}
                         >
-                          <span className="font-medium">{y.year}</span>
+                          {y.year}
                           <span className="ml-2 text-muted">
                             {y.messageCount}
                           </span>
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </section>
@@ -1328,14 +1591,6 @@ export function UnmatchedShell({
                 type="button"
                 disabled={saving}
                 className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
-                onClick={() => beginCreate()}
-              >
-                Create contact
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
                 onClick={() => {
                   const pos = clampMenu(ctxMenu.x, ctxMenu.y, 288, 280);
                   setCtxMenu(null);
@@ -1369,6 +1624,97 @@ export function UnmatchedShell({
         </div>
       )}
     </div>
+  );
+}
+
+function PersonDetailIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="8" r="3.25" />
+      <path d="M5 19.25c.85-3.2 3.4-5 7-5s6.15 1.8 7 5" />
+    </svg>
+  );
+}
+
+function PeopleGroupIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
+      <circle cx="17" cy="9" r="2.5" />
+      <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
+    </svg>
+  );
+}
+
+function ProhibitedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M6 6l12 12" />
+    </svg>
+  );
+}
+
+function RangeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3.5" y="5" width="17" height="15" rx="2" />
+      <path d="M8 3.5v3M16 3.5v3M3.5 10h17" />
+    </svg>
+  );
+}
+
+function PhoneIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8.5 3.5h3.2l1.1 3.3-2 1.2a12.5 12.5 0 0 0 5.2 5.2l1.2-2 3.3 1.1v3.2a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 3.5 8.7a2 2 0 0 1 2-2.2Z" />
+    </svg>
   );
 }
 

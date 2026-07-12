@@ -321,7 +321,11 @@ export function GroupsShell({
   const jumpToYearSection = useCallback((year: number) => {
     setListYear(year);
     const el = document.getElementById(`group-year-${year}`);
-    el?.scrollIntoView({ behavior: "auto", block: "start" });
+    const pane = el?.closest(".overflow-y-auto") as HTMLElement | null;
+    if (!el || !pane) return;
+    const elTop = el.getBoundingClientRect().top;
+    const paneTop = pane.getBoundingClientRect().top;
+    pane.scrollTop += elTop - paneTop;
   }, []);
 
   /** Drop every year row for the given conversation ids (one thread → all years). */
@@ -529,7 +533,7 @@ export function GroupsShell({
           : `Moved ${targets.length} to Trash`,
       );
       clearFocusAfterRemoval(targets);
-      router.refresh();
+      router.push("/unmatched/trash?tab=groups");
     } catch (err) {
       console.error(err);
       setStatus(err instanceof Error ? err.message : "Delete failed");
@@ -647,7 +651,10 @@ export function GroupsShell({
     const target = matches[matches.length - 1] as HTMLElement | undefined;
     if (target) {
       requestAnimationFrame(() => {
-        target.scrollIntoView({ behavior: "auto", block: "start" });
+        // Scroll only the messages pane — scrollIntoView also shifts split parents.
+        const delta =
+          target.getBoundingClientRect().top - pane.getBoundingClientRect().top;
+        pane.scrollTop += delta;
       });
     }
     pendingScrollYearRef.current = null;

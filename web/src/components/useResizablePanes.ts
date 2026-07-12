@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const SIDEBAR_MIN = 120;
-const SIDEBAR_MAX = 448;
+const SIDEBAR_MIN = 160;
+const SIDEBAR_MAX = 720;
 const SIDEBAR_DEFAULT = 272;
 
 /** Shared across All / Unused / Excluded / Unmatched / tag groups / group chats. */

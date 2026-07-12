@@ -1,7 +1,7 @@
 "use client";
 
 import type { ContactListItem, GroupYearRow, UnmatchedHandle } from "@/lib/types";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupsShell } from "./GroupsShell";
 import { UnmatchedShell } from "./UnmatchedShell";
@@ -47,6 +47,13 @@ export function TrashShell({
     },
     [pathname, router, searchParams],
   );
+
+  // Keep tab in sync when landing via ?tab=groups (e.g. after Delete).
+  useEffect(() => {
+    const next: TrashTab =
+      searchParams.get("tab") === "groups" ? "groups" : "individuals";
+    setTab(next);
+  }, [searchParams]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

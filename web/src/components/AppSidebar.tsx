@@ -228,7 +228,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`relative flex items-center gap-2 py-1.5 pl-10 pr-3 text-[13px] transition-colors ${
+      className={`relative flex items-center gap-2 py-1 pl-10 pr-3 text-[14px] transition-colors ${
         active ? "bg-elevated text-text" : "text-muted hover:bg-white/20 hover:text-text"
       }`}
     >
@@ -450,9 +450,9 @@ function GroupsNav({ tags }: { tags: string[] }) {
 
   return (
     <div>
-      <div className="relative mt-4" ref={headerRef}>
+      <div className="relative mt-3" ref={headerRef}>
         <div className="flex items-center justify-between pl-10 pr-1.5 pb-1">
-          <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+          <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
             Groups
           </span>
           <button
@@ -474,7 +474,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
       </div>
 
       {tags.length === 0 ? (
-        <p className="pl-10 pr-3 py-1 text-[12px] text-muted">No groups</p>
+        <p className="pl-10 pr-3 py-1 text-[13px] text-muted">No groups</p>
       ) : (
         tags.map((name) => {
           const href = `/tag/${tagSlug(name)}`;
@@ -484,7 +484,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
           return (
             <div key={href} className="relative">
               <div
-                className={`group relative flex items-center text-[13px] transition-colors ${
+                className={`group relative flex items-center text-[14px] transition-colors ${
                   active
                     ? "bg-elevated text-text hover:bg-white/18"
                     : "text-muted hover:bg-white/20 hover:text-text"
@@ -498,7 +498,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
                 )}
                 <Link
                   href={href}
-                  className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 pl-10"
+                  className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-1 pl-10"
                 >
                   {groupIcon}
                   <span className="truncate">{name}</span>
@@ -590,6 +590,24 @@ function GroupsNav({ tags }: { tags: string[] }) {
 }
 
 const NAV_COLLAPSED_KEY = "message-vault:navCollapsed";
+const NAV_WIDTH_KEY = "message-vault:navWidth";
+const NAV_WIDTH_DEFAULT = 200;
+const NAV_WIDTH_MIN = 160;
+const NAV_WIDTH_MAX = 360;
+/** Collapse nav when the viewport is narrower than this. */
+const NAV_AUTO_COLLAPSE_BELOW = 900;
+
+function clampNavWidth(w: number): number {
+  return Math.min(NAV_WIDTH_MAX, Math.max(NAV_WIDTH_MIN, w));
+}
+
+function readStoredNavWidth(): number {
+  if (typeof window === "undefined") return NAV_WIDTH_DEFAULT;
+  const raw = window.localStorage.getItem(NAV_WIDTH_KEY);
+  if (!raw) return NAV_WIDTH_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) ? clampNavWidth(n) : NAV_WIDTH_DEFAULT;
+}
 
 export function AppSidebar({
   active,
@@ -598,19 +616,73 @@ export function AppSidebar({
   active: string;
   tags?: string[];
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [userCollapsed, setUserCollapsed] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  const [forceExpand, setForceExpand] = useState(false);
+  const [navWidth, setNavWidth] = useState(() => readStoredNavWidth());
+  const navWidthRef = useRef(navWidth);
+  const wasNarrowRef = useRef(false);
+  const dragging = useRef(false);
   const { sources, source, setSource } = useSourceFilter();
 
+  const collapsed = narrow ? !forceExpand : userCollapsed;
+
   useEffect(() => {
-    setCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+    setUserCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+    const w = readStoredNavWidth();
+    navWidthRef.current = w;
+    setNavWidth(w);
+
+    const syncNarrow = () => {
+      const next = window.innerWidth < NAV_AUTO_COLLAPSE_BELOW;
+      if (next && !wasNarrowRef.current) setForceExpand(false);
+      wasNarrowRef.current = next;
+      setNarrow(next);
+    };
+    syncNarrow();
+    window.addEventListener("resize", syncNarrow);
+    return () => window.removeEventListener("resize", syncNarrow);
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const next = clampNavWidth(e.clientX);
+      navWidthRef.current = next;
+      setNavWidth(next);
+    };
+    const onUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      window.localStorage.setItem(NAV_WIDTH_KEY, String(navWidthRef.current));
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
   }, []);
 
   const toggleCollapsed = () => {
-    setCollapsed((prev) => {
+    if (narrow) {
+      setForceExpand((prev) => !prev);
+      return;
+    }
+    setUserCollapsed((prev) => {
       const next = !prev;
       window.localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0");
       return next;
     });
+  };
+
+  const startResize = () => {
+    if (collapsed) return;
+    dragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
   };
 
   const groupIcon = (
@@ -619,9 +691,8 @@ export function AppSidebar({
 
   return (
     <aside
-      className={`flex h-full shrink-0 flex-col border-r border-border bg-sidebar ${
-        collapsed ? "w-10" : "w-[200px]"
-      }`}
+      className="relative flex h-full shrink-0 flex-col border-r border-border bg-sidebar"
+      style={{ width: collapsed ? 40 : navWidth }}
     >
       <div className="flex h-[45px] shrink-0 items-center gap-1 border-b border-border px-2">
         <button
@@ -669,7 +740,7 @@ export function AppSidebar({
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
           <div className="pl-10 pr-1.5 pb-1">
-            <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+            <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
               Contacts
             </span>
           </div>
@@ -692,8 +763,8 @@ export function AppSidebar({
             icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 
-          <div className="mt-4 pl-10 pr-1.5 pb-1">
-            <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+          <div className="mt-3 pl-10 pr-1.5 pb-1">
+            <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
               Messages
             </span>
           </div>
@@ -718,6 +789,15 @@ export function AppSidebar({
 
           <GroupsNav tags={tags} />
         </nav>
+      )}
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize navigation"
+          onMouseDown={startResize}
+          className="absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/60"
+        />
       )}
     </aside>
   );

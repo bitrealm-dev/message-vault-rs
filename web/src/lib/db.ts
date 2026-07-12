@@ -17,37 +17,42 @@ import { tagSlug } from "./tagSlug";
 
 export { tagSlug };
 
-let _db: Database.Database | null = null;
-let _hasDuplicateOf: boolean | null = null;
+const g = globalThis as unknown as {
+  __mvReadonlyDb?: Database.Database | null;
+  __mvHasDuplicateOf?: boolean | null;
+};
 
 export function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(dbPath(), { readonly: true, fileMustExist: true });
-    _db.pragma("foreign_keys = ON");
-    _hasDuplicateOf = null;
+  if (!g.__mvReadonlyDb) {
+    g.__mvReadonlyDb = new Database(dbPath(), {
+      readonly: true,
+      fileMustExist: true,
+    });
+    g.__mvReadonlyDb.pragma("foreign_keys = ON");
+    g.__mvHasDuplicateOf = null;
   }
-  return _db;
+  return g.__mvReadonlyDb;
 }
 
 /** Close the cached readonly connection so the next read sees recent writes. */
 export function resetDb(): void {
-  if (_db) {
-    _db.close();
-    _db = null;
+  if (g.__mvReadonlyDb) {
+    g.__mvReadonlyDb.close();
+    g.__mvReadonlyDb = null;
   }
-  _hasDuplicateOf = null;
+  g.__mvHasDuplicateOf = null;
 }
 
 function hasDuplicateOfColumn(): boolean {
-  if (_hasDuplicateOf !== null) return _hasDuplicateOf;
+  if (g.__mvHasDuplicateOf != null) return g.__mvHasDuplicateOf;
   const db = getDb();
   const row = db
     .prepare(
       `SELECT COUNT(*) AS n FROM pragma_table_info('messages') WHERE name = 'duplicate_of'`,
     )
     .get() as { n: number };
-  _hasDuplicateOf = row.n > 0;
-  return _hasDuplicateOf;
+  g.__mvHasDuplicateOf = row.n > 0;
+  return g.__mvHasDuplicateOf;
 }
 
 /** When no source filter is set (All combined), hide soft-deduped cross-source copies. */
@@ -954,11 +959,14 @@ export function listGroups(): GroupListItem[] {
 
 /** Group chats split by calendar year for the Groups page list. */
 export function listGroupYearRows(): GroupYearRow[] {
+  // Re-open after API writes (trash/restore) so RSC sees committed rows.
+  resetDb();
   return listGroupYearRowsSection("active");
 }
 
 /** Trashed group chats split by calendar year. */
 export function listTrashedGroupYearRows(): GroupYearRow[] {
+  resetDb();
   return listGroupYearRowsSection("trash");
 }
 
@@ -1308,6 +1316,7 @@ export function listUnmatchedHandles(): UnmatchedHandle[] {
 
 /** Unmatched handles that were moved to Trash. */
 export function listTrashedHandles(): UnmatchedHandle[] {
+  resetDb();
   return listHandleSection("trash");
 }
 
