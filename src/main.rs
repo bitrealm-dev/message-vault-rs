@@ -3,6 +3,7 @@ mod config;
 mod contacts;
 mod dedupe;
 mod exclude;
+mod export_markdown;
 mod import;
 mod ingest;
 mod models;
@@ -134,6 +135,25 @@ enum Commands {
         /// Output SQLite database path (overrides config)
         #[arg(long)]
         db: Option<PathBuf>,
+    },
+
+    /// Export 1:1 contacts as Obsidian bubble markdown (combined / soft-deduped)
+    ExportMarkdown {
+        /// Output directory (required; written fresh under this path)
+        #[arg(long)]
+        out: PathBuf,
+
+        /// Path to config.toml
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
+
+        /// SQLite database path (overrides config)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Path to Obsidian bubble CSS snippet (default config/obsidian-message-vault.css)
+        #[arg(long)]
+        snippet_css: Option<PathBuf>,
     },
 
     /// Convert a message-vault contacts.vcf into contacts.csv
@@ -388,6 +408,52 @@ fn main() -> Result<()> {
             println!("  contacts:     {}", stats.contacts);
             println!("  phones:       {}", stats.phones);
             println!("  tag links:    {}", stats.tags);
+        }
+
+        Commands::ExportMarkdown {
+            out,
+            config,
+            db,
+            snippet_css,
+        } => {
+            let cfg = Config::load(&config)?;
+            let db = db.unwrap_or_else(|| cfg.paths.db.clone());
+            let snippet_css = snippet_css.unwrap_or_else(|| {
+                PathBuf::from("config/obsidian-message-vault.css")
+            });
+            if !snippet_css.is_file() {
+                bail!(
+                    "CSS snippet not found at {} (pass --snippet-css)",
+                    snippet_css.display()
+                );
+            }
+
+            let mut assets_by_source = std::collections::HashMap::new();
+            for src in &cfg.sources {
+                assets_by_source
+                    .insert(src.id.clone(), src.resolved_assets_dir(&cfg.paths));
+            }
+
+            println!("Export markdown → {}", out.display());
+            println!("  config:  {}", config.display());
+            println!("  db:      {}", db.display());
+            println!("  snippet: {}", snippet_css.display());
+
+            let stats = export_markdown::run_export(
+                &db,
+                &cfg.owner,
+                &assets_by_source,
+                &out,
+                &snippet_css,
+            )?;
+            println!("  people:        {}", stats.people);
+            println!("  year pages:    {}", stats.year_pages);
+            println!("  messages:      {}", stats.messages);
+            println!("  assets copied: {}", stats.assets_copied);
+            println!("  assets missing:{}", stats.assets_missing);
+            println!(
+                "Enable CSS snippet message-vault-bubbles in Obsidian (Settings → Appearance)."
+            );
         }
 
         Commands::VcfToContacts {

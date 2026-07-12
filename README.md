@@ -138,6 +138,17 @@ cargo run --release -- import --all --mode replace
 cargo run --release -- dedupe-cross-source
 ```
 
+## Obsidian markdown export
+
+Export 1:1 contacts (no groups) as bubble-styled markdown — one file per person-year, combined/soft-deduped timeline, attachments copied under `_assets/`:
+
+```bash
+cargo run --release -- export-markdown --out /path/to/Obsidian-Message-Vault
+# Enable snippet: Settings → Appearance → CSS snippets → message-vault-bubbles
+```
+
+Layout: `People/{Name}/{year}.md`, hub notes `_{Name}.md`, and `.obsidian/snippets/message-vault-bubbles.css` (from `config/obsidian-message-vault.css`).
+
 ## Web
 
 See [`web/README.md`](web/README.md). Quick start:
