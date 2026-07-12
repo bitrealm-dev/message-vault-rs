@@ -248,15 +248,11 @@ fn write_conversation(
     Ok(())
 }
 
-pub(crate) fn collect_eml_paths(input: &Path) -> Result<Vec<PathBuf>> {
-    let mut paths = Vec::new();
-    if input.is_file() {
-        paths.push(input.to_path_buf());
-        return Ok(paths);
+pub(crate) fn collect_eml_paths<P: AsRef<Path>>(inputs: &[P]) -> Result<Vec<PathBuf>> {
+    if inputs.is_empty() {
+        bail!("at least one --input path is required");
     }
-    if !input.is_dir() {
-        bail!("input is not a file or directory: {}", input.display());
-    }
+
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -282,10 +278,37 @@ pub(crate) fn collect_eml_paths(input: &Path) -> Result<Vec<PathBuf>> {
         }
         Ok(())
     }
-    walk(input, &mut paths)?;
+
+    let mut paths = Vec::new();
+    for input in inputs {
+        let input = input.as_ref();
+        if input.is_file() {
+            if input
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("eml"))
+            {
+                paths.push(input.to_path_buf());
+            } else {
+                bail!("input file is not .eml: {}", input.display());
+            }
+            continue;
+        }
+        if !input.is_dir() {
+            bail!("input is not a file or directory: {}", input.display());
+        }
+        walk(input, &mut paths)?;
+    }
+
     paths.sort();
+    paths.dedup();
     if paths.is_empty() {
-        bail!("no .eml files under {}", input.display());
+        let listed = inputs
+            .iter()
+            .map(|p| p.as_ref().display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!("no .eml files under: {listed}");
     }
     Ok(paths)
 }
@@ -304,12 +327,14 @@ pub(crate) fn report_progress(verbose: bool, label: &str, processed: u64, total:
     }
 }
 
-/// Convert an SMS Backup+ EML tree into imessage-json schema v3 NDJSON.
+/// Convert SMS Backup+ EML tree(s) into imessage-json schema v3 NDJSON.
 ///
+/// `inputs`: one or more `.eml` files or directories to scan (merged, then deduped
+/// by path).
 /// `contacts_path`: optional CSV for name→phone reverse lookup (`None` = no book).
 /// `name_mapping_path`: optional CSV mapping incorrect EML names → correct contact names.
-pub fn convert_export(
-    input: &Path,
+pub fn convert_export<P: AsRef<Path>>(
+    inputs: &[P],
     output_dir: &Path,
     owner_phone: &str,
     owner_emails: &[String],
@@ -334,7 +359,7 @@ pub fn convert_export(
     let attachments_dir = output_dir.join("attachments");
     fs::create_dir_all(&attachments_dir)?;
 
-    let eml_paths = collect_eml_paths(input)?;
+    let eml_paths = collect_eml_paths(inputs)?;
     let total = eml_paths.len() as u64;
     if verbose {
         eprintln!("scanning {total} .eml files");

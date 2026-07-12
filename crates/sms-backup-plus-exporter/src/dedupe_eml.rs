@@ -8,7 +8,7 @@
 //!
 //! # What this does
 //!
-//! 1. Scan every `.eml` under the input folder.
+//! 1. Scan every `.eml` under the input folder(s).
 //! 2. For duplicate flats (same fingerprint — see [`crate::identity`]), keep one
 //!    winner (prefer attachments, then smssync headers, then larger file, then
 //!    path order).
@@ -269,7 +269,7 @@ fn stash_unparseable(
     Ok(())
 }
 
-/// Scan `input_dir`, keep one flat per fingerprint, and write them under `output_dir`.
+/// Scan `inputs`, keep one flat per fingerprint, and write them under `output_dir`.
 ///
 /// Steps match the module docs: scan → pick winners → copy flats under
 /// `{YYYY}/` → generate archive-only flats ([`crate::write_flat_eml`]) → put
@@ -279,10 +279,12 @@ fn stash_unparseable(
 /// Log keyword **`GENERATED`** means we created a new `.eml` here; it was not
 /// copied from the backup tree.
 ///
+/// `inputs`: one or more `.eml` files or directories to scan (merged, then
+/// deduped by path).
 /// `contacts_path`: optional CSV for name→phone reverse lookup (`None` = no book).
 /// `name_mapping_path`: optional CSV mapping incorrect EML names → correct contact names.
-pub fn dedupe_eml(
-    input: &Path,
+pub fn dedupe_eml<P: AsRef<Path>>(
+    inputs: &[P],
     output_dir: &Path,
     owner_phone: &str,
     owner_emails: &[String],
@@ -306,7 +308,9 @@ pub fn dedupe_eml(
     let started = Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     log.line("# sms-backup-plus-exporter dedupe-eml log".to_string());
     log.line(format!("started: {started}"));
-    log.line(format!("input:   {}", input.display()));
+    for input in inputs {
+        log.line(format!("input:   {}", input.as_ref().display()));
+    }
     log.line(format!("output:  {}", output_dir.display()));
     log.line(format!("owner:   {owner_phone}"));
     match &contacts_loaded {
@@ -336,7 +340,7 @@ pub fn dedupe_eml(
     fs::create_dir_all(&unparseable_dir)?;
     report.unparseable_dir = Some(unparseable_dir.clone());
 
-    let eml_paths = collect_eml_paths(input)?;
+    let eml_paths = collect_eml_paths(inputs)?;
     let total = eml_paths.len() as u64;
     if verbose {
         eprintln!("scanning {total} .eml files");

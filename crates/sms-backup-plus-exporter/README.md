@@ -82,27 +82,35 @@ Some archive (and a few flat) messages only know a person’s name, not their ph
 
 | File | Columns | Role |
 | --- | --- | --- |
-| `config/eml-contacts.csv` | `phones,first_name,last_name` | Name → phone |
+| Vault `config/contacts.csv` | `phones,first_name,last_name,…` | Name → phone (same file the vault imports; `exclude=true` rows are skipped) |
 | `config/name-mapping.csv` | `correct_name,incorrect_name` | Fix messy subject names, then look up contacts |
 
 Example: subject says `Casey Typo` → mapping rewrites to `Casey Proper` → contacts CSV supplies `+15555550888`.
 
 Unresolved names stay under `junk/` and are listed in `junk/unresolved_names.txt`. The CLI reports **unique** names mapped and contacts resolved (not one count per message).
 
-Start from the example files:
+Defaults (when present):
 
-- [`config/eml-contacts.example.csv`](config/eml-contacts.example.csv)
-- [`config/name-mapping.example.csv`](config/name-mapping.example.csv)
+- Repo `config/contacts.csv` (or `../../config/contacts.csv` if you run from this crate directory)
+- [`config/name-mapping.example.csv`](config/name-mapping.example.csv) → copy to `config/name-mapping.csv`
 - [`config/owner.example.toml`](config/owner.example.toml) → copy to `config/owner.toml` for default `--owner-phone` / `--owner-email`
 
-Real CSVs and `owner.toml` under `config/` are gitignored. CLI flags still override `owner.toml` when provided.
+`name-mapping.csv` and `owner.toml` under this crate’s `config/` are gitignored. CLI flags still override defaults when provided.
 
 ```bash
 cargo run --release -p sms-backup-plus-exporter -- -v dedupe-eml \
   --input /path/to/messy/exports \
   --output ./clean-eml \
-  --contacts config/eml-contacts.csv \
   --name-mapping config/name-mapping.csv
+```
+
+Repeat `--input` to merge several trees (path-deduped before processing):
+
+```bash
+cargo run --release -p sms-backup-plus-exporter -- convert \
+  --input /path/to/galaxy-export \
+  --input /path/to/everything-archive \
+  --output ./staging/sms-backup-plus-eml
 ```
 
 Global flags (before or after the subcommand):

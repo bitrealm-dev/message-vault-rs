@@ -13,7 +13,7 @@ fn converts_fixtures_in_temp_dir() {
     }
 
     let report =
-        convert_export(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+        convert_export(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
 
     assert_eq!(report.flat_eml, 1, "errors: {:?}", report.errors);
     assert_eq!(report.archive_eml, 1, "errors: {:?}", report.errors);

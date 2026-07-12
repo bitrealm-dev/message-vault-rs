@@ -129,10 +129,11 @@ fn export_source(cfg: &Config, source_id: &str, from: &Path, staging: &Path) -> 
             } else {
                 cfg.owner.emails.clone()
             };
-            let contacts = optional_file("config/eml-contacts.csv");
-            let name_mapping = optional_file("config/name-mapping.csv");
+            let contacts = optional_file("config/contacts.csv");
+            let name_mapping = optional_file("config/name-mapping.csv")
+                .or_else(|| optional_file("crates/sms-backup-plus-exporter/config/name-mapping.csv"));
             let report = sms_backup_plus_exporter::convert_export(
-                from,
+                &[from],
                 staging,
                 &cfg.owner.phone_e164,
                 &emails,

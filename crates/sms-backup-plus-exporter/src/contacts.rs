@@ -99,18 +99,31 @@ impl ContactsBook {
     }
 
     /// Load contacts from CSV. Errors if the file cannot be read or parsed.
+    ///
+    /// Accepts vault-shaped headers (`phones,first_name,last_name,exclude,…`).
+    /// When an `exclude` column is present, rows with true/1/yes are skipped.
     pub(crate) fn load(path: &Path) -> Result<Self> {
         let file = File::open(path).with_context(|| format!("open contacts {}", path.display()))?;
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
         let header = lines.next().transpose()?.unwrap_or_default();
-        let header_l = header.to_ascii_lowercase();
-        if !header_l.contains("phones") || !header_l.contains("first_name") {
+        let header_cols: Vec<String> = split_csv_line(&header)
+            .into_iter()
+            .map(|c| c.trim().to_ascii_lowercase())
+            .collect();
+        let phones_i = header_cols.iter().position(|c| c == "phones");
+        let first_i = header_cols.iter().position(|c| c == "first_name");
+        let last_i = header_cols.iter().position(|c| c == "last_name");
+        let exclude_i = header_cols.iter().position(|c| c == "exclude");
+        if phones_i.is_none() || first_i.is_none() {
             anyhow::bail!(
                 "contacts CSV {} missing expected header phones,first_name,last_name",
                 path.display()
             );
         }
+        let phones_i = phones_i.unwrap();
+        let first_i = first_i.unwrap();
+        let last_i = last_i.unwrap_or(usize::MAX);
 
         let mut book = Self::empty();
         for (idx, line) in lines.enumerate() {
@@ -119,14 +132,24 @@ impl ContactsBook {
             if line.is_empty() {
                 continue;
             }
-            let Some((phones_raw, first, last)) = split_contacts_row(line) else {
-                continue;
+            let parts = split_csv_line(line);
+            if let Some(ei) = exclude_i {
+                if parse_exclude(parts.get(ei).map(String::as_str).unwrap_or("")) {
+                    continue;
+                }
+            }
+            let phones_raw = parts.get(phones_i).map(String::as_str).unwrap_or("");
+            let first = parts.get(first_i).map(String::as_str).unwrap_or("");
+            let last = if last_i == usize::MAX {
+                ""
+            } else {
+                parts.get(last_i).map(String::as_str).unwrap_or("")
             };
             // Prefer clean rows: skip indexing dirty last_name markers.
             if last.contains("__") {
                 continue;
             }
-            let Some(phone) = first_valid_phone(&phones_raw) else {
+            let Some(phone) = first_valid_phone(phones_raw) else {
                 continue;
             };
             let first = collapse_inner_whitespace(first.trim());
@@ -259,20 +282,11 @@ fn first_valid_phone(phones_raw: &str) -> Option<String> {
     None
 }
 
-/// Split `phones,first_name,last_name` allowing commas inside quoted fields.
-fn split_contacts_row(line: &str) -> Option<(String, String, String)> {
-    let parts = split_csv_line(line);
-    if parts.len() < 2 {
-        return None;
-    }
-    let phones = parts[0].clone();
-    let first = parts[1].clone();
-    let last = if parts.len() >= 3 {
-        parts[2].clone()
-    } else {
-        String::new()
-    };
-    Some((phones, first, last))
+fn parse_exclude(raw: &str) -> bool {
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "y"
+    )
 }
 
 fn split_csv_line(line: &str) -> Vec<String> {
@@ -345,6 +359,26 @@ mod tests {
             book.lookup_phone("Pat Contact").as_deref(),
             Some("5555550133")
         );
+    }
+
+    #[test]
+    fn skips_excluded_rows_in_vault_shaped_csv() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_csv(
+            &dir,
+            "contacts.csv",
+            "phones,first_name,last_name,exclude,group_1\n\
++15555550100,Ada,Lovelace,false,Example\n\
++15555550999,Skip,Me,true,Example\n\
++15555550101,Grace,Hopper,1,Work\n",
+        );
+        let book = ContactsBook::load(&path).unwrap();
+        assert_eq!(
+            book.lookup_phone("Ada Lovelace").as_deref(),
+            Some("5555550100")
+        );
+        assert!(book.lookup_phone("Skip Me").is_none());
+        assert!(book.lookup_phone("Grace Hopper").is_none());
     }
 
     #[test]

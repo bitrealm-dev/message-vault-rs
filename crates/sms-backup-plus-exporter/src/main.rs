@@ -26,9 +26,10 @@ struct Cli {
 enum Commands {
     /// Convert EML tree to imessage-json schema v3 NDJSON
     Convert {
-        /// Path to a .eml file or directory tree of EMLs (Archive/, Sent/, …)
-        #[arg(long)]
-        input: PathBuf,
+        /// Path to a .eml file or directory tree of EMLs (Archive/, Sent/, …).
+        /// Repeat for multiple roots; trees are merged and path-deduped.
+        #[arg(long = "input", required = true)]
+        input: Vec<PathBuf>,
 
         /// Output directory for NDJSON + attachments/
         #[arg(long)]
@@ -43,8 +44,8 @@ enum Commands {
         #[arg(long = "owner-email", value_name = "EMAIL")]
         owner_emails: Vec<String>,
 
-        /// Contacts CSV (phones,first_name,last_name) for name→phone lookup.
-        /// Default: config/eml-contacts.csv when that file exists.
+        /// Contacts CSV (phones,first_name,last_name,…) for name→phone lookup.
+        /// Default: vault config/contacts.csv when that file exists.
         #[arg(long)]
         contacts: Option<PathBuf>,
 
@@ -55,9 +56,10 @@ enum Commands {
     },
     /// Deduplicate flat EMLs into year folders with useful filenames
     DedupeEml {
-        /// Path to a messy .eml file or directory tree
-        #[arg(long)]
-        input: PathBuf,
+        /// Path to a messy .eml file or directory tree.
+        /// Repeat for multiple roots; trees are merged and path-deduped.
+        #[arg(long = "input", required = true)]
+        input: Vec<PathBuf>,
 
         /// Output directory for unique flat .eml files
         #[arg(long)]
@@ -72,8 +74,8 @@ enum Commands {
         #[arg(long = "owner-email", value_name = "EMAIL")]
         owner_emails: Vec<String>,
 
-        /// Contacts CSV (phones,first_name,last_name) for name→phone lookup.
-        /// Default: config/eml-contacts.csv when that file exists.
+        /// Contacts CSV (phones,first_name,last_name,…) for name→phone lookup.
+        /// Default: vault config/contacts.csv when that file exists.
         #[arg(long)]
         contacts: Option<PathBuf>,
 
@@ -92,17 +94,13 @@ struct OwnerConfig {
     emails: Vec<String>,
 }
 
-fn resolve_optional_config(explicit: Option<PathBuf>, default_rel: &str) -> Option<PathBuf> {
+fn resolve_optional_config(explicit: Option<PathBuf>, candidates: &[&str]) -> Option<PathBuf> {
     match explicit {
         Some(path) => Some(path),
-        None => {
-            let default = PathBuf::from(default_rel);
-            if default.is_file() {
-                Some(default)
-            } else {
-                None
-            }
-        }
+        None => candidates
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.is_file()),
     }
 }
 
@@ -157,8 +155,20 @@ fn main() -> Result<()> {
             name_mapping,
         } => {
             let (owner_phone, emails) = resolve_owner(owner_phone, owner_emails)?;
-            let contacts = resolve_optional_config(contacts, "config/eml-contacts.csv");
-            let name_mapping = resolve_optional_config(name_mapping, "config/name-mapping.csv");
+            let contacts = resolve_optional_config(
+                contacts,
+                &[
+                    "config/contacts.csv",
+                    "../../config/contacts.csv",
+                ],
+            );
+            let name_mapping = resolve_optional_config(
+                name_mapping,
+                &[
+                    "config/name-mapping.csv",
+                    "crates/sms-backup-plus-exporter/config/name-mapping.csv",
+                ],
+            );
             let report = convert_export(
                 &input,
                 &output,
@@ -200,8 +210,20 @@ fn main() -> Result<()> {
             name_mapping,
         } => {
             let (owner_phone, emails) = resolve_owner(owner_phone, owner_emails)?;
-            let contacts = resolve_optional_config(contacts, "config/eml-contacts.csv");
-            let name_mapping = resolve_optional_config(name_mapping, "config/name-mapping.csv");
+            let contacts = resolve_optional_config(
+                contacts,
+                &[
+                    "config/contacts.csv",
+                    "../../config/contacts.csv",
+                ],
+            );
+            let name_mapping = resolve_optional_config(
+                name_mapping,
+                &[
+                    "config/name-mapping.csv",
+                    "crates/sms-backup-plus-exporter/config/name-mapping.csv",
+                ],
+            );
             let report = dedupe_eml(
                 &input,
                 &output,

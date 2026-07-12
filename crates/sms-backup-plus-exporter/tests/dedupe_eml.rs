@@ -43,7 +43,7 @@ fn dedupes_duplicate_flats_to_one_output() {
     .unwrap();
     fs::copy(fixtures.join("archive.eml"), copy_a.join("archive.eml")).unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
 
     assert_eq!(report.flat_seen, 2, "errors: {:?}", report.errors);
     assert_eq!(report.unique_flat, 1, "errors: {:?}", report.errors);
@@ -101,7 +101,7 @@ fn same_smssync_id_different_messages_both_kept() {
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
 
     assert_eq!(report.flat_seen, 2, "errors: {:?}", report.errors);
     assert_eq!(report.unique_flat, 2, "errors: {:?}", report.errors);
@@ -157,7 +157,7 @@ Check this\r\n"
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
 
     assert_eq!(report.flat_seen, 1, "errors: {:?}", report.errors);
     assert_eq!(report.archive_eml, 1);
@@ -219,7 +219,7 @@ Will do\r\n"
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
 
     assert_eq!(report.archive_overlaps, 1, "errors: {:?}", report.errors);
     assert_eq!(report.archive_only, 0);
@@ -256,7 +256,7 @@ Only in archive\r\n",
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
     assert_eq!(report.archive_only, 1);
     assert_eq!(report.archive_generated, 1);
     assert_eq!(report.copied, 0);
@@ -300,7 +300,7 @@ No phone here\r\n",
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
     assert_eq!(report.archive_generated, 1);
     assert_eq!(report.archive_generated_junk, 1);
 
@@ -355,7 +355,7 @@ You have 1 new voicemail\r\n",
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
     assert_eq!(report.flat_unknown_junk, 1);
     assert_eq!(report.copied, 0);
     assert_eq!(report.skipped_unparseable, 0);
@@ -391,7 +391,7 @@ Your code is 1234\r\n",
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
     assert_eq!(report.flat_seen, 1, "errors: {:?}", report.errors);
     assert_eq!(report.copied, 1);
     assert_eq!(report.skipped_unparseable, 0);
@@ -428,7 +428,7 @@ orphan body\r\n",
     )
     .unwrap();
 
-    let report = dedupe_eml(input.path(), output.path(), "5555550100", &[], None, None, false).unwrap();
+    let report = dedupe_eml(&[input.path()], output.path(), "5555550100", &[], None, None, false).unwrap();
     assert_eq!(report.skipped_unparseable, 1);
     assert_eq!(report.copied, 0);
 
@@ -469,7 +469,7 @@ Resolved via contacts\r\n",
     .unwrap();
 
     let report = dedupe_eml(
-        input.path(),
+        &[input.path()],
         output.path(),
         "5555550100",
         &[],
@@ -541,7 +541,7 @@ Mapped then resolved\r\n",
     .unwrap();
 
     let report = dedupe_eml(
-        input.path(),
+        &[input.path()],
         output.path(),
         "5555550100",
         &[],
