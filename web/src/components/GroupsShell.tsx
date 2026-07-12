@@ -169,6 +169,7 @@ export function GroupsShell({
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [listYear, setListYear] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [groupDateFormat, setGroupDateFormatState] =
     useState<GroupDateFormat>("md");
@@ -207,6 +208,17 @@ export function GroupsShell({
     for (const g of source) set.add(g.year);
     return [...set].sort((a, b) => b - a);
   }, [groups, filtered, query]);
+
+  // Default to newest year; keep selection if still in the list.
+  useEffect(() => {
+    if (years.length === 0) {
+      setListYear(null);
+      return;
+    }
+    setListYear((prev) =>
+      prev != null && years.includes(prev) ? prev : years[0]!,
+    );
+  }, [years]);
 
   const rowsByYear = useMemo(() => {
     const map = new Map<number, GroupYearRow[]>();
@@ -291,6 +303,7 @@ export function GroupsShell({
   }, []);
 
   const jumpToYearSection = useCallback((year: number) => {
+    setListYear(year);
     const el = document.getElementById(`group-year-${year}`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
@@ -320,6 +333,10 @@ export function GroupsShell({
 
   const selectGroup = useCallback(
     (row: GroupYearRow) => {
+      if (groupId === row.id && focusYear === row.year) {
+        setSelectedIds(new Set());
+        return;
+      }
       setSelectedIds(new Set());
       selectionAnchorRef.current = row.id;
       setGroupId(row.id);
@@ -331,7 +348,7 @@ export function GroupsShell({
       params.set("y", String(row.year));
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [focusYear, groupId, pathname, router, searchParams],
   );
 
   const applyRangeSelect = useCallback(
@@ -585,12 +602,12 @@ export function GroupsShell({
     if (!pane) return;
 
     const prefix = `${year}-`;
-    const target = pane.querySelector(
-      `[data-timestamp^="${prefix}"]`,
-    ) as HTMLElement | null;
+    const matches = pane.querySelectorAll(`[data-timestamp^="${prefix}"]`);
+    // DESC order: last match is the earliest message in that year.
+    const target = matches[matches.length - 1] as HTMLElement | undefined;
     if (target) {
       requestAnimationFrame(() => {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        target.scrollIntoView({ behavior: "auto", block: "start" });
       });
     }
     pendingScrollYearRef.current = null;
@@ -687,7 +704,26 @@ export function GroupsShell({
               </div>
             </div>
 
-            <div className="mb-3">
+            {years.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+                {years.map((y) => (
+                  <button
+                    key={y}
+                    type="button"
+                    onClick={() => jumpToYearSection(y)}
+                    className={`text-[13px] font-medium ${
+                      listYear === y
+                        ? "text-accent"
+                        : "text-text hover:text-accent"
+                    }`}
+                  >
+                    {y}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div>
               <input
                 type="search"
                 value={query}
@@ -696,21 +732,6 @@ export function GroupsShell({
                 className="w-full max-w-md rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
               />
             </div>
-
-            {years.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                {years.map((y) => (
-                  <button
-                    key={y}
-                    type="button"
-                    onClick={() => jumpToYearSection(y)}
-                    className="text-[13px] font-medium text-text hover:text-accent"
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg">
@@ -752,10 +773,14 @@ export function GroupsShell({
                                   ? "bg-elevated hover:bg-white/18"
                                   : "hover:bg-white/20"
                             }`}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              openCtxMenu(g.id, e.clientX, e.clientY);
-                            }}
+                            onContextMenu={
+                              mode === "trash"
+                                ? (e) => {
+                                    e.preventDefault();
+                                    openCtxMenu(g.id, e.clientX, e.clientY);
+                                  }
+                                : undefined
+                            }
                           >
                             {(checked || (focused && !selectionActive)) && (
                               <span
@@ -863,11 +888,9 @@ export function GroupsShell({
               }`}
             >
               <div className="mb-2 border-b border-border/60 pb-2 text-center">
-                <div className="text-[13px] font-medium text-text">
+                <div className="px-2 text-[13px] font-medium break-words text-text whitespace-normal">
                   {selectedRow.participantNames.length > 0
-                    ? selectedRow.participantNames.join(
-                        "\u00a0\u00a0·\u00a0\u00a0",
-                      )
+                    ? selectedRow.participantNames.join(" · ")
                     : selectedRow.title}
                 </div>
                 {selectedRow.namedTitle ? (
@@ -897,40 +920,28 @@ export function GroupsShell({
         </section>
       </div>
 
-      {ctxMenu && (
+      {ctxMenu && mode === "trash" && (
         <div
           ref={ctxMenuRef}
           className="fixed z-50 min-w-[180px] rounded-md border border-border bg-elevated py-1 shadow-lg"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
-          {mode === "groups" ? (
-            <button
-              type="button"
-              className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-              onClick={() => void moveToTrash(ctxMenu.conversationId)}
-            >
-              Delete
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
-                onClick={() => void restoreFromTrash(ctxMenu.conversationId)}
-              >
-                Undelete
-              </button>
-              <button
-                type="button"
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-                onClick={() =>
-                  void permanentlyDeleteFromTrash(ctxMenu.conversationId)
-                }
-              >
-                Delete permanently
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+            onClick={() => void restoreFromTrash(ctxMenu.conversationId)}
+          >
+            Undelete
+          </button>
+          <button
+            type="button"
+            className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+            onClick={() =>
+              void permanentlyDeleteFromTrash(ctxMenu.conversationId)
+            }
+          >
+            Delete permanently
+          </button>
         </div>
       )}
     </div>
