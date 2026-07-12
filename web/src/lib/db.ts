@@ -285,11 +285,125 @@ export function contactPhones(contactId: number): string[] {
   ).map((r) => r.phone_e164);
 }
 
+/** Distinct message sources that have any 1:1 or group thread for this contact. */
+export function contactMessageSources(contactId: number): string[] {
+  const counts = contactMessageSourceCounts(contactId);
+  return Object.keys(counts.bySource).sort();
+}
+
+function contactConversationIds(phones: string[]): number[] {
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  const individual = db
+    .prepare(
+      `SELECT id FROM conversations
+       WHERE conv_type = 'individual' AND chat_identifier IN (${placeholders})`,
+    )
+    .all(...phones) as Array<{ id: number }>;
+  const groups = db
+    .prepare(
+      `SELECT DISTINCT c.id AS id
+       FROM conversations c
+       JOIN participants p ON p.conversation_id = c.id
+       WHERE c.conv_type = 'group' AND p.handle IN (${placeholders})`,
+    )
+    .all(...phones) as Array<{ id: number }>;
+  const ids = new Set<number>();
+  for (const r of individual) ids.add(r.id);
+  for (const r of groups) ids.add(r.id);
+  return [...ids];
+}
+
+export type ContactSourceCounts = {
+  /** Soft-deduped total (All / combined view). */
+  all: number;
+  /** Per-source totals (single-source view; includes soft-hidden copies). */
+  bySource: Record<string, number>;
+};
+
+function contactMessageSourceCountsForConversations(
+  conversationIds: number[],
+): ContactSourceCounts {
+  if (!conversationIds.length) {
+    return { all: 0, bySource: {} };
+  }
+  const db = getDb();
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const bySource: Record<string, number> = {};
+  const sourceRows = db
+    .prepare(
+      `SELECT source, COUNT(*) AS n
+       FROM messages
+       WHERE conversation_id IN (${placeholders})
+       GROUP BY source`,
+    )
+    .all(...conversationIds) as Array<{ source: string; n: number }>;
+  for (const r of sourceRows) {
+    if (r.source) bySource[r.source] = r.n;
+  }
+
+  const hideDupes = hasDuplicateOfColumn()
+    ? " AND duplicate_of IS NULL"
+    : "";
+  const allRow = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages
+       WHERE conversation_id IN (${placeholders})${hideDupes}`,
+    )
+    .get(...conversationIds) as { n: number };
+  return { all: allRow.n, bySource };
+}
+
+export function contactMessageSourceCounts(
+  contactId: number,
+): ContactSourceCounts {
+  const phones = contactPhones(contactId);
+  if (!phones.length) return { all: 0, bySource: {} };
+  return contactMessageSourceCountsForConversations(
+    contactConversationIds(phones),
+  );
+}
+
+/** One contact open: yearly + groups + available sources with shared phone/conv lookups. */
+export function contactThreadsBundle(
+  contactId: number,
+  source?: string | null,
+): {
+  yearly: YearThread[];
+  groups: GroupThread[];
+  messageSources: string[];
+  sourceCounts: ContactSourceCounts;
+} {
+  const phones = contactPhones(contactId);
+  if (!phones.length) {
+    return {
+      yearly: [],
+      groups: [],
+      messageSources: [],
+      sourceCounts: { all: 0, bySource: {} },
+    };
+  }
+  const convIds = contactConversationIds(phones);
+  const sourceCounts = contactMessageSourceCountsForConversations(convIds);
+  return {
+    yearly: contactYearlyThreadsForPhones(phones, source),
+    groups: contactGroupThreadsForPhones(phones, source),
+    messageSources: Object.keys(sourceCounts.bySource).sort(),
+    sourceCounts,
+  };
+}
+
 export function contactYearlyThreads(
   contactId: number,
   source?: string | null,
 ): YearThread[] {
-  const phones = contactPhones(contactId);
+  return contactYearlyThreadsForPhones(contactPhones(contactId), source);
+}
+
+function contactYearlyThreadsForPhones(
+  phones: string[],
+  source?: string | null,
+): YearThread[] {
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
@@ -385,16 +499,17 @@ function formatPeopleTitle(
   });
 
   const names = unique.map((l) => l.name);
-  const full = names.join(" · ");
+  const sep = "\u00a0\u00a0·\u00a0\u00a0";
+  const full = names.join(sep);
   if (names.length === 0) {
     return { short: "Group chat", full: "Group chat", count: 0 };
   }
   if (names.length <= MAX_VISIBLE_NAMES) {
     return { short: full, full, count: names.length };
   }
-  const shown = names.slice(0, MAX_VISIBLE_NAMES).join(" · ");
+  const shown = names.slice(0, MAX_VISIBLE_NAMES).join(sep);
   return {
-    short: `${shown} +${names.length - MAX_VISIBLE_NAMES}`,
+    short: `${shown}\u00a0\u00a0+${names.length - MAX_VISIBLE_NAMES}`,
     full,
     count: names.length,
   };
@@ -475,7 +590,13 @@ export function contactGroupThreads(
   contactId: number,
   source?: string | null,
 ): GroupThread[] {
-  const phones = contactPhones(contactId);
+  return contactGroupThreadsForPhones(contactPhones(contactId), source);
+}
+
+function contactGroupThreadsForPhones(
+  phones: string[],
+  source?: string | null,
+): GroupThread[] {
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
@@ -632,7 +753,10 @@ export function messagesForConversationYear(
   const owner = loadOwner();
   const placeholders = ids.map(() => "?").join(",");
   const sourceSql = source ? " AND m.source = ?" : "";
-  const params: Array<string | number> = [...ids, year];
+  // Range on timestamp prefix uses (conversation_id, timestamp) better than CAST(substr…).
+  const yearStart = `${year}-`;
+  const yearEnd = `${year + 1}-`;
+  const params: Array<string | number> = [...ids, yearStart, yearEnd];
   if (source) params.push(source);
   const rows = db
     .prepare(
@@ -645,7 +769,7 @@ export function messagesForConversationYear(
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
        WHERE m.conversation_id IN (${placeholders})
-         AND CAST(substr(m.timestamp, 1, 4) AS INTEGER) = ?${sourceSql}${combinedDedupeSql(source, "m")}
+         AND m.timestamp >= ? AND m.timestamp < ?${sourceSql}${combinedDedupeSql(source, "m")}
        ORDER BY m.timestamp, m.sort_order`,
     )
     .all(...params) as Array<{
@@ -662,11 +786,60 @@ export function messagesForConversationYear(
     name_hint: string | null;
   }>;
 
-  const attStmt = db.prepare(
-    `SELECT id, mime_type, original_name, assets_path, sha256,
-            derived_mime_type, derived_assets_path, derived_sha256
-     FROM attachments WHERE message_id = ?`,
-  );
+  const attsByMsg = new Map<
+    number,
+    Array<{
+      id: number;
+      mimeType: string | null;
+      originalName: string | null;
+      assetsPath: string | null;
+      sha256: string | null;
+      derivedMimeType: string | null;
+      derivedAssetsPath: string | null;
+      derivedSha256: string | null;
+    }>
+  >();
+  if (rows.length) {
+    const msgIds = rows.map((r) => r.id);
+    const chunkSize = 400;
+    for (let i = 0; i < msgIds.length; i += chunkSize) {
+      const chunk = msgIds.slice(i, i + chunkSize);
+      const attPlaceholders = chunk.map(() => "?").join(",");
+      const attRows = db
+        .prepare(
+          `SELECT message_id, id, mime_type, original_name, assets_path, sha256,
+                  derived_mime_type, derived_assets_path, derived_sha256
+           FROM attachments
+           WHERE message_id IN (${attPlaceholders})
+           ORDER BY message_id, id`,
+        )
+        .all(...chunk) as Array<{
+        message_id: number;
+        id: number;
+        mime_type: string | null;
+        original_name: string | null;
+        assets_path: string | null;
+        sha256: string | null;
+        derived_mime_type: string | null;
+        derived_assets_path: string | null;
+        derived_sha256: string | null;
+      }>;
+      for (const a of attRows) {
+        const list = attsByMsg.get(a.message_id) ?? [];
+        list.push({
+          id: a.id,
+          mimeType: a.mime_type,
+          originalName: a.original_name,
+          assetsPath: a.assets_path,
+          sha256: a.sha256,
+          derivedMimeType: a.derived_mime_type,
+          derivedAssetsPath: a.derived_assets_path,
+          derivedSha256: a.derived_sha256,
+        });
+        attsByMsg.set(a.message_id, list);
+      }
+    }
+  }
 
   return rows.map((r) => {
     const isFromMe = r.is_from_me !== 0;
@@ -684,28 +857,6 @@ export function messagesForConversationYear(
       }
     }
 
-    const attachments = (
-      attStmt.all(r.id) as Array<{
-        id: number;
-        mime_type: string | null;
-        original_name: string | null;
-        assets_path: string | null;
-        sha256: string | null;
-        derived_mime_type: string | null;
-        derived_assets_path: string | null;
-        derived_sha256: string | null;
-      }>
-    ).map((a) => ({
-      id: a.id,
-      mimeType: a.mime_type,
-      originalName: a.original_name,
-      assetsPath: a.assets_path,
-      sha256: a.sha256,
-      derivedMimeType: a.derived_mime_type,
-      derivedAssetsPath: a.derived_assets_path,
-      derivedSha256: a.derived_sha256,
-    }));
-
     return {
       id: r.id,
       source: r.source,
@@ -715,7 +866,7 @@ export function messagesForConversationYear(
       senderName,
       body: r.body,
       isAnnouncement: r.is_announcement !== 0,
-      attachments,
+      attachments: attsByMsg.get(r.id) ?? [],
     };
   });
 }

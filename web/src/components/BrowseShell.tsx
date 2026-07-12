@@ -46,19 +46,56 @@ type ContactDetail = ContactListItem & {
   dateEnd: string | null;
 };
 
-/** Format YYYY-MM-DD as MM-DD (year comes from the section header). */
-function formatShortDate(isoDate: string): string {
+type GroupDateFormat = "md" | "mon-d" | "d-mon";
+
+const GROUP_DATE_FORMAT_KEY = "mv-group-date-format";
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** Format YYYY-MM-DD for group row dates (year is in the section header). */
+function formatGroupDate(isoDate: string, style: GroupDateFormat): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
-  return m ? `${m[2]}-${m[3]}` : isoDate;
+  if (!m) return isoDate;
+  const monthNum = Number(m[2]);
+  const dayNum = Number(m[3]);
+  const mon = MONTH_SHORT[monthNum - 1] ?? m[2];
+  switch (style) {
+    case "mon-d":
+      return `${mon} ${dayNum}`;
+    case "d-mon":
+      return `${dayNum} ${mon}`;
+    case "md":
+    default:
+      return `${m[2]}-${m[3]}`;
+  }
 }
 
-function groupDateMeta(g: {
-  dateStart: string;
-  dateEnd: string;
-}): string {
-  const start = formatShortDate(g.dateStart);
+function groupDateMeta(
+  g: { dateStart: string; dateEnd: string },
+  style: GroupDateFormat,
+): string {
+  const start = formatGroupDate(g.dateStart, style);
   if (g.dateEnd === g.dateStart) return start;
-  return `${start} – ${formatShortDate(g.dateEnd)}`;
+  return `${start} – ${formatGroupDate(g.dateEnd, style)}`;
+}
+
+function readStoredGroupDateFormat(): GroupDateFormat {
+  if (typeof window === "undefined") return "md";
+  const v = localStorage.getItem(GROUP_DATE_FORMAT_KEY);
+  if (v === "md" || v === "mon-d" || v === "d-mon") return v;
+  return "md";
 }
 
 export function BrowseShell({
@@ -79,17 +116,38 @@ export function BrowseShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { sourceQuery } = useSourceFilter();
+  const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [sort, setSort] = useState<SortMode>("last");
   const [query, setQuery] = useState("");
   const [contactId, setContactId] = useState<number | null>(initialContactId);
   const [detail, setDetail] = useState<ContactDetail | null>(null);
   const [yearly, setYearly] = useState<YearThread[]>([]);
   const [groups, setGroups] = useState<GroupThread[]>([]);
+  const [messageSources, setMessageSources] = useState<string[]>([]);
+  const [sourceCounts, setSourceCounts] = useState<{
+    all: number;
+    bySource: Record<string, number>;
+  }>({ all: 0, bySource: {} });
+  const [groupDateFormat, setGroupDateFormatState] =
+    useState<GroupDateFormat>("md");
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const loadedContactIdRef = useRef<number | null>(null);
+  const activeThreadRef = useRef<string | null>(null);
+  activeThreadRef.current = activeThread;
+  const activeSourceRef = useRef<string | null>(null);
+  activeSourceRef.current = source;
+
+  useEffect(() => {
+    setGroupDateFormatState(readStoredGroupDateFormat());
+  }, []);
+
+  const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
+    setGroupDateFormatState(next);
+    localStorage.setItem(GROUP_DATE_FORMAT_KEY, next);
+  }, []);
   const [contactEditing, setContactEditing] = useState(false);
   const [contactCreating, setContactCreating] = useState(false);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
@@ -312,20 +370,89 @@ export function BrowseShell({
 
   useEffect(() => {
     if (!contactId) {
+      loadedContactIdRef.current = null;
       setDetail(null);
       setYearly([]);
       setGroups([]);
+      setMessageSources([]);
+      setSourceCounts({ all: 0, bySource: {} });
       return;
     }
     let cancelled = false;
-    setLoadingThreads(true);
+    // Keep the existing cards mounted while the next contact loads (swap data in place).
+    // Only show a blank "Loading…" state when there is nothing to display yet.
+    const switchingContact = loadedContactIdRef.current !== contactId;
+    if (switchingContact && loadedContactIdRef.current == null) {
+      setLoadingThreads(true);
+    }
     fetch(`/api/contacts/${contactId}/threads${sourceQuery ? `?${sourceQuery.slice(1)}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        setDetail(data.contact);
-        setYearly(data.yearly ?? []);
-        setGroups(data.groups ?? []);
+        // Contact fields don't depend on source — only replace detail when the person changes
+        // so the top card shell/content don't flash on source filter updates.
+        if (switchingContact) {
+          setDetail(data.contact);
+        }
+        const nextYearly: YearThread[] = data.yearly ?? [];
+        const nextGroups: GroupThread[] = data.groups ?? [];
+        setYearly(nextYearly);
+        setGroups(nextGroups);
+        setMessageSources(data.messageSources ?? []);
+        setSourceCounts(
+          data.sourceCounts ?? { all: 0, bySource: {} },
+        );
+        loadedContactIdRef.current = contactId;
+
+        const available: string[] = data.messageSources ?? [];
+        const selected = activeSourceRef.current;
+        if (selected && !available.includes(selected)) {
+          setSource(null);
+        }
+
+        setActiveThread((prev) => {
+          if (!prev) return prev;
+          if (prev.startsWith("y-")) {
+            const year = Number(prev.slice(2));
+            return nextYearly.some((t) => t.year === year) ? prev : null;
+          }
+          return nextGroups.some((t) => `g-${t.conversationId}-${t.year}` === prev)
+            ? prev
+            : null;
+        });
+
+        // Reload open thread for the new source; keep prior bubbles until replace.
+        const key = activeThreadRef.current;
+        if (!key) return;
+        let convIds: number[] | null = null;
+        let year: number | null = null;
+        if (key.startsWith("y-")) {
+          const y = nextYearly.find((t) => `y-${t.year}` === key);
+          if (y) {
+            convIds = y.conversationIds;
+            year = y.year;
+          }
+        } else {
+          const g = nextGroups.find((t) => `g-${t.conversationId}-${t.year}` === key);
+          if (g) {
+            convIds = [g.conversationId];
+            year = g.year;
+          }
+        }
+        if (!convIds || year == null) {
+          setMessages([]);
+          return;
+        }
+        setLoadingMessages(true);
+        const ids = convIds.join(",");
+        fetch(`/api/messages?conversationIds=${ids}&year=${year}${sourceQuery}`)
+          .then((r) => r.json())
+          .then((msgData) => {
+            if (!cancelled) setMessages(msgData.messages ?? []);
+          })
+          .finally(() => {
+            if (!cancelled) setLoadingMessages(false);
+          });
       })
       .finally(() => {
         if (!cancelled) setLoadingThreads(false);
@@ -333,7 +460,7 @@ export function BrowseShell({
     return () => {
       cancelled = true;
     };
-  }, [contactId, sourceQuery]);
+  }, [contactId, sourceQuery, setSource]);
 
   const loadMessages = useCallback(
     (conversationIds: number[], year: number, key: string) => {
@@ -395,8 +522,11 @@ export function BrowseShell({
     setDetail(null);
     setYearly([]);
     setGroups([]);
+    setMessageSources([]);
+    setSourceCounts({ all: 0, bySource: {} });
     setMessages([]);
     setActiveThread(null);
+    loadedContactIdRef.current = null;
     setContactEditing(false);
     setContactCreating(true);
     setEditDraft(emptyContactEditDraft(createDefaults));
@@ -496,6 +626,8 @@ export function BrowseShell({
       setDetail(null);
       setYearly([]);
       setGroups([]);
+      setMessageSources([]);
+      setSourceCounts({ all: 0, bySource: {} });
       setMessages([]);
       setActiveThread(null);
       setContactId(null);
@@ -1053,7 +1185,7 @@ export function BrowseShell({
                 .filter(Boolean)
                 .join(" ") || "New contact"}
             </h1>
-          ) : detail && !loadingThreads ? (
+          ) : detail ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
               {contactEditing && editDraft
                 ? [editDraft.firstName, editDraft.lastName]
@@ -1134,7 +1266,7 @@ export function BrowseShell({
           className="min-h-0 flex flex-col overflow-y-auto bg-bg px-5 py-4"
           style={{ height: `${threadsPct}%` }}
         >
-          {((detail && !loadingThreads) || (contactCreating && editDraft)) && (
+          {((detail && contactId) || (contactCreating && editDraft)) && (
             <>
               <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
                 <h2 className="text-[13px] font-semibold text-text">Contact details</h2>
@@ -1313,6 +1445,78 @@ export function BrowseShell({
 
               {!contactCreating && (
               <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+              {sources.length > 0 && (
+                <div className="mb-5">
+                  <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+                    Message Sources
+                  </h3>
+                  <div className="mt-2 flex flex-wrap items-start gap-x-0 gap-y-2">
+                    {[
+                      {
+                        id: null as string | null,
+                        label: "All",
+                        enabled: true,
+                        count: sourceCounts.all,
+                      },
+                      ...sources.map((id) => ({
+                        id,
+                        label: formatSourceLabel(id),
+                        enabled: messageSources.includes(id),
+                        count: sourceCounts.bySource[id] ?? 0,
+                      })),
+                    ].map((opt, i) => {
+                      const active =
+                        opt.id === null ? source === null : source === opt.id;
+                      const disabled = !opt.enabled;
+                      const countLabel = opt.count.toLocaleString();
+                      return (
+                        <span key={opt.id ?? "all"} className="flex items-start">
+                          {i > 0 && (
+                            <span
+                              className="mx-2 pt-0.5 text-[13px] text-muted/50"
+                              aria-hidden
+                            >
+                              |
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            disabled={disabled}
+                            aria-disabled={disabled}
+                            title={`${opt.label}: ${countLabel} messages`}
+                            onClick={() => {
+                              if (disabled) return;
+                              setSource(opt.id);
+                            }}
+                            className={`group flex min-w-0 flex-col items-start text-left ${
+                              disabled ? "cursor-default" : ""
+                            }`}
+                          >
+                            <span
+                              className={`text-[13px] font-medium leading-tight ${
+                                disabled
+                                  ? "text-muted/40"
+                                  : active
+                                    ? "text-accent"
+                                    : "text-text group-hover:text-accent"
+                              }`}
+                            >
+                              {opt.label}
+                            </span>
+                            <span
+                              className={`mt-0.5 inline-block w-[6ch] text-[11px] leading-tight tabular-nums ${
+                                disabled ? "text-muted/30" : "text-muted"
+                              }`}
+                            >
+                              {countLabel}
+                            </span>
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div>
                 <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
                   Yearly messages
@@ -1362,10 +1566,30 @@ export function BrowseShell({
                   <p className="mt-2 text-[12px] text-muted">No group messages</p>
                 ) : (
                   <div className="mt-3 space-y-12">
-                    {groupsByYear.map(([year, items]) => (
+                    {groupsByYear.map(([year, items], yearIdx) => (
                       <div key={year}>
-                        <div className="mb-2 text-[13px] font-semibold text-text">
-                          {year}
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div className="text-[13px] font-semibold text-text">
+                            {year}
+                          </div>
+                          {yearIdx === 0 && (
+                            <label className="flex items-center gap-1.5 text-[11px] text-muted">
+                              <span className="sr-only">Date format</span>
+                              <select
+                                value={groupDateFormat}
+                                onChange={(e) =>
+                                  setGroupDateFormat(
+                                    e.target.value as GroupDateFormat,
+                                  )
+                                }
+                                className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
+                              >
+                                <option value="md">02-07</option>
+                                <option value="mon-d">Feb 7</option>
+                                <option value="d-mon">7 Feb</option>
+                              </select>
+                            </label>
+                          )}
                         </div>
                         <ul className="divide-y divide-border/50 border-y border-border/50">
                           {items.map((g) => {
@@ -1394,19 +1618,13 @@ export function BrowseShell({
                                       {g.title}
                                     </span>
                                     <span className="mt-0.5 block truncate text-[11px] text-muted">
-                                      {g.namedTitle ? (
-                                        <>
-                                          {g.namedTitle}
-                                          <span className="mx-1.5">·</span>
-                                        </>
-                                      ) : null}
                                       {g.participantCount} people
                                       <span className="mx-1.5">·</span>
                                       {g.messageCount} msgs
                                     </span>
                                   </span>
                                   <span className="shrink-0 pt-0.5 text-[11px] text-muted tabular-nums">
-                                    {groupDateMeta(g)}
+                                    {groupDateMeta(g, groupDateFormat)}
                                   </span>
                                 </button>
                               </li>
@@ -1437,11 +1655,15 @@ export function BrowseShell({
               Select a year or group thread to read messages.
             </p>
           )}
-          {loadingMessages && (
+          {loadingMessages && messages.length === 0 && (
             <p className="pt-8 text-center text-[13px] text-muted">Loading messages…</p>
           )}
-          {!loadingMessages && activeThreadMeta && messages.length > 0 && (
-            <div className="mx-auto flex max-w-2xl flex-col gap-2">
+          {activeThreadMeta && messages.length > 0 && (
+            <div
+              className={`mx-auto flex max-w-2xl flex-col gap-2 ${
+                loadingMessages ? "opacity-60" : ""
+              }`}
+            >
               <div className="mb-2 border-b border-border/60 pb-2 text-center">
                 <div className="text-[13px] font-medium text-text">
                   {activeThreadMeta.title}
@@ -1465,6 +1687,21 @@ export function BrowseShell({
       </div>
     </div>
   );
+}
+
+function formatSourceLabel(id: string): string {
+  const known: Record<string, string> = {
+    imessage: "iMessage",
+    "go-sms-pro": "GO SMS Pro",
+    "sms-backup-plus": "SMS Backup Plus",
+    "sms-backup-restore": "SMS Backup Restore",
+  };
+  if (known[id]) return known[id];
+  return id
+    .split("-")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 function MessageBubble({ message }: { message: MessageRow }) {

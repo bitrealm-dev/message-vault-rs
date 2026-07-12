@@ -1,4 +1,4 @@
-import { getContact, contactYearlyThreads, contactGroupThreads } from "@/lib/db";
+import { getContact, contactThreadsBundle } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -16,9 +16,13 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const source = new URL(req.url).searchParams.get("source");
+  const { yearly, groups, messageSources, sourceCounts } =
+    contactThreadsBundle(id, source);
   return NextResponse.json({
     contact,
-    yearly: contactYearlyThreads(id, source),
-    groups: contactGroupThreads(id, source),
+    yearly,
+    groups,
+    messageSources,
+    sourceCounts,
   });
 }
