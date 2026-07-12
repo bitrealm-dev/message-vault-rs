@@ -41,4 +41,6 @@ target
 /staging/*
 !/staging/.gitkeep
 
-message-exporter/
+# Symlinked exporter crates live here; track only the staging helper scripts
+message-exporter/*
+!message-exporter/*.sh
