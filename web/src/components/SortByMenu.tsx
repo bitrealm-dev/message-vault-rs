@@ -6,14 +6,21 @@ export type SortMode = "first" | "last" | "messages";
 export type UnmatchedSortBy = "phone" | "date" | "messages";
 export type SortOrder = "asc" | "desc";
 
-export function SortByMenu({
+type SortField<T extends string> = { id: T; label: string };
+
+/** Config-driven sort field + ascending/descending menu. */
+export function SortMenu<T extends string>({
+  fields,
   sort,
   order,
   onChange,
+  ariaLabel = "Sort by",
 }: {
-  sort: SortMode;
+  fields: SortField<T>[];
+  sort: T;
   order: SortOrder;
-  onChange: (next: { sort: SortMode; order: SortOrder }) => void;
+  onChange: (next: { sort: T; order: SortOrder }) => void;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -38,7 +45,7 @@ export function SortByMenu({
     <div className="relative" ref={rootRef}>
       <button
         type="button"
-        aria-label="Sort by"
+        aria-label={ariaLabel}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
@@ -50,30 +57,17 @@ export function SortByMenu({
           <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
             Sort By
           </div>
-          <SortOption
-            label="First Name"
-            selected={sort === "first"}
-            onSelect={() => {
-              onChange({ sort: "first", order });
-              setOpen(false);
-            }}
-          />
-          <SortOption
-            label="Last Name"
-            selected={sort === "last"}
-            onSelect={() => {
-              onChange({ sort: "last", order });
-              setOpen(false);
-            }}
-          />
-          <SortOption
-            label="Message Count"
-            selected={sort === "messages"}
-            onSelect={() => {
-              onChange({ sort: "messages", order });
-              setOpen(false);
-            }}
-          />
+          {fields.map((field) => (
+            <SortOption
+              key={field.id}
+              label={field.label}
+              selected={sort === field.id}
+              onSelect={() => {
+                onChange({ sort: field.id, order });
+                setOpen(false);
+              }}
+            />
+          ))}
           <div className="my-1.5 border-t border-border" />
           <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
             Order
@@ -100,6 +94,38 @@ export function SortByMenu({
   );
 }
 
+const CONTACT_SORT_FIELDS: SortField<SortMode>[] = [
+  { id: "first", label: "First Name" },
+  { id: "last", label: "Last Name" },
+  { id: "messages", label: "Message Count" },
+];
+
+export function SortByMenu({
+  sort,
+  order,
+  onChange,
+}: {
+  sort: SortMode;
+  order: SortOrder;
+  onChange: (next: { sort: SortMode; order: SortOrder }) => void;
+}) {
+  return (
+    <SortMenu
+      fields={CONTACT_SORT_FIELDS}
+      sort={sort}
+      order={order}
+      onChange={onChange}
+      ariaLabel="Sort by"
+    />
+  );
+}
+
+const UNMATCHED_SORT_FIELDS: SortField<UnmatchedSortBy>[] = [
+  { id: "phone", label: "Phone number" },
+  { id: "date", label: "Date" },
+  { id: "messages", label: "Message Count" },
+];
+
 /** Phone/date/messages + ascending/descending for Unassigned. */
 export function UnmatchedSortMenu({
   sortBy,
@@ -110,88 +136,16 @@ export function UnmatchedSortMenu({
   order: SortOrder;
   onChange: (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
-    <div className="relative" ref={rootRef}>
-      <button
-        type="button"
-        aria-label="Sort unassigned"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
-      >
-        <SortIcon />
-      </button>
-      {open && (
-        <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-2 shadow-xl">
-          <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
-            Sort By
-          </div>
-          <SortOption
-            label="Phone number"
-            selected={sortBy === "phone"}
-            onSelect={() => {
-              onChange({ sortBy: "phone", order });
-              setOpen(false);
-            }}
-          />
-          <SortOption
-            label="Date"
-            selected={sortBy === "date"}
-            onSelect={() => {
-              onChange({ sortBy: "date", order });
-              setOpen(false);
-            }}
-          />
-          <SortOption
-            label="Message Count"
-            selected={sortBy === "messages"}
-            onSelect={() => {
-              onChange({ sortBy: "messages", order });
-              setOpen(false);
-            }}
-          />
-          <div className="my-1.5 border-t border-border" />
-          <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
-            Order
-          </div>
-          <SortOption
-            label="Ascending"
-            selected={order === "asc"}
-            onSelect={() => {
-              onChange({ sortBy, order: "asc" });
-              setOpen(false);
-            }}
-          />
-          <SortOption
-            label="Descending"
-            selected={order === "desc"}
-            onSelect={() => {
-              onChange({ sortBy, order: "desc" });
-              setOpen(false);
-            }}
-          />
-        </div>
-      )}
-    </div>
+    <SortMenu
+      fields={UNMATCHED_SORT_FIELDS}
+      sort={sortBy}
+      order={order}
+      onChange={({ sort, order: nextOrder }) =>
+        onChange({ sortBy: sort, order: nextOrder })
+      }
+      ariaLabel="Sort unassigned"
+    />
   );
 }
 

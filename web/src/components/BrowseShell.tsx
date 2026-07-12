@@ -1,7 +1,21 @@
 "use client";
 
-import type { ContactListItem, ContactSection, MessageRow } from "@/lib/types";
+import type {
+  ContactDetail,
+  ContactListItem,
+  ContactSection,
+  GroupThread,
+  MessageRow,
+  YearThread,
+} from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
+import {
+  groupDateMeta,
+  readStoredGroupDateFormat,
+  writeStoredGroupDateFormat,
+  type GroupDateFormat,
+} from "@/lib/groupDateFormat";
+import { formatSourceLabel } from "@/lib/sourceLabels";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
@@ -15,92 +29,18 @@ import {
   seedContactEditDraft,
   type ContactEditDraft,
 } from "./ContactEditPane";
+import {
+  PeopleGroupIcon,
+  PersonDetailIcon,
+  PhoneIcon,
+  RangeIcon,
+} from "./icons";
 import { MessageBubble } from "./MessageBubble";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
 
-type YearThread = {
-  year: number;
-  messageCount: number;
-  dateStart: string;
-  dateEnd: string;
-  conversationIds: number[];
-};
-
-type GroupThread = {
-  conversationId: number;
-  conversationIds: number[];
-  title: string;
-  titleFull: string;
-  namedTitle: string | null;
-  participantCount: number;
-  year: number;
-  messageCount: number;
-  dateStart: string;
-  dateEnd: string;
-};
-
-type ContactDetail = ContactListItem & {
-  exclude: boolean;
-  tags: string[];
-  phones: string[];
-  dateStart: string | null;
-  dateEnd: string | null;
-};
-
-type GroupDateFormat = "md" | "mon-d" | "d-mon";
-
-const GROUP_DATE_FORMAT_KEY = "mv-group-date-format";
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
-const MONTH_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
-/** Format YYYY-MM-DD for group row dates (year is in the section header). */
-function formatGroupDate(isoDate: string, style: GroupDateFormat): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
-  if (!m) return isoDate;
-  const monthNum = Number(m[2]);
-  const dayNum = Number(m[3]);
-  const mon = MONTH_SHORT[monthNum - 1] ?? m[2];
-  switch (style) {
-    case "mon-d":
-      return `${mon} ${dayNum}`;
-    case "d-mon":
-      return `${dayNum} ${mon}`;
-    case "md":
-    default:
-      return `${m[2]}-${m[3]}`;
-  }
-}
-
-function groupDateMeta(
-  g: { dateStart: string; dateEnd: string },
-  style: GroupDateFormat,
-): string {
-  const start = formatGroupDate(g.dateStart, style);
-  if (g.dateEnd === g.dateStart) return start;
-  return `${start} – ${formatGroupDate(g.dateEnd, style)}`;
-}
-
-function readStoredGroupDateFormat(): GroupDateFormat {
-  if (typeof window === "undefined") return "md";
-  const v = localStorage.getItem(GROUP_DATE_FORMAT_KEY);
-  if (v === "md" || v === "mon-d" || v === "d-mon") return v;
-  return "md";
-}
 
 export function BrowseShell({
   section,
@@ -166,7 +106,7 @@ export function BrowseShell({
 
   const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
     setGroupDateFormatState(next);
-    localStorage.setItem(GROUP_DATE_FORMAT_KEY, next);
+    writeStoredGroupDateFormat(next);
   }, []);
   const [contactEditing, setContactEditing] = useState(false);
   const [contactCreating, setContactCreating] = useState(false);
@@ -1805,21 +1745,6 @@ export function BrowseShell({
   );
 }
 
-function formatSourceLabel(id: string): string {
-  const known: Record<string, string> = {
-    imessage: "iMessage",
-    "go-sms-pro": "GO SMS Pro",
-    "sms-backup-plus": "SMS Backup Plus",
-    "sms-backup-restore": "SMS Backup Restore",
-  };
-  if (known[id]) return known[id];
-  return id
-    .split("-")
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 function PencilIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -1853,75 +1778,6 @@ function NewContactIcon({ className }: { className?: string }) {
       <circle cx="8.5" cy="7.5" r="3" />
       <path d="M2.5 19c.55-2.85 2.6-4.5 6-4.5 1.2 0 2.25.2 3.15.55" />
       <path d="M17.5 10.5v9M13 15h9" strokeWidth="2.25" />
-    </svg>
-  );
-}
-
-function PersonDetailIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="8" r="3.25" />
-      <path d="M5 19.25c.85-3.2 3.4-5 7-5s6.15 1.8 7 5" />
-    </svg>
-  );
-}
-
-function PeopleGroupIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="9" cy="8" r="3.25" />
-      <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
-      <circle cx="17" cy="9" r="2.5" />
-      <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
-    </svg>
-  );
-}
-
-function RangeIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
-      <path d="M8 3.5v4M16 3.5v4M3.5 10.5h17" />
-    </svg>
-  );
-}
-
-function PhoneIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M6.62 10.79a15.15 15.15 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.4 21 3 13.6 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.02l-2.2 2.19Z" />
     </svg>
   );
 }

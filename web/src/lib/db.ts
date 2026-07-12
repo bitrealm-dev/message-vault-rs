@@ -14,6 +14,7 @@ import type {
   YearThread,
 } from "./types";
 import { tagSlug } from "./tagSlug";
+import { RESERVED_GROUP_NAMES } from "./reservedGroups";
 
 export { tagSlug };
 
@@ -89,22 +90,6 @@ function sortFields(row: {
   return { sortFirst, sortLast, letter };
 }
 
-const RESERVED_TAG_LABELS = new Set(
-  [
-    "home",
-    "all",
-    "excluded",
-    "no-messages",
-    "no messages",
-    "unmatched",
-    "unassigned",
-    "trash",
-    "groups",
-    "no-group",
-    "no group",
-  ].map((s) => s.toLowerCase()),
-);
-
 export function listTags(): string[] {
   const db = getDb();
   const rows = db
@@ -115,7 +100,7 @@ export function listTags(): string[] {
     .all() as Array<{ name: string }>;
   return rows
     .map((r) => r.name)
-    .filter((name) => !RESERVED_TAG_LABELS.has(name.trim().toLowerCase()));
+    .filter((name) => !RESERVED_GROUP_NAMES.has(name.trim().toLowerCase()));
 }
 
 export function tagFromSlug(slug: string): string | null {

@@ -6,6 +6,11 @@ import { configTomlPath, dbPath, repoRoot } from "./paths";
 import { getContact, resetDb } from "./db";
 import { clearTrashedHandles } from "./handlesWrite";
 import type { ContactDetail } from "./types";
+import {
+  isReservedGroupName,
+  RESERVED_GROUP_NAMES,
+  reservedGroupError,
+} from "./reservedGroups";
 
 export type ContactPatch = {
   exclude?: boolean;
@@ -15,27 +20,9 @@ export type ContactPatch = {
   phones?: string[];
 };
 
-const RESERVED_GROUP_NAMES = new Set([
-  "excluded",
-  "no messages",
-  "no-messages",
-  "unmatched",
-  "unassigned",
-  "trash",
-]);
-
 function assertAllowedTagName(name: string): void {
-  const key = name.trim().toLowerCase();
-  if (RESERVED_GROUP_NAMES.has(key)) {
-    throw new Error(
-      key === "excluded"
-        ? "Excluded is a reserved group"
-        : key === "unmatched" || key === "unassigned"
-          ? "Unassigned is a reserved group"
-          : key === "trash"
-            ? "Trash is a reserved group"
-            : "No messages is a reserved group",
-    );
+  if (isReservedGroupName(name)) {
+    throw new Error(reservedGroupError(name));
   }
 }
 

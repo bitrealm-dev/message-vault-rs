@@ -7,6 +7,7 @@ import type {
   YearThread,
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
+import { formatSourceLabel } from "@/lib/sourceLabels";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -18,7 +19,14 @@ import {
   type ContactEditDraft,
 } from "./ContactEditPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
-import { MessageAttachments } from "./MessageAttachments";
+import {
+  EllipsisIcon,
+  PeopleGroupIcon,
+  PersonDetailIcon,
+  PhoneIcon,
+  RangeIcon,
+} from "./icons";
+import { MessageBubble } from "./MessageBubble";
 import {
   UnmatchedSortMenu,
   type SortOrder,
@@ -29,21 +37,6 @@ import { useResizablePanes } from "./useResizablePanes";
 
 const UNMATCHED_SORT_ORDER_KEY = "mv-unmatched-sort-order";
 const UNMATCHED_SORT_BY_KEY = "mv-unmatched-sort-by";
-
-function formatSourceLabel(id: string): string {
-  const known: Record<string, string> = {
-    imessage: "iMessage",
-    "go-sms-pro": "GO SMS Pro",
-    "sms-backup-plus": "SMS Backup Plus",
-    "sms-backup-restore": "SMS Backup Restore",
-  };
-  if (known[id]) return known[id];
-  return id
-    .split("-")
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
 
 export function UnmatchedShell({
   handles: initialHandles,
@@ -1486,39 +1479,7 @@ export function UnmatchedShell({
               {!loadingMessages && messages.length > 0 && (
                 <div className="mx-auto flex max-w-2xl flex-col gap-2">
                   {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`flex flex-col ${
-                        m.isFromMe ? "items-end" : "items-start"
-                      }`}
-                    >
-                      {!m.isFromMe && (
-                        <span className="mb-0.5 px-1 text-[10px] text-muted">
-                          {m.senderName}
-                        </span>
-                      )}
-                      <div
-                        className={`max-w-[75%] rounded-2xl px-3 py-2 text-[14px] leading-snug ${
-                          m.isFromMe
-                            ? "rounded-br-md bg-sent text-sent-text"
-                            : "rounded-bl-md bg-received text-received-text"
-                        }`}
-                      >
-                        {m.body && (
-                          <p className="whitespace-pre-wrap break-words">
-                            {m.body}
-                          </p>
-                        )}
-                        <MessageAttachments
-                          source={m.source}
-                          attachments={m.attachments}
-                          hasBody={Boolean(m.body)}
-                        />
-                      </div>
-                      <span className="mt-0.5 px-1 text-[10px] text-muted">
-                        {m.timestamp.replace("T", " ").slice(0, 19)}
-                      </span>
-                    </div>
+                    <MessageBubble key={m.id} message={m} />
                   ))}
                 </div>
               )}
@@ -1617,93 +1578,5 @@ export function UnmatchedShell({
         </div>
       )}
     </div>
-  );
-}
-
-function PersonDetailIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="8" r="3.25" />
-      <path d="M5 19.25c.85-3.2 3.4-5 7-5s6.15 1.8 7 5" />
-    </svg>
-  );
-}
-
-function PeopleGroupIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="9" cy="8" r="3.25" />
-      <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
-      <circle cx="17" cy="9" r="2.5" />
-      <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
-    </svg>
-  );
-}
-
-function RangeIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3.5" y="5" width="17" height="15" rx="2" />
-      <path d="M8 3.5v3M16 3.5v3M3.5 10h17" />
-    </svg>
-  );
-}
-
-function PhoneIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M8.5 3.5h3.2l1.1 3.3-2 1.2a12.5 12.5 0 0 0 5.2 5.2l1.2-2 3.3 1.1v3.2a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 3.5 8.7a2 2 0 0 1 2-2.2Z" />
-    </svg>
-  );
-}
-
-function EllipsisIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      aria-hidden
-    >
-      <circle cx="3.5" cy="8" r="1.25" />
-      <circle cx="8" cy="8" r="1.25" />
-      <circle cx="12.5" cy="8" r="1.25" />
-    </svg>
   );
 }

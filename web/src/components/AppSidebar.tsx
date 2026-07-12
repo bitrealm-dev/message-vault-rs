@@ -10,27 +10,10 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { useSourceFilter } from "./SourceFilter";
-
-function PeopleGroupIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="9" cy="8" r="3.25" />
-      <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
-      <circle cx="17" cy="9" r="2.5" />
-      <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
-    </svg>
-  );
-}
+import {
+  EllipsisIcon,
+  PeopleGroupIcon,
+} from "./icons";
 
 function PlusIcon({ className }: { className?: string }) {
   return (
@@ -195,21 +178,6 @@ function PanelExpandIcon({ className }: { className?: string }) {
       <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
       <path d="M9.5 4.5v15" />
       <path d="M11.75 9.75 14.25 12l-2.5 2.25" />
-    </svg>
-  );
-}
-
-function EllipsisIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      aria-hidden
-    >
-      <circle cx="3.5" cy="8" r="1.25" />
-      <circle cx="8" cy="8" r="1.25" />
-      <circle cx="12.5" cy="8" r="1.25" />
     </svg>
   );
 }
@@ -623,7 +591,6 @@ export function AppSidebar({
   const navWidthRef = useRef(navWidth);
   const wasNarrowRef = useRef(false);
   const dragging = useRef(false);
-  const { sources, source, setSource } = useSourceFilter();
 
   const collapsed = narrow ? !forceExpand : userCollapsed;
 
@@ -714,28 +681,6 @@ export function AppSidebar({
           </span>
         )}
       </div>
-      {!collapsed && sources.length > 0 && (
-        <div className="border-b border-border px-2 py-2">
-          <label className="block text-[10px] font-medium tracking-wide text-muted uppercase">
-            Source
-          </label>
-          <select
-            className="mt-1 w-full rounded-md border border-border bg-elevated px-2 py-1.5 text-[12px] text-text outline-none"
-            value={source ?? "all"}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSource(v === "all" ? null : v);
-            }}
-          >
-            <option value="all">Combined</option>
-            {sources.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">

@@ -1,6 +1,8 @@
 "use client";
 
+import { isReservedGroupName } from "@/lib/reservedGroups";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PeopleGroupIcon } from "./icons";
 
 export type GroupCheckState = "on" | "off" | "mixed";
 
@@ -122,14 +124,7 @@ export function GroupsMenu({
     if (disabled || !onCreate) return;
     const name = newName.trim();
     if (!name) return;
-    if (name.toLowerCase() === "excluded") return;
-    if (
-      name.toLowerCase() === "no messages" ||
-      name.toLowerCase() === "no-messages" ||
-      name.toLowerCase() === "unmatched" ||
-      name.toLowerCase() === "unassigned"
-    )
-      return;
+    if (isReservedGroupName(name)) return;
 
     const existing = localGroups.find(
       (g) => g.toLowerCase() === name.toLowerCase(),
@@ -288,26 +283,6 @@ export function GroupsMenu({
         </div>
       )}
     </div>
-  );
-}
-
-function PeopleGroupIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="9" cy="8" r="3.25" />
-      <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
-      <circle cx="17" cy="9" r="2.5" />
-      <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
-    </svg>
   );
 }
 

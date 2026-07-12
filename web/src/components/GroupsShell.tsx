@@ -3,6 +3,12 @@
 import type { GroupYearRow, MessageRow } from "@/lib/types";
 import { searchGroups } from "@/lib/groupSearch";
 import {
+  formatGroupDateTable,
+  readStoredGroupDateFormat,
+  writeStoredGroupDateFormat,
+  type GroupDateFormat,
+} from "@/lib/groupDateFormat";
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -14,47 +20,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageBubble } from "./MessageBubble";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
-
-type GroupDateFormat = "md" | "mon-d" | "d-mon";
-
-const GROUP_DATE_FORMAT_KEY = "mv-group-date-format";
-const MONTH_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
-function formatGroupDate(isoDate: string, style: GroupDateFormat): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
-  if (!m) return isoDate;
-  const year = m[1];
-  const monthNum = Number(m[2]);
-  const dayNum = Number(m[3]);
-  const mon = MONTH_SHORT[monthNum - 1] ?? m[2];
-  // Pad day so every date string is a fixed character width (monospace cell).
-  const day = String(dayNum).padStart(2, "0");
-  switch (style) {
-    case "mon-d":
-      // "Sep 30, 2025" = 12 chars
-      return `${mon} ${day}, ${year}`;
-    case "d-mon":
-      // "30 Sep 2025" = 11 chars
-      return `${day} ${mon} ${year}`;
-    case "md":
-    default:
-      // "09-30-2025" = 10 chars
-      return `${m[2]}-${m[3]}-${year}`;
-  }
-}
 
 function dateColClass(style: GroupDateFormat): string {
   switch (style) {
@@ -92,9 +57,9 @@ function GroupDateCell({
   };
   style: GroupDateFormat;
 }) {
-  const threadStart = formatGroupDate(g.conversationDateStart, style);
-  const start = formatGroupDate(g.dateStart, style);
-  const end = formatGroupDate(g.dateEnd, style);
+  const threadStart = formatGroupDateTable(g.conversationDateStart, style);
+  const start = formatGroupDateTable(g.dateStart, style);
+  const end = formatGroupDateTable(g.dateEnd, style);
   const same = g.dateEnd === g.dateStart;
   const dateCol = dateColClass(style);
 
@@ -139,13 +104,6 @@ function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
   );
 }
 
-function readStoredGroupDateFormat(): GroupDateFormat {
-  if (typeof window === "undefined") return "md";
-  const v = localStorage.getItem(GROUP_DATE_FORMAT_KEY);
-  if (v === "md" || v === "mon-d" || v === "d-mon") return v;
-  return "md";
-}
-
 export function GroupsShell({
   groups: initialGroups,
   initialGroupId,
@@ -158,6 +116,7 @@ export function GroupsShell({
   mode?: "groups" | "trash";
 }) {
   const router = useRouter();
+
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { sourceQuery } = useSourceFilter();
@@ -315,7 +274,7 @@ export function GroupsShell({
 
   const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
     setGroupDateFormatState(next);
-    localStorage.setItem(GROUP_DATE_FORMAT_KEY, next);
+    writeStoredGroupDateFormat(next);
   }, []);
 
   const jumpToYearSection = useCallback((year: number) => {
