@@ -1,6 +1,6 @@
 "use client";
 
-import { tagSlug } from "@/lib/tagSlug";
+import { groupSlug } from "@/lib/groupSlug";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -308,7 +308,7 @@ function GroupNamePopover({
   );
 }
 
-function GroupsNav({ tags }: { tags: string[] }) {
+function GroupsNav({ groups }: { groups: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [create, setCreate] = useState<{ x: number; y: number } | null>(null);
@@ -343,7 +343,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
   const createGroup = async (name: string) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/tags", {
+      const res = await fetch("/api/contact-groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -352,7 +352,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
       if (!res.ok) throw new Error(data.error ?? "create failed");
       setCreate(null);
       router.refresh();
-      router.push(`/tag/${tagSlug(data.name)}`);
+      router.push(`/group/${groupSlug(data.name)}`);
     } catch (err) {
       console.error(err);
     } finally {
@@ -363,7 +363,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
   const renameGroup = async (from: string, to: string) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/tags", {
+      const res = await fetch("/api/contact-groups", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from, to }),
@@ -373,8 +373,8 @@ function GroupsNav({ tags }: { tags: string[] }) {
       setRename(null);
       setMenuFor(null);
       router.refresh();
-      if (pathname === `/tag/${tagSlug(from)}`) {
-        router.push(`/tag/${tagSlug(data.name)}`);
+      if (pathname === `/group/${groupSlug(from)}`) {
+        router.push(`/group/${groupSlug(data.name)}`);
       }
     } catch (err) {
       console.error(err);
@@ -386,7 +386,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
   const deleteGroup = async (name: string) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/tags", {
+      const res = await fetch("/api/contact-groups", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -395,7 +395,7 @@ function GroupsNav({ tags }: { tags: string[] }) {
       if (!res.ok) throw new Error(data.error ?? "delete failed");
       setMenuFor(null);
       router.refresh();
-      if (pathname === `/tag/${tagSlug(name)}`) {
+      if (pathname === `/group/${groupSlug(name)}`) {
         router.push("/all");
       }
     } catch (err) {
@@ -434,11 +434,11 @@ function GroupsNav({ tags }: { tags: string[] }) {
         </div>
       </div>
 
-      {tags.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="pl-10 pr-3 py-1 text-[13px] text-muted">No groups</p>
       ) : (
-        tags.map((name) => {
-          const href = `/tag/${tagSlug(name)}`;
+        groups.map((name) => {
+          const href = `/group/${groupSlug(name)}`;
           const active = pathname === href;
           const menuOpen = menuFor === name;
 
@@ -579,10 +579,10 @@ function initialNavWidth(): number {
 
 export function AppSidebar({
   active,
-  tags = [],
+  groups = [],
 }: {
   active: string;
-  tags?: string[];
+  groups?: string[];
 }) {
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -736,7 +736,7 @@ export function AppSidebar({
             icon={<TrashIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 
-          <GroupsNav tags={tags} />
+          <GroupsNav groups={groups} />
         </nav>
       )}
       {!collapsed && (

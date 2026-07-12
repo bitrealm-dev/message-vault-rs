@@ -5,7 +5,7 @@ export type ContactEditDraft = {
   lastName: string;
   phones: string[];
   exclude: boolean;
-  tags: string[];
+  groups: string[];
 };
 
 export function seedContactEditDraft(contact: {
@@ -13,27 +13,27 @@ export function seedContactEditDraft(contact: {
   lastName: string | null;
   phones: string[];
   exclude: boolean;
-  tags?: string[];
+  groups?: string[];
 }): ContactEditDraft {
   return {
     firstName: contact.firstName ?? "",
     lastName: contact.lastName ?? "",
     phones: [...contact.phones, ""],
     exclude: contact.exclude,
-    tags: contact.tags ? [...contact.tags] : [],
+    groups: contact.groups ? [...contact.groups] : [],
   };
 }
 
 export function emptyContactEditDraft(defaults?: {
   exclude?: boolean;
-  tags?: string[];
+  groups?: string[];
 }): ContactEditDraft {
   return {
     firstName: "",
     lastName: "",
     phones: [""],
     exclude: defaults?.exclude ?? false,
-    tags: defaults?.tags ? [...defaults.tags] : [],
+    groups: defaults?.groups ? [...defaults.groups] : [],
   };
 }
 
@@ -43,10 +43,10 @@ export function draftHasName(draft: ContactEditDraft): boolean {
 
 /** Groups list for the contact card: Excluded first when set. */
 export function displayGroupNames(
-  tags: string[],
+  groups: string[],
   excluded: boolean,
 ): string[] {
-  const rest = tags.filter((t) => t.toLowerCase() !== "excluded");
+  const rest = groups.filter((g) => g.toLowerCase() !== "excluded");
   return excluded ? ["Excluded", ...rest] : rest;
 }
 

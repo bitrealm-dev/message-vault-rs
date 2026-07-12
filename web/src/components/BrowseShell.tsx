@@ -39,14 +39,14 @@ export function BrowseShell({
   sectionLabel,
   browseSection,
   contacts,
-  allTags = [],
+  allGroups = [],
   initialContactId,
 }: {
   section: string;
   sectionLabel: string;
   browseSection: ContactSection;
   contacts: ContactListItem[];
-  allTags?: string[];
+  allGroups?: string[];
   initialContactId: number | null;
 }) {
   const router = useRouter();
@@ -100,7 +100,7 @@ export function BrowseShell({
   const [contactCreating, setContactCreating] = useState(false);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
   const [saving, setSaving] = useState(false);
-  const [tagOverrides, setTagOverrides] = useState<Map<number, string[]>>(
+  const [groupOverrides, setGroupOverrides] = useState<Map<number, string[]>>(
     () => new Map(),
   );
   const [excludeOverrides, setExcludeOverrides] = useState<Map<number, boolean>>(
@@ -116,7 +116,7 @@ export function BrowseShell({
   const saveContactPatch = useCallback(
     async (patch: {
       exclude?: boolean;
-      tags?: string[];
+      groups?: string[];
       firstName?: string | null;
       lastName?: string | null;
       phones?: string[];
@@ -149,7 +149,7 @@ export function BrowseShell({
     [excludeOverrides],
   );
 
-  /** Excluded contacts stay out of All / tags; No messages may include them. */
+  /** Excluded contacts stay out of All / groups; No messages may include them. */
   const visibleContacts = useMemo(() => {
     if (browseSection === "excluded") {
       return contacts.filter((c) => isContactExcluded(c));
@@ -277,7 +277,7 @@ export function BrowseShell({
 
   useEffect(() => {
     setSelectedIds(new Set());
-    setTagOverrides(new Map());
+    setGroupOverrides(new Map());
     setExcludeOverrides(new Map());
     selectionDirtyRef.current = false;
     setContactEditing(false);
@@ -471,11 +471,11 @@ export function BrowseShell({
     clearSelectionBase();
     if (selectionDirtyRef.current) {
       selectionDirtyRef.current = false;
-      setTagOverrides(new Map());
+      setGroupOverrides(new Map());
       setExcludeOverrides(new Map());
       router.refresh();
     } else {
-      setTagOverrides(new Map());
+      setGroupOverrides(new Map());
       setExcludeOverrides(new Map());
     }
   }, [clearSelectionBase, router]);
@@ -506,13 +506,13 @@ export function BrowseShell({
 
   const createDefaults = useMemo(() => {
     if (typeof browseSection === "object") {
-      return { tags: [browseSection.tag], exclude: false };
+      return { groups: [browseSection.group], exclude: false };
     }
     if (browseSection === "excluded") {
-      return { tags: [] as string[], exclude: true };
+      return { groups: [] as string[], exclude: true };
     }
     // all, no-group
-    return { tags: [] as string[], exclude: false };
+    return { groups: [] as string[], exclude: false };
   }, [browseSection]);
 
   const beginCreateContact = useCallback(() => {
@@ -569,7 +569,7 @@ export function BrowseShell({
           lastName: editDraft.lastName.trim() || null,
           phones: phonesForSave(editDraft.phones),
           exclude: editDraft.exclude,
-          tags: editDraft.tags,
+          groups: editDraft.groups,
         }),
       });
       const data = await res.json();
@@ -616,7 +616,7 @@ export function BrowseShell({
       if (!res.ok) throw new Error(data.error ?? "delete failed");
 
       setSelectedIds(new Set());
-      setTagOverrides(new Map());
+      setGroupOverrides(new Map());
       setExcludeOverrides(new Map());
       selectionDirtyRef.current = false;
       setContactEditing(false);
@@ -652,33 +652,33 @@ export function BrowseShell({
     searchParams,
   ]);
 
-  const tagsFor = useCallback(
-    (id: number, fallback: string[]) => tagOverrides.get(id) ?? fallback,
-    [tagOverrides],
+  const groupsFor = useCallback(
+    (id: number, fallback: string[]) => groupOverrides.get(id) ?? fallback,
+    [groupOverrides],
   );
 
   const groupTargets = useMemo(() => {
     if (hasSelection) {
       return selectedContacts.map((c) => ({
         id: c.id,
-        tags: tagsFor(c.id, c.tags),
+        groups: groupsFor(c.id, c.groups),
       }));
     }
     if (detail) {
-      return [{ id: detail.id, tags: tagsFor(detail.id, detail.tags) }];
+      return [{ id: detail.id, groups: groupsFor(detail.id, detail.groups) }];
     }
-    return [] as Array<{ id: number; tags: string[] }>;
-  }, [hasSelection, selectedContacts, detail, tagsFor]);
+    return [] as Array<{ id: number; groups: string[] }>;
+  }, [hasSelection, selectedContacts, detail, groupsFor]);
 
   const menuGroups = useMemo(() => {
-    const names = new Set(allTags);
+    const names = new Set(allGroups);
     for (const person of groupTargets) {
-      for (const tag of person.tags) names.add(tag);
+      for (const group of person.groups) names.add(group);
     }
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [allTags, groupTargets]);
+  }, [allGroups, groupTargets]);
 
   const groupChecks = useMemo(() => {
     const result: Record<string, GroupCheckState> = {};
@@ -690,7 +690,7 @@ export function BrowseShell({
       }
       let count = 0;
       for (const person of groupTargets) {
-        if (person.tags.includes(name)) count++;
+        if (person.groups.includes(name)) count++;
       }
       result[name] =
         count === 0 ? "off" : count === n ? "on" : "mixed";
@@ -705,23 +705,23 @@ export function BrowseShell({
 
       let changed = 0;
       for (const person of targets) {
-        if (person.tags.includes(name) !== enable) changed++;
+        if (person.groups.includes(name) !== enable) changed++;
       }
       if (changed === 0) return;
 
       // Optimistic UI so the menu can stay open across multiple toggles.
-      setTagOverrides((prev) => {
+      setGroupOverrides((prev) => {
         const next = new Map(prev);
         for (const person of targets) {
-          const current = next.get(person.id) ?? person.tags;
+          const current = next.get(person.id) ?? person.groups;
           const has = current.includes(name);
           if (enable === has) continue;
-          const tags = enable
+          const groups = enable
             ? [...current, name].sort((a, b) =>
                 a.localeCompare(b, undefined, { sensitivity: "base" }),
               )
-            : current.filter((t) => t !== name);
-          next.set(person.id, tags);
+            : current.filter((g) => g !== name);
+          next.set(person.id, groups);
         }
         return next;
       });
@@ -736,22 +736,22 @@ export function BrowseShell({
 
       try {
         for (const person of targets) {
-          const has = person.tags.includes(name);
+          const has = person.groups.includes(name);
           if (enable === has) continue;
-          const tags = enable
-            ? [...person.tags, name].sort((a, b) =>
+          const groups = enable
+            ? [...person.groups, name].sort((a, b) =>
                 a.localeCompare(b, undefined, { sensitivity: "base" }),
               )
-            : person.tags.filter((t) => t !== name);
+            : person.groups.filter((g) => g !== name);
 
           if (!hasSelection && person.id === contactId) {
-            const ok = await saveContactPatch({ tags });
+            const ok = await saveContactPatch({ groups });
             if (!ok) throw new Error("save failed");
           } else {
             const res = await fetch(`/api/contacts/${person.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tags }),
+              body: JSON.stringify({ groups }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error ?? "save failed");
@@ -765,7 +765,7 @@ export function BrowseShell({
         // Re-sync from server on failure.
         selectionDirtyRef.current = true;
         router.refresh();
-        setTagOverrides(new Map());
+        setGroupOverrides(new Map());
       }
     },
     [
@@ -799,7 +799,7 @@ export function BrowseShell({
       if (open) return;
       if (!selectionDirtyRef.current) return;
       selectionDirtyRef.current = false;
-      setTagOverrides(new Map());
+      setGroupOverrides(new Map());
       setExcludeOverrides(new Map());
       router.refresh();
     },
@@ -1108,7 +1108,7 @@ export function BrowseShell({
               formOpen={formOpen}
               editDraft={editDraft}
               onDraftChange={setEditDraft}
-              tagsFor={tagsFor}
+              groupsFor={groupsFor}
               excludeOverrides={excludeOverrides}
               sources={sources}
               messageSources={messageSources}

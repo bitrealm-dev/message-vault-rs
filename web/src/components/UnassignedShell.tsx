@@ -41,13 +41,13 @@ export function UnassignedShell({
   handles: initialHandles,
   assignContacts,
   initialHandle,
-  tags: allTags = [],
+  groups: allGroups = [],
   mode = "unassigned",
 }: {
   handles: UnassignedHandle[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
-  tags?: string[];
+  groups?: string[];
   mode?: "unassigned" | "trash";
 }) {
   const router = useRouter();
@@ -249,21 +249,21 @@ export function UnassignedShell({
   }, [pathname, router, searchParams]);
 
   const menuGroups = useMemo(() => {
-    const names = new Set([...allTags, ...extraGroups]);
-    for (const t of createDraft?.tags ?? []) names.add(t);
+    const names = new Set([...allGroups, ...extraGroups]);
+    for (const g of createDraft?.groups ?? []) names.add(g);
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [allTags, extraGroups, createDraft?.tags]);
+  }, [allGroups, extraGroups, createDraft?.groups]);
 
   const draftGroupChecks = useMemo(() => {
     const result: Record<string, GroupCheckState> = {};
-    const tags = createDraft?.tags ?? [];
+    const groups = createDraft?.groups ?? [];
     for (const name of menuGroups) {
-      result[name] = tags.includes(name) ? "on" : "off";
+      result[name] = groups.includes(name) ? "on" : "off";
     }
     return result;
-  }, [menuGroups, createDraft?.tags]);
+  }, [menuGroups, createDraft?.groups]);
 
   const draftExcludedCheck = useMemo((): GroupCheckState => {
     return createDraft?.exclude ? "on" : "off";
@@ -272,13 +272,13 @@ export function UnassignedShell({
   const toggleDraftGroup = useCallback((name: string) => {
     setCreateDraft((prev) => {
       if (!prev) return prev;
-      const has = prev.tags.includes(name);
-      const tags = has
-        ? prev.tags.filter((t) => t !== name)
-        : [...prev.tags, name].sort((a, b) =>
+      const has = prev.groups.includes(name);
+      const groups = has
+        ? prev.groups.filter((g) => g !== name)
+        : [...prev.groups, name].sort((a, b) =>
             a.localeCompare(b, undefined, { sensitivity: "base" }),
           );
-      return { ...prev, tags };
+      return { ...prev, groups };
     });
   }, []);
 
@@ -288,10 +288,10 @@ export function UnassignedShell({
     );
     setCreateDraft((prev) => {
       if (!prev) return prev;
-      if (prev.tags.includes(name)) return prev;
+      if (prev.groups.includes(name)) return prev;
       return {
         ...prev,
-        tags: [...prev.tags, name].sort((a, b) =>
+        groups: [...prev.groups, name].sort((a, b) =>
           a.localeCompare(b, undefined, { sensitivity: "base" }),
         ),
       };
@@ -449,7 +449,7 @@ export function UnassignedShell({
           lastName: createDraft.lastName.trim() || null,
           phones,
           exclude: createDraft.exclude,
-          tags: createDraft.tags,
+          groups: createDraft.groups,
         }),
       });
       const data = await res.json();

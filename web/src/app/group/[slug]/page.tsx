@@ -1,10 +1,10 @@
 import { ContactBrowsePage, parseContactId } from "@/components/ContactBrowsePage";
-import { tagFromSlug } from "@/lib/db";
+import { groupFromSlug } from "@/lib/db";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function TagPage({
+export default async function GroupPage({
   params,
   searchParams,
 }: {
@@ -13,14 +13,14 @@ export default async function TagPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const tag = tagFromSlug(slug);
-  if (!tag) notFound();
+  const group = groupFromSlug(slug);
+  if (!group) notFound();
 
   return (
     <ContactBrowsePage
-      section={{ tag }}
-      label={tag}
-      nav={`/tag/${slug}`}
+      section={{ group }}
+      label={group}
+      nav={`/group/${slug}`}
       contactId={parseContactId(sp.c)}
     />
   );

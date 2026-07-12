@@ -3,7 +3,7 @@ export type ContactSection =
   | "excluded"
   | "no-messages"
   | "no-group"
-  | { tag: string };
+  | { group: string };
 
 export type ContactListItem = {
   id: number;
@@ -14,7 +14,7 @@ export type ContactListItem = {
   sortFirst: string;
   sortLast: string;
   letter: string;
-  tags: string[];
+  groups: string[];
   exclude: boolean;
   /** Soft-deduped 1:1 message total (Combined view). */
   messageCount: number;

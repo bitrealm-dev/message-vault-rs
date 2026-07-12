@@ -14,13 +14,13 @@ import {
 
 export type ContactPatch = {
   exclude?: boolean;
-  tags?: string[];
+  groups?: string[];
   firstName?: string | null;
   lastName?: string | null;
   phones?: string[];
 };
 
-function assertAllowedTagName(name: string): void {
+function assertAllowedGroupName(name: string): void {
   if (isReservedGroupName(name)) {
     throw new Error(reservedGroupError(name));
   }
@@ -241,7 +241,7 @@ export type ContactCreate = {
   lastName?: string | null;
   phones?: string[];
   exclude?: boolean;
-  tags?: string[];
+  groups?: string[];
 };
 
 /** Insert a new contact in SQLite and append contacts.csv; returns the contact. */
@@ -254,7 +254,7 @@ export function createContact(input: ContactCreate): ContactDetail {
   const phones = (input.phones ?? []).map((p) => p.trim()).filter(Boolean);
   const exclude = input.exclude ?? false;
   const preferredPhone = phones[0] ?? null;
-  const tags = (input.tags ?? [])
+  const groups = (input.groups ?? [])
     .map((t) => t.trim())
     .filter(Boolean)
     .filter((t) => !RESERVED_GROUP_NAMES.has(t.toLowerCase()));
@@ -286,11 +286,11 @@ export function createContact(input: ContactCreate): ContactDetail {
       }
       clearTrashedHandles(writeDb, phones);
 
-      if (tags.length > 0) {
+      if (groups.length > 0) {
         const insertTag = writeDb.prepare(
           `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
         );
-        for (const name of tags) {
+        for (const name of groups) {
           const tagId = ensureTagId(writeDb, name);
           insertTag.run(newId, tagId);
         }
@@ -307,7 +307,7 @@ export function createContact(input: ContactCreate): ContactDetail {
     firstName,
     lastName,
     exclude,
-    tags,
+    tags: groups,
   });
 
   const created = getContact(newId);
@@ -318,7 +318,7 @@ export function createContact(input: ContactCreate): ContactDetail {
 }
 
 function ensureTagId(db: Database.Database, name: string): number {
-  assertAllowedTagName(name);
+  assertAllowedGroupName(name);
   db.prepare(`INSERT OR IGNORE INTO tags (name) VALUES (?)`).run(name);
   const row = db.prepare(`SELECT id FROM tags WHERE name = ?`).get(name) as
     | { id: number }
@@ -370,10 +370,10 @@ function rewriteCsvTags(mapTag: (tag: string) => string | null): void {
   fs.writeFileSync(csvPath, body, "utf8");
 }
 
-export function createTag(name: string): string {
+export function createGroup(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
-  assertAllowedTagName(trimmed);
+  assertAllowedGroupName(trimmed);
 
   const writeDb = new Database(dbPath());
   try {
@@ -392,11 +392,11 @@ export function createTag(name: string): string {
   return trimmed;
 }
 
-export function renameTag(from: string, to: string): string {
+export function renameGroup(from: string, to: string): string {
   const oldName = from.trim();
   const newName = to.trim();
   if (!oldName || !newName) throw new Error("name required");
-  assertAllowedTagName(newName);
+  assertAllowedGroupName(newName);
   if (oldName.toLowerCase() === newName.toLowerCase()) {
     // Same name ignoring case — allow casing fix
     if (oldName === newName) return newName;
@@ -426,7 +426,7 @@ export function renameTag(from: string, to: string): string {
   return newName;
 }
 
-export function deleteTag(name: string): void {
+export function deleteGroup(name: string): void {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
 
@@ -538,7 +538,7 @@ export function patchContact(
   }
 
   const exclude = patch.exclude ?? existing.exclude;
-  const tags = patch.tags ?? existing.tags;
+  const groups = patch.groups ?? existing.groups;
   const firstName =
     patch.firstName !== undefined
       ? patch.firstName?.trim() || null
@@ -569,12 +569,12 @@ export function patchContact(
         )
         .run(firstName, lastName, exclude ? 1 : 0, preferredPhone, id);
 
-      if (patch.tags) {
+      if (patch.groups) {
         writeDb.prepare(`DELETE FROM contact_tags WHERE contact_id = ?`).run(id);
         const insert = writeDb.prepare(
           `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
         );
-        for (const name of tags) {
+        for (const name of groups) {
           const tagId = ensureTagId(writeDb, name);
           insert.run(id, tagId);
         }
@@ -591,7 +591,7 @@ export function patchContact(
     { firstName: existing.firstName, lastName: existing.lastName },
     {
       exclude,
-      tags,
+      tags: groups,
       firstName: patch.firstName !== undefined ? firstName : undefined,
       lastName: patch.lastName !== undefined ? lastName : undefined,
       phones: patch.phones !== undefined ? phones : undefined,

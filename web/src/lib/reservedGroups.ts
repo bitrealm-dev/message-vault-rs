@@ -1,6 +1,6 @@
 /**
- * Names that must not appear as user-created groups/tags, and are filtered
- * from the tags list (nav / section labels).
+ * Names that must not appear as user-created groups, and are filtered
+ * from the groups list (nav / section labels).
  */
 export const RESERVED_GROUP_NAMES = new Set(
   [

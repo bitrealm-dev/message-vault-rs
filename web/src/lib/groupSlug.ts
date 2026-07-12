@@ -1,4 +1,4 @@
-export function tagSlug(name: string): string {
+export function groupSlug(name: string): string {
   return name
     .trim()
     .toLowerCase()

@@ -2,7 +2,7 @@ import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { TrashShell } from "@/components/TrashShell";
 import {
   listContactsForPicker,
-  listTags,
+  listGroups,
   listTrashedGroupYearRows,
   listTrashedHandles,
 } from "@/lib/db";
@@ -24,10 +24,10 @@ export default async function TrashPage({
   const handles = listTrashedHandles();
   const groups = listTrashedGroupYearRows();
   const assignContacts = listContactsForPicker();
-  const tags = listTags();
+  const contactGroups = listGroups();
 
   return (
-    <BrowsePageLayout active="/trash" tags={tags}>
+    <BrowsePageLayout active="/trash" groups={contactGroups}>
       <TrashShell
         handles={handles}
         groups={groups}

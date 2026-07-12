@@ -1,6 +1,6 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { BrowseShell } from "@/components/BrowseShell";
-import { listContacts, listTags, tagSlug } from "@/lib/db";
+import { listContacts, listGroups, groupSlug } from "@/lib/db";
 import type { ContactSection } from "@/lib/types";
 
 export function ContactBrowsePage({
@@ -15,18 +15,18 @@ export function ContactBrowsePage({
   contactId: number | null;
 }) {
   const contacts = listContacts(section);
-  const tags = listTags();
+  const groups = listGroups();
   const paneKey =
-    typeof section === "object" ? `tag-${tagSlug(section.tag)}` : section;
+    typeof section === "object" ? `group-${groupSlug(section.group)}` : section;
 
   return (
-    <BrowsePageLayout active={nav} tags={tags}>
+    <BrowsePageLayout active={nav} groups={groups}>
       <BrowseShell
         section={paneKey}
         sectionLabel={label}
         browseSection={section}
         contacts={contacts}
-        allTags={tags}
+        allGroups={groups}
         initialContactId={contactId}
       />
     </BrowsePageLayout>

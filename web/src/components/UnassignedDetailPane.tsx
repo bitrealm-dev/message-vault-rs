@@ -103,7 +103,7 @@ export function UnassignedDetailPane({
             formOpen={creating}
             draft={createDraft}
             onDraftChange={onDraftChange}
-            tags={creating ? (createDraft?.tags ?? []) : []}
+            groups={creating ? (createDraft?.groups ?? []) : []}
             excluded={creating ? Boolean(createDraft?.exclude) : false}
             phonesView={[selected.handle]}
           />

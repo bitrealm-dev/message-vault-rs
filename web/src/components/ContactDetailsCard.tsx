@@ -15,19 +15,19 @@ export function ContactDetailsCard({
   formOpen,
   draft,
   onDraftChange,
-  tags,
+  groups,
   excluded,
   phonesView,
 }: {
   formOpen: boolean;
   draft: ContactEditDraft | null;
   onDraftChange?: (draft: ContactEditDraft) => void;
-  tags: string[];
+  groups: string[];
   excluded: boolean;
   /** Phones shown in view mode (when form is closed). */
   phonesView: string[];
 }) {
-  const shownTags = displayGroupNames(tags, excluded);
+  const shownGroups = displayGroupNames(groups, excluded);
   const phoneCount =
     formOpen && draft
       ? draft.phones.filter((p) => p.trim()).length
@@ -77,20 +77,20 @@ export function ContactDetailsCard({
             <div className="min-w-0 flex-1">
               <div className="text-[11px] tracking-wide text-muted">Groups</div>
               <div className="mt-0.5">
-                {shownTags.length === 0 ? (
+                {shownGroups.length === 0 ? (
                   <span className="text-[13px] text-muted">None</span>
                 ) : (
                   <div className="flex flex-col gap-0.5">
-                    {shownTags.map((tag) => (
+                    {shownGroups.map((name) => (
                       <span
-                        key={tag}
+                        key={name}
                         className={
-                          tag === "Excluded"
+                          name === "Excluded"
                             ? "truncate text-[13px] font-semibold text-amber-400/90"
                             : "truncate text-[13px] text-text"
                         }
                       >
-                        {tag}
+                        {name}
                       </span>
                     ))}
                   </div>

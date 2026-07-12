@@ -12,10 +12,10 @@ import type {
   UnassignedHandle,
   YearThread,
 } from "./types";
-import { tagSlug } from "./tagSlug";
+import { groupSlug } from "./groupSlug";
 import { RESERVED_GROUP_NAMES } from "./reservedGroups";
 
-export { tagSlug };
+export { groupSlug };
 
 const g = globalThis as unknown as {
   __mvReadonlyDb?: Database.Database | null;
@@ -89,7 +89,8 @@ function sortFields(row: {
   return { sortFirst, sortLast, letter };
 }
 
-export function listTags(): string[] {
+/** Contact groups (GUI "Groups"). Stored in SQLite `tags` / `contact_tags`. */
+export function listGroups(): string[] {
   const db = getDb();
   const rows = db
     .prepare(
@@ -102,11 +103,11 @@ export function listTags(): string[] {
     .filter((name) => !RESERVED_GROUP_NAMES.has(name.trim().toLowerCase()));
 }
 
-export function tagFromSlug(slug: string): string | null {
+export function groupFromSlug(slug: string): string | null {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  for (const name of listTags()) {
-    if (tagSlug(name) === normalized) return name;
+  for (const name of listGroups()) {
+    if (groupSlug(name) === normalized) return name;
   }
   return null;
 }
@@ -135,8 +136,8 @@ const CONTACT_HAS_MESSAGES_SQL = `
 `;
 
 function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
-  if (typeof section === "object" && "tag" in section) {
-    // Exclude and no-messages override tags: those contacts only appear under
+  if (typeof section === "object" && "group" in section) {
+    // Exclude and no-messages override groups: those contacts only appear under
     // their implicit sections.
     return {
       sql: `
@@ -147,7 +148,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         WHERE c.exclude = 0
           AND ${CONTACT_HAS_MESSAGES_SQL}
       `,
-      params: [section.tag],
+      params: [section.group],
     };
   }
   switch (section) {
@@ -235,7 +236,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         preferredPhone: row.preferred_phone,
         firstName: row.first_name,
         lastName: row.last_name,
-        tags: tagsByContact.get(row.id) ?? [],
+        groups: tagsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: messageCounts.get(row.id) ?? 0,
         ...sorts,
@@ -270,7 +271,7 @@ export function getContact(id: number): ContactDetail | null {
     .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ? ORDER BY phone_e164`)
     .all(id) as Array<{ phone_e164: string }>;
 
-  const tags = db
+  const groups = db
     .prepare(
       `SELECT t.name FROM contact_tags ct
        JOIN tags t ON t.id = ct.tag_id
@@ -293,7 +294,7 @@ export function getContact(id: number): ContactDetail | null {
     firstName: row.first_name,
     lastName: row.last_name,
     exclude: row.exclude !== 0,
-    tags: tags.map((t) => t.name),
+    groups: groups.map((t) => t.name),
     phones: phoneList,
     dateStart: dateRange?.start ?? null,
     dateEnd: dateRange?.end ?? null,
@@ -1381,7 +1382,7 @@ export function listContactsForPicker(): ContactListItem[] {
         preferredPhone: row.preferred_phone,
         firstName: row.first_name,
         lastName: row.last_name,
-        tags: tagsByContact.get(row.id) ?? [],
+        groups: tagsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: 0,
         ...sorts,

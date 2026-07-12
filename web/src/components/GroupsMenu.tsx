@@ -20,7 +20,7 @@ export function GroupsMenu({
   allGroups: string[];
   /** Per-group membership across the current contact or selection. */
   checks: Record<string, GroupCheckState>;
-  /** Implicit Excluded group (backed by exclude column, not tags). */
+  /** Implicit Excluded group (backed by exclude column, not contact groups). */
   excludedCheck?: GroupCheckState;
   onToggle?: (name: string) => void;
   onToggleExcluded?: () => void;

@@ -22,7 +22,7 @@ export function BrowseDetailPane({
   formOpen,
   editDraft,
   onDraftChange,
-  tagsFor,
+  groupsFor,
   excludeOverrides,
   sources,
   messageSources,
@@ -44,7 +44,7 @@ export function BrowseDetailPane({
   formOpen: boolean;
   editDraft: ContactEditDraft | null;
   onDraftChange: (draft: ContactEditDraft) => void;
-  tagsFor: (id: number, base: string[]) => string[];
+  groupsFor: (id: number, base: string[]) => string[];
   excludeOverrides: Map<number, boolean>;
   sources: string[];
   messageSources: string[];
@@ -74,11 +74,11 @@ export function BrowseDetailPane({
             formOpen={formOpen}
             draft={editDraft}
             onDraftChange={onDraftChange}
-            tags={
+            groups={
               contactCreating && editDraft
-                ? editDraft.tags
+                ? editDraft.groups
                 : detail
-                  ? tagsFor(detail.id, detail.tags)
+                  ? groupsFor(detail.id, detail.groups)
                   : []
             }
             excluded={

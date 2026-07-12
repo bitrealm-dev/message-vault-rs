@@ -2,7 +2,7 @@ import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { UnassignedShell } from "@/components/UnassignedShell";
 import {
   listContactsForPicker,
-  listTags,
+  listGroups,
   listUnassignedHandles,
 } from "@/lib/db";
 
@@ -17,15 +17,15 @@ export default async function UnassignedPage({
   const initialHandle = sp.h?.trim() || null;
   const handles = listUnassignedHandles();
   const assignContacts = listContactsForPicker();
-  const tags = listTags();
+  const groups = listGroups();
 
   return (
-    <BrowsePageLayout active="/unassigned" tags={tags}>
+    <BrowsePageLayout active="/unassigned" groups={groups}>
       <UnassignedShell
         handles={handles}
         assignContacts={assignContacts}
         initialHandle={initialHandle}
-        tags={tags}
+        groups={groups}
       />
     </BrowsePageLayout>
   );

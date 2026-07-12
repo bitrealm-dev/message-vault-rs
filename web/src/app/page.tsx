@@ -1,12 +1,12 @@
 import { AppSidebar } from "@/components/AppSidebar";
-import { homeStats, listTags } from "@/lib/db";
+import { homeStats, listGroups } from "@/lib/db";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default function HomePage() {
   const stats = homeStats();
-  const tags = listTags();
+  const groups = listGroups();
 
   const cards = [
     { href: "/all", label: "All Contacts", value: stats.all },
@@ -18,7 +18,7 @@ export default function HomePage() {
 
   return (
     <div className="flex h-full min-h-0">
-      <AppSidebar active="/" tags={tags} />
+      <AppSidebar active="/" groups={groups} />
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-bg px-8 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Message Vault</h1>
         <p className="mt-2 max-w-xl text-[14px] text-muted">
