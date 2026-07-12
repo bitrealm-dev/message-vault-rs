@@ -668,11 +668,22 @@ export function AppSidebar({
 
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
+          <div className="pl-10 pr-1.5 pb-1">
+            <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+              Contacts
+            </span>
+          </div>
           <NavLink
             href="/all"
-            label="All Contacts"
+            label="All"
             active={active === "/all"}
             icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+          <NavLink
+            href="/no-messages"
+            label="Unused"
+            active={active === "/no-messages"}
+            icon={<EmptyChatIcon className="size-3.5 shrink-0 opacity-80" />}
           />
           <NavLink
             href="/excluded"
@@ -680,17 +691,23 @@ export function AppSidebar({
             active={active === "/excluded"}
             icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
           />
-          <NavLink
-            href="/no-messages"
-            label="No messages"
-            active={active === "/no-messages"}
-            icon={<EmptyChatIcon className="size-3.5 shrink-0 opacity-80" />}
-          />
+
+          <div className="mt-4 pl-10 pr-1.5 pb-1">
+            <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+              Messages
+            </span>
+          </div>
           <NavLink
             href="/unmatched"
             label="Unmatched"
             active={active === "/unmatched"}
             icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+          <NavLink
+            href="/groups"
+            label="Group chats"
+            active={active === "/groups"}
+            icon={groupIcon}
           />
           <NavLink
             href="/unmatched/trash"
@@ -700,15 +717,6 @@ export function AppSidebar({
           />
 
           <GroupsNav tags={tags} />
-
-          <div className="mt-auto border-t border-border pt-2">
-            <NavLink
-              href="/groups"
-              label="Group chats"
-              active={active === "/groups"}
-              icon={groupIcon}
-            />
-          </div>
         </nav>
       )}
     </aside>
