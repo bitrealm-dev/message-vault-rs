@@ -153,14 +153,12 @@ run_imessage() {
 run_go_sms_pro() {
   local input="${SOURCE_DATA}/go-sms-pro/2015-12-01_232753-export-go-sms-pro"
   local out="${STAGING}/go-sms-pro"
-  local crate="${EXPORTERS}/go-sms-pro-exporter"
   require_path "${input}" "go-sms-pro input"
-  require_path "${crate}" "go-sms-pro-exporter"
 
   echo "==> go-sms-pro"
   rotate_staging "${out}"
   echo "  exporting → ${out}"
-  (cd "${crate}" && cargo run --release -- \
+  (cd "${REPO_ROOT}" && cargo run --release -p go-sms-pro-exporter -- \
     --input "${input}" \
     --output "${out}" \
     --owner-phone "${OWNER_PHONE}")
