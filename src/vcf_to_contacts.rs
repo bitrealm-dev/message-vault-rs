@@ -12,7 +12,7 @@ pub struct ConvertStats {
     pub cards_total: u64,
     pub cards_skipped_no_tel: u64,
     pub contacts_written: u64,
-    pub blacklist_only: u64,
+    pub exclude_only: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -25,8 +25,10 @@ struct ContactOut {
 }
 
 #[derive(Debug, Deserialize)]
-struct BlacklistRow {
-    number: String,
+struct ExcludeCsvRow {
+    /// Prefer `phones` (exclude.csv); accept legacy `number` column.
+    #[serde(alias = "number")]
+    phones: String,
     #[serde(default)]
     label: String,
 }
@@ -43,7 +45,7 @@ struct FilterPeopleRow {
 pub fn convert(
     vcf_path: &Path,
     out_path: &Path,
-    blacklist_path: Option<&Path>,
+    exclude_path: Option<&Path>,
     filter_people_path: Option<&Path>,
     force: bool,
 ) -> Result<ConvertStats> {
@@ -55,7 +57,7 @@ pub fn convert(
     }
 
     let cards = vcf::parse_vcf(vcf_path)?;
-    let blacklist = load_blacklist(blacklist_path)?;
+    let exclude_map = load_exclude(exclude_path)?;
     let filters = load_filters(filter_people_path)?;
 
     let mut stats = ConvertStats {
@@ -74,7 +76,7 @@ pub fn convert(
         }
 
         let mut contact = card_to_contact(card);
-        apply_blacklist(&mut contact, &blacklist);
+        apply_exclude(&mut contact, &exclude_map);
         apply_filters(&mut contact, &filters);
         finalize_contact(&mut contact);
 
@@ -100,8 +102,8 @@ pub fn convert(
         contacts.push(contact);
     }
 
-    // Blacklist-only numbers with no VCF card
-    for (number, label) in &blacklist {
+    // Exclude-only numbers with no VCF card
+    for (number, label) in &exclude_map {
         if phone_to_index.contains_key(number) {
             continue;
         }
@@ -113,7 +115,7 @@ pub fn convert(
             exclude: true,
             tags: Vec::new(),
         });
-        stats.blacklist_only += 1;
+        stats.exclude_only += 1;
     }
 
     write_csv(out_path, &contacts)?;
@@ -186,8 +188,8 @@ fn card_to_contact(card: &VcfCard) -> ContactOut {
     }
 }
 
-fn apply_blacklist(contact: &mut ContactOut, blacklist: &HashMap<String, String>) {
-    if contact.phones.iter().any(|p| blacklist.contains_key(p)) {
+fn apply_exclude(contact: &mut ContactOut, exclude_map: &HashMap<String, String>) {
+    if contact.phones.iter().any(|p| exclude_map.contains_key(p)) {
         contact.exclude = true;
     }
 }
@@ -239,21 +241,21 @@ fn push_tag(tags: &mut Vec<String>, name: &str) {
     }
 }
 
-fn load_blacklist(path: Option<&Path>) -> Result<HashMap<String, String>> {
+fn load_exclude(path: Option<&Path>) -> Result<HashMap<String, String>> {
     let Some(path) = path else {
         return Ok(HashMap::new());
     };
     let file = File::open(path)
-        .with_context(|| format!("failed to open blacklist {}", path.display()))?;
+        .with_context(|| format!("failed to open exclude CSV {}", path.display()))?;
     let mut reader = csv::ReaderBuilder::new()
         .comment(Some(b'#'))
         .flexible(true)
         .from_reader(file);
     let mut map = HashMap::new();
     for result in reader.deserialize() {
-        let row: BlacklistRow = result
-            .with_context(|| format!("failed to parse blacklist row in {}", path.display()))?;
-        let number = row.number.trim().to_string();
+        let row: ExcludeCsvRow = result
+            .with_context(|| format!("failed to parse exclude CSV row in {}", path.display()))?;
+        let number = row.phones.trim().to_string();
         if number.is_empty() {
             continue;
         }

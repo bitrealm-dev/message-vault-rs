@@ -75,7 +75,7 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         &cfg.paths.db,
         &assets,
         &cfg.paths.contacts_csv,
-        &cfg.paths.blacklist_csv,
+        &cfg.paths.exclude_csv,
         opts.overwrite_contacts,
         opts.mode,
         &src.id,

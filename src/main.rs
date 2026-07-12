@@ -95,9 +95,9 @@ enum Commands {
         #[arg(long)]
         contacts_csv: Option<PathBuf>,
 
-        /// Blacklist CSV path (overrides config)
-        #[arg(long)]
-        blacklist_csv: Option<PathBuf>,
+        /// Exclude CSV path (overrides config; handles skipped on import)
+        #[arg(long = "exclude-csv")]
+        exclude_csv: Option<PathBuf>,
 
         /// Delete and reload contacts from CSV even if the table is non-empty
         #[arg(long)]
@@ -159,7 +159,7 @@ enum Commands {
 
     /// Convert a message-vault contacts.vcf into contacts.csv
     VcfToContacts {
-        /// Path to config.toml (used for default --out / --blacklist)
+        /// Path to config.toml (used for default --out / --exclude)
         #[arg(long, default_value = "config/config.toml")]
         config: PathBuf,
 
@@ -171,9 +171,9 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
 
-        /// Optional message-vault blacklist.csv (sets exclude=true; defaults to paths.blacklist_csv)
-        #[arg(long)]
-        blacklist: Option<PathBuf>,
+        /// Optional exclude.csv (sets exclude=true; defaults to paths.exclude_csv)
+        #[arg(long = "exclude")]
+        exclude: Option<PathBuf>,
 
         /// Optional message-vault filter-people.csv (sets exclude / groups)
         #[arg(long)]
@@ -268,14 +268,14 @@ fn main() -> Result<()> {
             db,
             assets_dir,
             contacts_csv,
-            blacklist_csv,
+            exclude_csv,
             overwrite_contacts,
             mode,
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
             let contacts_csv = contacts_csv.unwrap_or_else(|| cfg.paths.contacts_csv.clone());
-            let blacklist_csv = blacklist_csv.unwrap_or_else(|| cfg.paths.blacklist_csv.clone());
+            let exclude_csv = exclude_csv.unwrap_or_else(|| cfg.paths.exclude_csv.clone());
             let mode = import::ImportMode::parse(&mode)?;
 
             if all && source.is_some() {
@@ -311,7 +311,7 @@ fn main() -> Result<()> {
                 cfg.owner.display_name, cfg.owner.phone_e164
             );
             println!("  contacts csv:  {}", contacts_csv.display());
-            println!("  blacklist csv: {}", blacklist_csv.display());
+            println!("  exclude csv:   {}", exclude_csv.display());
 
             let mut overwrite = overwrite_contacts;
             for src in sources {
@@ -327,7 +327,7 @@ fn main() -> Result<()> {
                     &db,
                     &assets,
                     &contacts_csv,
-                    &blacklist_csv,
+                    &exclude_csv,
                     overwrite,
                     mode,
                     &src.id,
@@ -466,25 +466,25 @@ fn main() -> Result<()> {
             config,
             vcf,
             out,
-            blacklist,
+            exclude,
             filter_people,
             force,
         } => {
             let cfg = Config::load(&config)?;
             let out = out.unwrap_or(cfg.paths.contacts_csv);
-            let blacklist = blacklist.or(Some(cfg.paths.blacklist_csv));
+            let exclude = exclude.or(Some(cfg.paths.exclude_csv));
 
             let stats = vcf_to_contacts::convert(
                 &vcf,
                 &out,
-                blacklist.as_deref(),
+                exclude.as_deref(),
                 filter_people.as_deref(),
                 force,
             )?;
             println!("Wrote {}", out.display());
             println!("  vcf cards:        {}", stats.cards_total);
             println!("  skipped (no TEL): {}", stats.cards_skipped_no_tel);
-            println!("  blacklist-only:   {}", stats.blacklist_only);
+            println!("  exclude-only:     {}", stats.exclude_only);
             println!("  contacts written: {}", stats.contacts_written);
         }
     }

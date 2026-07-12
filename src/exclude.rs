@@ -13,7 +13,7 @@ struct ExcludeRow {
     label: String,
 }
 
-/// Digit-normalized blacklist entries loaded from blacklist.csv.
+/// Digit-normalized exclude entries loaded from exclude.csv.
 #[derive(Debug, Default, Clone)]
 pub struct ExcludeSet {
     exact: HashSet<String>,
@@ -24,14 +24,14 @@ impl ExcludeSet {
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             eprintln!(
-                "warning: blacklist CSV not found at {}; not filtering numbers",
+                "warning: exclude CSV not found at {}; not filtering numbers",
                 path.display()
             );
             return Ok(Self::default());
         }
 
         let file = File::open(path)
-            .with_context(|| format!("failed to open blacklist CSV {}", path.display()))?;
+            .with_context(|| format!("failed to open exclude CSV {}", path.display()))?;
         let mut reader = csv::ReaderBuilder::new()
             .comment(Some(b'#'))
             .flexible(true)
@@ -40,7 +40,7 @@ impl ExcludeSet {
         let mut set = Self::default();
         for result in reader.deserialize() {
             let row: ExcludeRow = result.with_context(|| {
-                format!("failed to parse blacklist CSV row in {}", path.display())
+                format!("failed to parse exclude CSV row in {}", path.display())
             })?;
             let digits = digits_only(&row.phones);
             if digits.is_empty() {

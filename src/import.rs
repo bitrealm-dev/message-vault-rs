@@ -71,7 +71,7 @@ pub fn import_export(
     db_path: &Path,
     assets_dir: &Path,
     contacts_csv: &Path,
-    blacklist_csv: &Path,
+    exclude_csv: &Path,
     overwrite_contacts: bool,
     mode: ImportMode,
     source: &str,
@@ -113,10 +113,10 @@ pub fn import_export(
             contact_stats.contacts, contact_stats.phones, contact_stats.groups
         );
     }
-    let exclude = ExcludeSet::load(blacklist_csv)?;
+    let exclude = ExcludeSet::load(exclude_csv)?;
     println!(
-        "  sql:      blacklist entries from {}",
-        blacklist_csv.display()
+        "  sql:      exclude entries from {}",
+        exclude_csv.display()
     );
 
     println!("  sql:      ensuring schema + recreating staging tables…");

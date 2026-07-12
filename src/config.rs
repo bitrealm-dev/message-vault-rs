@@ -37,8 +37,9 @@ pub struct PathsConfig {
     /// Contacts CSV (default: `config/contacts.csv`).
     #[serde(default = "default_contacts_csv")]
     pub contacts_csv: PathBuf,
-    #[serde(default = "default_blacklist_csv")]
-    pub blacklist_csv: PathBuf,
+    /// Handles to skip on import (default: `config/exclude.csv`).
+    #[serde(default = "default_exclude_csv")]
+    pub exclude_csv: PathBuf,
     /// Legacy single-export path; used only when `sources` is empty.
     #[serde(default)]
     pub export_dir: Option<PathBuf>,
@@ -80,8 +81,8 @@ fn default_contacts_csv() -> PathBuf {
     PathBuf::from("config/contacts.csv")
 }
 
-fn default_blacklist_csv() -> PathBuf {
-    PathBuf::from("config/blacklist.csv")
+fn default_exclude_csv() -> PathBuf {
+    PathBuf::from("config/exclude.csv")
 }
 
 impl SourceConfig {
@@ -146,7 +147,7 @@ impl Config {
         config.paths.db = resolve_path(repo, &config.paths.db);
         config.paths.data_dir = resolve_path(repo, &config.paths.data_dir);
         config.paths.contacts_csv = resolve_path(repo, &config.paths.contacts_csv);
-        config.paths.blacklist_csv = resolve_path(repo, &config.paths.blacklist_csv);
+        config.paths.exclude_csv = resolve_path(repo, &config.paths.exclude_csv);
         if let Some(export_dir) = config.paths.export_dir.take() {
             config.paths.export_dir = Some(resolve_path(repo, &export_dir));
         }

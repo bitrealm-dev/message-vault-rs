@@ -44,6 +44,6 @@ target
 # Local machine config (use config/config.toml.example)
 /config/config.toml
 /config/contacts.csv
-/config/blacklist.csv
+/config/exclude.csv
 /config/name-mapping.csv
 /config/contacts.xlsx
