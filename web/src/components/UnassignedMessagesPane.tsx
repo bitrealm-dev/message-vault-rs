@@ -24,7 +24,7 @@ export function UnassignedMessagesPane({
     <section className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
       {multiSelected ? (
         <p className="pt-8 text-center text-[13px] text-muted">
-          Select a single handle to read messages.
+          Select a number or email to read messages.
         </p>
       ) : (
         <>

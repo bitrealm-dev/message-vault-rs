@@ -181,7 +181,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         `,
         params: [],
       };
-    case "untagged":
+    case "no-group":
       return {
         sql: `
           SELECT DISTINCT c.*

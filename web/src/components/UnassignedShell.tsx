@@ -14,7 +14,7 @@ import {
   emptyContactEditDraft,
   phonesForSave,
   type ContactEditDraft,
-} from "./ContactEditPane";
+} from "./contactEdit";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { EllipsisIcon } from "./icons";
 import {

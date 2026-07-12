@@ -48,10 +48,10 @@ export function UnassignedContactList({
   onOpenCtxMenu: (
     x: number,
     y: number,
-    phone: string,
+    handle: string,
     menuH: number,
   ) => void;
-  onOpenTrashMenu: (x: number, y: number, phone: string) => void;
+  onOpenTrashMenu: (x: number, y: number, handle: string) => void;
 }) {
   return (
     <aside
@@ -82,7 +82,7 @@ export function UnassignedContactList({
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {sortedHandles.length === 0 && (
           <p className="px-3 py-4 text-[12px] text-muted">
-            {mode === "trash" ? "Trash is empty" : "No unassigned 1:1 threads"}
+            {mode === "trash" ? "Trash is empty" : "No unassigned conversations"}
           </p>
         )}
         {sortedHandles.map((h) => {

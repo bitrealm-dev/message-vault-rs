@@ -2,7 +2,7 @@
 
 import type { UnassignedHandle, YearThread } from "@/lib/types";
 import { ContactDetailsCard } from "./ContactDetailsCard";
-import type { ContactEditDraft } from "./ContactEditPane";
+import type { ContactEditDraft } from "./contactEdit";
 import { MessageSourcePicker } from "./MessageSourcePicker";
 import { YearThreadPicker } from "./YearThreadPicker";
 
@@ -56,7 +56,7 @@ export function UnassignedDetailPane({
         <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
           <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
             <h2 className="text-[14px] font-semibold text-text">
-              {selectedItems.length} contact
+              {selectedItems.length} unassigned handle
               {selectedItems.length === 1 ? "" : "s"} selected
             </h2>
             <button

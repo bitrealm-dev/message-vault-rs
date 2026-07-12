@@ -4,7 +4,7 @@ import {
   ContactPhoneList,
   displayGroupNames,
   type ContactEditDraft,
-} from "./ContactEditPane";
+} from "./contactEdit";
 import {
   PeopleGroupIcon,
   PersonDetailIcon,

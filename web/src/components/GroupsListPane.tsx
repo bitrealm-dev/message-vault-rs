@@ -175,7 +175,7 @@ export function GroupsListPane({
                   />
                 </label>
                 <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  {mode === "trash" ? "Trashed groups" : "Group messages"}
+                  {mode === "trash" ? "Trashed groups" : "Group chats"}
                   <span className="ml-2 font-normal normal-case tracking-normal">
                     {query.trim() ? `${filteredCount}/` : ""}
                     {groupsCount}
@@ -268,7 +268,7 @@ export function GroupsListPane({
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg">
             {groupsCount === 0 ? (
               <p className="mt-2 px-5 text-[12px] text-muted">
-                {mode === "trash" ? "No trashed group chats" : "No group messages"}
+                {mode === "trash" ? "No trashed group chats" : "No group chats"}
               </p>
             ) : rowsByYear.length === 0 ? (
               <p className="mt-2 px-5 text-[12px] text-muted">

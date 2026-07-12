@@ -10,7 +10,7 @@ export default async function NoGroupPage({
   const sp = await searchParams;
   return (
     <ContactBrowsePage
-      section="untagged"
+      section="no-group"
       label="No group"
       nav="/no-group"
       contactId={parseContactId(sp.c)}

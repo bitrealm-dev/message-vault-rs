@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupsShell } from "./GroupsShell";
 import { UnassignedShell } from "./UnassignedShell";
 
-type TrashTab = "individuals" | "groups";
+type TrashTab = "unassigned" | "groups";
 
 export function TrashShell({
   handles,
@@ -51,7 +51,7 @@ export function TrashShell({
   // Keep tab in sync when landing via ?tab=groups (e.g. after Delete).
   useEffect(() => {
     const next: TrashTab =
-      searchParams.get("tab") === "groups" ? "groups" : "individuals";
+      searchParams.get("tab") === "groups" ? "groups" : "unassigned";
     setTab(next);
   }, [searchParams]);
 
@@ -60,14 +60,14 @@ export function TrashShell({
       <div className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-4 py-2">
         <button
           type="button"
-          onClick={() => switchTab("individuals")}
+          onClick={() => switchTab("unassigned")}
           className={`rounded-md px-3 py-1.5 text-[13px] ${
-            tab === "individuals"
+            tab === "unassigned"
               ? "bg-elevated text-text"
               : "text-muted hover:text-text"
           }`}
         >
-          Individuals
+          Unassigned
           <span className="ml-1.5 text-muted">{handles.length}</span>
         </button>
         <button
@@ -86,7 +86,7 @@ export function TrashShell({
         </button>
       </div>
       <div className="min-h-0 min-w-0 flex-1">
-        {tab === "individuals" ? (
+        {tab === "unassigned" ? (
           <UnassignedShell
             mode="trash"
             handles={handles}

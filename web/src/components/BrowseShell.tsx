@@ -18,7 +18,7 @@ import {
   phonesForSave,
   seedContactEditDraft,
   type ContactEditDraft,
-} from "./ContactEditPane";
+} from "./contactEdit";
 import { BrowseContactList } from "./BrowseContactList";
 import { BrowseDetailPane } from "./BrowseDetailPane";
 import { BrowseMessagesPane } from "./BrowseMessagesPane";
@@ -511,7 +511,7 @@ export function BrowseShell({
     if (browseSection === "excluded") {
       return { tags: [] as string[], exclude: true };
     }
-    // all, untagged / no-group
+    // all, no-group
     return { tags: [] as string[], exclude: false };
   }, [browseSection]);
 

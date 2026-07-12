@@ -2,7 +2,7 @@ export type ContactSection =
   | "all"
   | "excluded"
   | "no-messages"
-  | "untagged"
+  | "no-group"
   | { tag: string };
 
 export type ContactListItem = {

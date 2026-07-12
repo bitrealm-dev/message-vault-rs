@@ -10,7 +10,7 @@ import {
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
 import { ContactDetailsCard } from "./ContactDetailsCard";
-import type { ContactEditDraft } from "./ContactEditPane";
+import type { ContactEditDraft } from "./contactEdit";
 import { MessageSourcePicker } from "./MessageSourcePicker";
 import { YearThreadPicker } from "./YearThreadPicker";
 
@@ -113,10 +113,10 @@ export function BrowseDetailPane({
 
               <div className="mt-5">
                 <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  Group messages
+                  Group chats
                 </h3>
                 {groupsByYear.length === 0 ? (
-                  <p className="mt-2 text-[12px] text-muted">No group messages</p>
+                  <p className="mt-2 text-[12px] text-muted">No group chats</p>
                 ) : (
                   <div className="mt-3 space-y-12">
                     {groupsByYear.map(([year, items], yearIdx) => (
