@@ -13,7 +13,7 @@ export default function HomePage() {
     { href: "/excluded", label: "Excluded", value: stats.excluded },
     { href: "/no-messages", label: "No messages", value: stats.noMessages },
     { href: "/unmatched", label: "Unmatched", value: stats.unmatched },
-    { href: "/groups", label: "Group chats", value: stats.groups },
+    { href: "/groups", label: "Group Chats", value: stats.groups },
   ];
 
   return (

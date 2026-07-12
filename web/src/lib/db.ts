@@ -1487,7 +1487,11 @@ export function listContactsForPicker(): ContactListItem[] {
     })
     .sort(
       (a, b) =>
-        a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" }) ||
-        a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" }),
+        a.sortFirst.localeCompare(b.sortFirst, undefined, {
+          sensitivity: "base",
+        }) ||
+        a.sortLast.localeCompare(b.sortLast, undefined, {
+          sensitivity: "base",
+        }),
     );
 }

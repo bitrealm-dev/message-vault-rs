@@ -599,9 +599,15 @@ export function UnmatchedShell({
 
   const assignFiltered = useMemo(() => {
     const q = assignQuery.trim();
-    const pool = assignContacts;
-    if (!q) return pool.slice(0, 40);
-    return searchContacts(pool, q).slice(0, 40);
+    const byFirst = (a: ContactListItem, b: ContactListItem) =>
+      a.sortFirst.localeCompare(b.sortFirst, undefined, {
+        sensitivity: "base",
+      }) ||
+      a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" });
+    if (!q) {
+      return [...assignContacts].sort(byFirst).slice(0, 40);
+    }
+    return searchContacts(assignContacts, q).slice(0, 40);
   }, [assignContacts, assignQuery]);
 
   useEffect(() => {

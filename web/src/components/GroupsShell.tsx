@@ -561,7 +561,7 @@ export function GroupsShell({
       }
       setStatus(
         targets.length === 1
-          ? "Undeleted — back in Group chats"
+          ? "Undeleted — back in Group Chats"
           : `Undeleted ${targets.length} group chats`,
       );
       clearFocusAfterRemoval(targets);

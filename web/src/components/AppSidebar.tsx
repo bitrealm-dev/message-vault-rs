@@ -776,7 +776,7 @@ export function AppSidebar({
           />
           <NavLink
             href="/groups"
-            label="Group chats"
+            label="Group Chats"
             active={active === "/groups"}
             icon={groupIcon}
           />
