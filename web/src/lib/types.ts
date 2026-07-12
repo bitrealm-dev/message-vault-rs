@@ -106,7 +106,7 @@ export type HomeStats = {
   excluded: number;
   noMessages: number;
   unassigned: number;
-  groups: number;
+  groupChats: number;
   messages: number;
   contacts: number;
 };

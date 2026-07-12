@@ -20,7 +20,7 @@ export default async function TrashPage({
   const initialGroupId = Number.isFinite(rawG) ? rawG : null;
   const rawY = sp.y ? Number(sp.y) : null;
   const initialYear = Number.isFinite(rawY) ? rawY : null;
-  const initialTab = sp.tab === "groups" ? "groups" : "unassigned";
+  const initialTab = sp.tab === "group-chats" ? "group-chats" : "unassigned";
   const handles = listTrashedHandles();
   const groups = listTrashedGroupYearRows();
   const assignContacts = listContactsForPicker();

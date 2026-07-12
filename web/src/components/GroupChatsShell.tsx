@@ -12,8 +12,8 @@ import {
   type MouseEvent,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { GroupsListPane } from "./GroupsListPane";
-import { GroupsMessagesPane } from "./GroupsMessagesPane";
+import { GroupChatsListPane } from "./GroupChatsListPane";
+import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
@@ -21,16 +21,16 @@ import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
-export function GroupsShell({
+export function GroupChatsShell({
   groups: initialGroups,
   initialGroupId,
   initialYear,
-  mode = "groups",
+  mode = "group-chats",
 }: {
   groups: GroupYearRow[];
   initialGroupId: number | null;
   initialYear: number | null;
-  mode?: "groups" | "trash";
+  mode?: "group-chats" | "trash";
 }) {
   const router = useRouter();
 
@@ -56,7 +56,7 @@ export function GroupsShell({
     y: number;
     conversationId: number;
   } | null>(null);
-  const { threadsPct, startThreads, shellRef } = useResizablePanes("groups");
+  const { threadsPct, startThreads, shellRef } = useResizablePanes("group-chats");
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
@@ -279,7 +279,7 @@ export function GroupsShell({
   );
 
   const moveToTrash = async (forId?: number) => {
-    if (mode !== "groups") return;
+    if (mode !== "group-chats") return;
     const targets = resolveConversationTargets(forId);
     if (targets.length === 0) return;
     const multiYear =
@@ -296,7 +296,7 @@ export function GroupsShell({
     setCtxMenu(null);
     try {
       for (const conversationId of targets) {
-        const res = await fetch("/api/groups/trash", {
+        const res = await fetch("/api/group-chats/trash", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId }),
@@ -310,7 +310,7 @@ export function GroupsShell({
           : `Moved ${targets.length} to Trash`,
       );
       clearFocusAfterRemoval(targets);
-      router.push("/trash?tab=groups");
+      router.push("/trash?tab=group-chats");
     } catch (err) {
       console.error(err);
       setStatus(err instanceof Error ? err.message : "Delete failed");
@@ -328,7 +328,7 @@ export function GroupsShell({
     setCtxMenu(null);
     try {
       for (const conversationId of targets) {
-        const res = await fetch("/api/groups/trash", {
+        const res = await fetch("/api/group-chats/trash", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId }),
@@ -370,7 +370,7 @@ export function GroupsShell({
     setCtxMenu(null);
     try {
       for (const conversationId of targets) {
-        const res = await fetch("/api/groups/trash", {
+        const res = await fetch("/api/group-chats/trash", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId, permanent: true }),
@@ -445,7 +445,7 @@ export function GroupsShell({
   return (
     <div ref={shellRef} className="flex h-full min-h-0 flex-col bg-bg">
       <div id="groups-split" className="flex min-h-0 flex-1 flex-col">
-        <GroupsListPane
+        <GroupChatsListPane
           threadsPct={threadsPct}
           mode={mode}
           selectAllRef={selectAllRef}
@@ -481,7 +481,7 @@ export function GroupsShell({
           className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
         />
 
-        <GroupsMessagesPane
+        <GroupChatsMessagesPane
           messagesPaneRef={messagesPaneRef}
           multiSelected={multiSelected}
           selectedIds={selectedIds}

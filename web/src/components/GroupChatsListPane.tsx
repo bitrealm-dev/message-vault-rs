@@ -96,7 +96,7 @@ function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
   );
 }
 
-export function GroupsListPane({
+export function GroupChatsListPane({
   threadsPct,
   mode,
   selectAllRef,
@@ -125,7 +125,7 @@ export function GroupsListPane({
   onOpenCtxMenu,
 }: {
   threadsPct: number;
-  mode: "groups" | "trash";
+  mode: "group-chats" | "trash";
   selectAllRef: RefObject<HTMLInputElement | null>;
   allSelected: boolean;
   uniqueIdsCount: number;
@@ -188,7 +188,7 @@ export function GroupsListPane({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {mode === "groups" && (
+                {mode === "group-chats" && (
                   <button
                     type="button"
                     disabled={!canAct}

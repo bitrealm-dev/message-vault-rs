@@ -1201,7 +1201,7 @@ export function homeStats(): HomeStats {
     excluded: listContacts("excluded").length,
     noMessages: listContacts("no-messages").length,
     unassigned: listUnassignedHandles().length,
-    groups: groupsRow.n,
+    groupChats: groupsRow.n,
     messages: (
       db.prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
     ).n,

@@ -724,9 +724,9 @@ export function AppSidebar({
             icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
           />
           <NavLink
-            href="/groups"
+            href="/group-chats"
             label="Group Chats"
-            active={active === "/groups"}
+            active={active === "/group-chats"}
             icon={groupIcon}
           />
           <NavLink

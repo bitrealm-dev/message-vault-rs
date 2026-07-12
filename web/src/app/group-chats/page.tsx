@@ -1,10 +1,10 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
-import { GroupsShell } from "@/components/GroupsShell";
+import { GroupChatsShell } from "@/components/GroupChatsShell";
 import { listGroupYearRows, listGroups } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default async function GroupsPage({
+export default async function GroupChatsPage({
   searchParams,
 }: {
   searchParams: Promise<{ g?: string; y?: string }>;
@@ -18,8 +18,8 @@ export default async function GroupsPage({
   const contactGroups = listGroups();
 
   return (
-    <BrowsePageLayout active="/groups" groups={contactGroups}>
-      <GroupsShell
+    <BrowsePageLayout active="/group-chats" groups={contactGroups}>
+      <GroupChatsShell
         groups={groups}
         initialGroupId={groupId}
         initialYear={year}

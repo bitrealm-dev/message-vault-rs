@@ -3,10 +3,10 @@
 import type { ContactListItem, GroupYearRow, UnassignedHandle } from "@/lib/types";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { GroupsShell } from "./GroupsShell";
+import { GroupChatsShell } from "./GroupChatsShell";
 import { UnassignedShell } from "./UnassignedShell";
 
-type TrashTab = "unassigned" | "groups";
+type TrashTab = "unassigned" | "group-chats";
 
 export function TrashShell({
   handles,
@@ -34,8 +34,8 @@ export function TrashShell({
     (next: TrashTab) => {
       setTab(next);
       const params = new URLSearchParams(searchParams.toString());
-      if (next === "groups") {
-        params.set("tab", "groups");
+      if (next === "group-chats") {
+        params.set("tab", "group-chats");
         params.delete("h");
       } else {
         params.delete("tab");
@@ -48,10 +48,10 @@ export function TrashShell({
     [pathname, router, searchParams],
   );
 
-  // Keep tab in sync when landing via ?tab=groups (e.g. after Delete).
+  // Keep tab in sync when landing via ?tab=group-chats (e.g. after Delete).
   useEffect(() => {
     const next: TrashTab =
-      searchParams.get("tab") === "groups" ? "groups" : "unassigned";
+      searchParams.get("tab") === "group-chats" ? "group-chats" : "unassigned";
     setTab(next);
   }, [searchParams]);
 
@@ -72,14 +72,14 @@ export function TrashShell({
         </button>
         <button
           type="button"
-          onClick={() => switchTab("groups")}
+          onClick={() => switchTab("group-chats")}
           className={`rounded-md px-3 py-1.5 text-[13px] ${
-            tab === "groups"
+            tab === "group-chats"
               ? "bg-elevated text-text"
               : "text-muted hover:text-text"
           }`}
         >
-          Groups
+          Group chats
           <span className="ml-1.5 text-muted">
             {new Set(groups.map((g) => g.id)).size}
           </span>
@@ -94,7 +94,7 @@ export function TrashShell({
             initialHandle={initialHandle}
           />
         ) : (
-          <GroupsShell
+          <GroupChatsShell
             mode="trash"
             groups={groups}
             initialGroupId={initialGroupId}

@@ -4,7 +4,7 @@ import type { GroupYearRow, MessageRow } from "@/lib/types";
 import type { RefObject } from "react";
 import { MessageBubble } from "./MessageBubble";
 
-export function GroupsMessagesPane({
+export function GroupChatsMessagesPane({
   messagesPaneRef,
   multiSelected,
   selectedIds,
