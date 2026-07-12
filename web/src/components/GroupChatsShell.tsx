@@ -18,9 +18,10 @@ import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
-import { useResizablePanes } from "./useResizablePanes";
+import { PaneSeparator } from "./PaneSeparator";
 import { useThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
+import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 
@@ -71,7 +72,11 @@ export function GroupChatsShell({
     y: number;
     conversationId: number;
   } | null>(null);
-  const { threadsPct, startThreads, shellRef } = useResizablePanes("group-chats");
+  const threadsLayout = useDefaultLayout({
+    id: "mv-group-chats-threads",
+    panelIds: ["list", "messages"],
+    storage: typeof window !== "undefined" ? localStorage : undefined,
+  });
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
@@ -400,10 +405,22 @@ export function GroupChatsShell({
       : null;
 
   return (
-    <div ref={shellRef} className="flex h-full min-h-0 flex-col bg-bg">
-      <div id="groups-split" className="flex min-h-0 flex-1 flex-col">
+    <>
+    <Group
+      id="mv-group-chats-threads"
+      orientation="vertical"
+      className="h-full w-full bg-bg"
+      defaultLayout={threadsLayout.defaultLayout}
+      onLayoutChanged={threadsLayout.onLayoutChanged}
+    >
+      <Panel
+        id="list"
+        defaultSize="40%"
+        minSize="25%"
+        maxSize="75%"
+        className="min-h-0"
+      >
         <GroupChatsListPane
-          threadsPct={threadsPct}
           mode={mode}
           selectAllRef={selectAllRef}
           allSelected={allSelected}
@@ -430,14 +447,11 @@ export function GroupChatsShell({
           onRowClick={onRowClick}
           onOpenCtxMenu={openCtxMenu}
         />
+      </Panel>
 
-        <div
-          role="separator"
-          aria-orientation="horizontal"
-          onMouseDown={startThreads}
-          className="relative z-20 h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-accent/60 before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']"
-        />
+      <PaneSeparator orientation="horizontal" />
 
+      <Panel id="messages" minSize="25%" className="min-h-0">
         <GroupChatsMessagesPane
           messagesPaneRef={messagesPaneRef}
           multiSelected={multiSelected}
@@ -448,7 +462,8 @@ export function GroupChatsShell({
           messages={messages}
           conversationSelected={conversationId != null}
         />
-      </div>
+      </Panel>
+    </Group>
 
       {ctxMenu && mode === "trash" && (
         <div
@@ -474,6 +489,6 @@ export function GroupChatsShell({
           </button>
         </div>
       )}
-    </div>
+    </>
   );
 }

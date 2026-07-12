@@ -8,7 +8,6 @@ import { MessageSourcePicker } from "./MessageSourcePicker";
 import { YearThreadPicker } from "./YearThreadPicker";
 
 export function UnassignedDetailPane({
-  threadsPct,
   mode,
   multiSelected,
   selected,
@@ -28,7 +27,6 @@ export function UnassignedDetailPane({
   onClearSelection,
   onSelectHandle,
 }: {
-  threadsPct: number;
   mode: "unassigned" | "trash";
   multiSelected: boolean;
   selected: UnassignedHandle | null;
@@ -49,10 +47,7 @@ export function UnassignedDetailPane({
   onSelectHandle: (h: string) => void;
 }) {
   return (
-    <section
-      className="flex flex-col overflow-y-auto bg-panel px-5 py-4"
-      style={{ height: `${threadsPct}%`, minHeight: 140 }}
-    >
+    <section className="flex h-full min-h-0 flex-col overflow-y-auto bg-panel px-5 py-4">
       {multiSelected ? (
         <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
           <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">

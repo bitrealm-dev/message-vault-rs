@@ -29,9 +29,10 @@ import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
-import { useResizablePanes } from "./useResizablePanes";
+import { PaneSeparator } from "./PaneSeparator";
 import { fetchThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
+import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
 const UNASSIGNED_SORT_BY_KEY = "mv-unassigned-sort-by";
@@ -100,8 +101,16 @@ export function UnassignedShell({
   const [status, setStatus] = useState<string | null>(null);
   const assignRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
-  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId } =
-    useResizablePanes("browse", { splitId: "unassigned-split" });
+  const sideLayout = useDefaultLayout({
+    id: "mv-browse-side",
+    panelIds: ["list", "right"],
+    storage: typeof window !== "undefined" ? localStorage : undefined,
+  });
+  const threadsLayout = useDefaultLayout({
+    id: "mv-unassigned-threads",
+    panelIds: ["detail", "messages"],
+    storage: typeof window !== "undefined" ? localStorage : undefined,
+  });
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
 
@@ -654,36 +663,46 @@ export function UnassignedShell({
   }, [activeYear, yearly]);
 
   return (
-    <div ref={shellRef} className="flex h-full min-h-0">
-      <UnassignedContactList
-        sidebarWidth={sidebarWidth}
-        mode={mode}
-        selectAllRef={selectAllRef}
-        allHandlesSelected={allHandlesSelected}
-        handleCount={handles.length}
-        sortedHandles={sortedHandles}
-        handle={handle}
-        selectedHandles={selectedHandles}
-        multiSelected={multiSelected}
-        saving={saving}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onSortChange={setUnassignedSort}
-        onToggleSelectAll={toggleSelectAll}
-        onSelectColumnClick={onSelectColumnClick}
-        onRowClick={onRowClick}
-        onOpenCtxMenu={openCtxMenuAt}
-        onOpenTrashMenu={openTrashMenu}
-      />
+    <>
+    <Group
+      id="mv-browse-side"
+      orientation="horizontal"
+      className="h-full w-full"
+      defaultLayout={sideLayout.defaultLayout}
+      onLayoutChanged={sideLayout.onLayoutChanged}
+    >
+      <Panel
+        id="list"
+        defaultSize={272}
+        minSize={160}
+        maxSize={720}
+        className="min-h-0"
+      >
+        <UnassignedContactList
+          mode={mode}
+          selectAllRef={selectAllRef}
+          allHandlesSelected={allHandlesSelected}
+          handleCount={handles.length}
+          sortedHandles={sortedHandles}
+          handle={handle}
+          selectedHandles={selectedHandles}
+          multiSelected={multiSelected}
+          saving={saving}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={setUnassignedSort}
+          onToggleSelectAll={toggleSelectAll}
+          onSelectColumnClick={onSelectColumnClick}
+          onRowClick={onRowClick}
+          onOpenCtxMenu={openCtxMenuAt}
+          onOpenTrashMenu={openTrashMenu}
+        />
+      </Panel>
 
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onMouseDown={startSide}
-        className="relative z-20 w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-accent/60 before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']"
-      />
+      <PaneSeparator orientation="vertical" />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
+        <div className="flex h-full min-h-0 min-w-0 flex-col">
         <div className="flex h-[45px] shrink-0 items-center justify-between gap-3 border-b border-border bg-panel px-4">
           <h1 className="truncate text-xl font-semibold tracking-tight text-text">
             {multiSelected
@@ -838,46 +857,82 @@ export function UnassignedShell({
           </div>
         )}
 
-        <div id={splitId} className="flex min-h-0 flex-1 flex-col">
-        <UnassignedDetailPane
-          threadsPct={threadsPct}
-          mode={mode}
-          multiSelected={multiSelected}
-          selected={selected}
-          selectedItems={selectedItems}
-          creating={creating}
-          createDraft={createDraft}
-          onDraftChange={setCreateDraft}
-          sources={sources}
-          messageSources={messageSources}
-          sourceCounts={sourceCounts}
-          source={source}
-          onSourceChange={setSource}
-          yearly={yearly}
-          activeYear={activeYear}
-          loadingThreads={loadingThreads}
-          onLoadYear={(y) => loadYear(y.year, y.conversationIds)}
-          onClearSelection={clearSelection}
-          onSelectHandle={selectHandle}
-        />
+        {multiSelected ? (
+          <div className="min-h-0 flex-1">
+            <UnassignedDetailPane
+              mode={mode}
+              multiSelected={multiSelected}
+              selected={selected}
+              selectedItems={selectedItems}
+              creating={creating}
+              createDraft={createDraft}
+              onDraftChange={setCreateDraft}
+              sources={sources}
+              messageSources={messageSources}
+              sourceCounts={sourceCounts}
+              source={source}
+              onSourceChange={setSource}
+              yearly={yearly}
+              activeYear={activeYear}
+              loadingThreads={loadingThreads}
+              onLoadYear={(y) => loadYear(y.year, y.conversationIds)}
+              onClearSelection={clearSelection}
+              onSelectHandle={selectHandle}
+            />
+          </div>
+        ) : (
+          <Group
+            id="mv-unassigned-threads"
+            orientation="vertical"
+            className="min-h-0 flex-1"
+            defaultLayout={threadsLayout.defaultLayout}
+            onLayoutChanged={threadsLayout.onLayoutChanged}
+          >
+            <Panel
+              id="detail"
+              defaultSize="40%"
+              minSize="25%"
+              maxSize="75%"
+              className="min-h-0"
+            >
+              <UnassignedDetailPane
+                mode={mode}
+                multiSelected={multiSelected}
+                selected={selected}
+                selectedItems={selectedItems}
+                creating={creating}
+                createDraft={createDraft}
+                onDraftChange={setCreateDraft}
+                sources={sources}
+                messageSources={messageSources}
+                sourceCounts={sourceCounts}
+                source={source}
+                onSourceChange={setSource}
+                yearly={yearly}
+                activeYear={activeYear}
+                loadingThreads={loadingThreads}
+                onLoadYear={(y) => loadYear(y.year, y.conversationIds)}
+                onClearSelection={clearSelection}
+                onSelectHandle={selectHandle}
+              />
+            </Panel>
 
-        <div
-          role="separator"
-          aria-orientation="horizontal"
-          onMouseDown={startThreads}
-          className="relative z-20 h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-accent/60 before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']"
-        />
+            <PaneSeparator orientation="horizontal" />
 
-        <UnassignedMessagesPane
-          multiSelected={multiSelected}
-          activeYear={activeYear}
-          loadingMessages={loadingMessages}
-          messages={messages}
-          activeYearMeta={activeYearMeta}
-        />
-
+            <Panel id="messages" minSize="25%" className="min-h-0">
+              <UnassignedMessagesPane
+                multiSelected={multiSelected}
+                activeYear={activeYear}
+                loadingMessages={loadingMessages}
+                messages={messages}
+                activeYearMeta={activeYearMeta}
+              />
+            </Panel>
+          </Group>
+        )}
         </div>
-      </div>
+      </Panel>
+    </Group>
 
       {ctxMenu && (
         <div
@@ -967,6 +1022,6 @@ export function UnassignedShell({
           {assignSearch}
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,7 +1,9 @@
-import { AppSidebar } from "@/components/AppSidebar";
+"use client";
+
+import { AppShell } from "@/components/AppShell";
 import { Suspense, type ReactNode } from "react";
 
-/** Shared AppSidebar + Suspense scaffold for browse-style pages. */
+/** Shared AppShell + Suspense scaffold for browse-style pages. */
 export function BrowsePageLayout({
   active,
   groups,
@@ -12,15 +14,14 @@ export function BrowsePageLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-0">
-      <AppSidebar active={active} groups={groups} />
-      <div className="min-h-0 min-w-0 flex-1">
+    <AppShell active={active} groups={groups}>
+      <div className="h-full min-h-0 min-w-0">
         <Suspense
           fallback={<div className="p-4 text-sm text-muted">Loading…</div>}
         >
           {children}
         </Suspense>
       </div>
-    </div>
+    </AppShell>
   );
 }

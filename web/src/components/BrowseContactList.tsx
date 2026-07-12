@@ -5,7 +5,6 @@ import type { MouseEvent, RefObject } from "react";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
 export function BrowseContactList({
-  sidebarWidth,
   sectionLabel,
   selectAllRef,
   allGroupSelected,
@@ -24,7 +23,6 @@ export function BrowseContactList({
   onSelectColumnClick,
   onNamePhoneClick,
 }: {
-  sidebarWidth: number;
   sectionLabel: string;
   selectAllRef: RefObject<HTMLInputElement | null>;
   allGroupSelected: boolean;
@@ -44,10 +42,8 @@ export function BrowseContactList({
   onNamePhoneClick: (id: number, e: MouseEvent | { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
 }) {
   return (
-    <aside
-      className="flex shrink-0 flex-col bg-sidebar"
-      style={{ width: sidebarWidth }}
-    >
+    <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
+
       <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
         <label className="flex min-w-0 items-center gap-2">
           <input

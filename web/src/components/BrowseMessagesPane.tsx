@@ -20,7 +20,7 @@ export function BrowseMessagesPane({
   } | null;
 }) {
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
+    <section className="h-full min-h-0 overflow-y-auto bg-bg px-4 py-4">
       {!activeThread && (
         <p className="pt-8 text-center text-[13px] text-muted">
           Select a year or group thread to read messages.

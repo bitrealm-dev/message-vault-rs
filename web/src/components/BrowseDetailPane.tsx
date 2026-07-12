@@ -16,7 +16,6 @@ import { MessageSourcePicker } from "./MessageSourcePicker";
 import { YearThreadPicker } from "./YearThreadPicker";
 
 export function BrowseDetailPane({
-  threadsPct,
   detail,
   contactId,
   contactCreating,
@@ -38,7 +37,6 @@ export function BrowseDetailPane({
   onGroupDateFormatChange,
   onLoadGroupChatThread,
 }: {
-  threadsPct: number;
   detail: ContactDetail | null;
   contactId: number | null;
   contactCreating: boolean;
@@ -65,10 +63,8 @@ export function BrowseDetailPane({
   ) => void;
 }) {
   return (
-    <section
-      className="min-h-0 flex flex-col overflow-y-auto bg-bg px-5 py-4"
-      style={{ height: `${threadsPct}%` }}
-    >
+    <section className="flex h-full min-h-0 flex-col overflow-y-auto bg-bg px-5 py-4">
+
       {((detail && contactId) || (contactCreating && editDraft)) && (
         <>
           <ContactDetailsCard

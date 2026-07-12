@@ -10,7 +10,6 @@ import {
 } from "./SortByMenu";
 
 export function UnassignedContactList({
-  sidebarWidth,
   mode,
   selectAllRef,
   allHandlesSelected,
@@ -29,7 +28,6 @@ export function UnassignedContactList({
   onOpenCtxMenu,
   onOpenTrashMenu,
 }: {
-  sidebarWidth: number;
   mode: "unassigned" | "trash";
   selectAllRef: RefObject<HTMLInputElement | null>;
   allHandlesSelected: boolean;
@@ -54,10 +52,7 @@ export function UnassignedContactList({
   onOpenTrashMenu: (x: number, y: number, handle: string) => void;
 }) {
   return (
-    <aside
-      className="flex shrink-0 flex-col bg-sidebar"
-      style={{ width: sidebarWidth }}
-    >
+    <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
         <label className="flex min-w-0 items-center gap-2">
           <input

@@ -32,7 +32,8 @@ import { type SortMode, type SortOrder } from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
-import { useResizablePanes } from "./useResizablePanes";
+import { PaneSeparator } from "./PaneSeparator";
+import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
@@ -115,8 +116,16 @@ export function BrowseShell({
   const selectionDirtyRef = useRef(false);
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId } =
-    useResizablePanes("browse");
+  const sideLayout = useDefaultLayout({
+    id: "mv-browse-side",
+    panelIds: ["list", "right"],
+    storage: typeof window !== "undefined" ? localStorage : undefined,
+  });
+  const threadsLayout = useDefaultLayout({
+    id: "mv-browse-threads",
+    panelIds: ["detail", "messages"],
+    storage: typeof window !== "undefined" ? localStorage : undefined,
+  });
 
   const saveContactPatch = useCallback(
     async (patch: {
@@ -914,39 +923,48 @@ export function BrowseShell({
   }, [activeThread, yearly, groupChats]);
 
   return (
-    <div ref={shellRef} className="flex h-full min-h-0">
-      <BrowseContactList
-        sidebarWidth={sidebarWidth}
-        sectionLabel={sectionLabel}
-        selectAllRef={selectAllRef}
-        allGroupSelected={allGroupSelected}
-        visibleCount={visibleContacts.length}
-        sortedCount={sorted.length}
-        query={query}
-        onQueryChange={setQuery}
-        onToggleSelectAll={toggleSelectAllInGroup}
-        onNewContact={beginCreateContact}
-        sort={sort}
-        sortOrder={sortOrder}
-        onSortChange={setSort}
-        grouped={grouped}
-        contactId={contactId}
-        selectedIds={selectedIds}
-        onSelectColumnClick={onSelectColumnClick}
-        onNamePhoneClick={onNamePhoneClick}
-      />
-
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onMouseDown={startSide}
-        className="relative z-20 w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-accent/60 before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']"
-      />
-
-      <div
-        id={`browse-${paneStorageKey}-right`}
-        className="flex min-w-0 flex-1 flex-col"
+    <Group
+      id="mv-browse-side"
+      orientation="horizontal"
+      className="h-full w-full"
+      defaultLayout={sideLayout.defaultLayout}
+      onLayoutChanged={sideLayout.onLayoutChanged}
+    >
+      <Panel
+        id="list"
+        defaultSize={272}
+        minSize={160}
+        maxSize={720}
+        className="min-h-0"
       >
+        <BrowseContactList
+          sectionLabel={sectionLabel}
+          selectAllRef={selectAllRef}
+          allGroupSelected={allGroupSelected}
+          visibleCount={visibleContacts.length}
+          sortedCount={sorted.length}
+          query={query}
+          onQueryChange={setQuery}
+          onToggleSelectAll={toggleSelectAllInGroup}
+          onNewContact={beginCreateContact}
+          sort={sort}
+          sortOrder={sortOrder}
+          onSortChange={setSort}
+          grouped={grouped}
+          contactId={contactId}
+          selectedIds={selectedIds}
+          onSelectColumnClick={onSelectColumnClick}
+          onNamePhoneClick={onNamePhoneClick}
+        />
+      </Panel>
+
+      <PaneSeparator orientation="vertical" />
+
+      <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
+        <div
+          id={`browse-${paneStorageKey}-right`}
+          className="flex h-full min-h-0 min-w-0 flex-col"
+        >
         <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border px-5">
           {formOpen ? (
             <>
@@ -1093,50 +1111,61 @@ export function BrowseShell({
             </div>
           </div>
         ) : (
-          <div id={splitId} className="flex min-h-0 flex-1 flex-col">
-            <BrowseDetailPane
-              threadsPct={threadsPct}
-              detail={detail}
-              contactId={contactId}
-              contactCreating={contactCreating}
-              formOpen={formOpen}
-              editDraft={editDraft}
-              onDraftChange={setEditDraft}
-              groupsFor={groupsFor}
-              excludeOverrides={excludeOverrides}
-              sources={sources}
-              messageSources={messageSources}
-              sourceCounts={sourceCounts}
-              source={source}
-              onSourceChange={setSource}
-              yearly={yearly}
-              activeThread={activeThread}
-              onLoadYear={(y) =>
-                loadMessages(y.conversationIds, y.year, yearThreadKey(y.year))
-              }
-              groupChatsByYear={groupChatsByYear}
-              groupDateFormat={groupDateFormat}
-              onGroupDateFormatChange={setGroupDateFormat}
-              onLoadGroupChatThread={loadMessages}
-            />
+          <Group
+            id="mv-browse-threads"
+            orientation="vertical"
+            className="min-h-0 flex-1"
+            defaultLayout={threadsLayout.defaultLayout}
+            onLayoutChanged={threadsLayout.onLayoutChanged}
+          >
+            <Panel
+              id="detail"
+              defaultSize="40%"
+              minSize="25%"
+              maxSize="75%"
+              className="min-h-0"
+            >
+              <BrowseDetailPane
+                detail={detail}
+                contactId={contactId}
+                contactCreating={contactCreating}
+                formOpen={formOpen}
+                editDraft={editDraft}
+                onDraftChange={setEditDraft}
+                groupsFor={groupsFor}
+                excludeOverrides={excludeOverrides}
+                sources={sources}
+                messageSources={messageSources}
+                sourceCounts={sourceCounts}
+                source={source}
+                onSourceChange={setSource}
+                yearly={yearly}
+                activeThread={activeThread}
+                onLoadYear={(y) =>
+                  loadMessages(y.conversationIds, y.year, yearThreadKey(y.year))
+                }
+                groupChatsByYear={groupChatsByYear}
+                groupDateFormat={groupDateFormat}
+                onGroupDateFormatChange={setGroupDateFormat}
+                onLoadGroupChatThread={loadMessages}
+              />
+            </Panel>
 
-            <div
-              role="separator"
-              aria-orientation="horizontal"
-              onMouseDown={startThreads}
-              className="relative z-20 h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-accent/60 before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']"
-            />
+            <PaneSeparator orientation="horizontal" />
 
-            <BrowseMessagesPane
-              activeThread={activeThread}
-              loadingMessages={loadingMessages}
-              messages={messages}
-              activeThreadMeta={activeThreadMeta}
-            />
-          </div>
+            <Panel id="messages" minSize="25%" className="min-h-0">
+              <BrowseMessagesPane
+                activeThread={activeThread}
+                loadingMessages={loadingMessages}
+                messages={messages}
+                activeThreadMeta={activeThreadMeta}
+              />
+            </Panel>
+          </Group>
         )}
-      </div>
-    </div>
+        </div>
+      </Panel>
+    </Group>
   );
 }
 

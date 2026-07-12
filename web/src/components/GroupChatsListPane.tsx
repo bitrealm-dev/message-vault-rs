@@ -97,7 +97,6 @@ function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
 }
 
 export function GroupChatsListPane({
-  threadsPct,
   mode,
   selectAllRef,
   allSelected,
@@ -124,7 +123,6 @@ export function GroupChatsListPane({
   onRowClick,
   onOpenCtxMenu,
 }: {
-  threadsPct: number;
   mode: "group-chats" | "trash";
   selectAllRef: RefObject<HTMLInputElement | null>;
   allSelected: boolean;
@@ -152,10 +150,7 @@ export function GroupChatsListPane({
   onOpenCtxMenu: (id: number, x: number, y: number) => void;
 }) {
   return (
-        <section
-          className="min-h-0 flex flex-col overflow-hidden bg-bg"
-          style={{ height: `${threadsPct}%` }}
-        >
+        <section className="flex h-full min-h-0 flex-col overflow-hidden bg-bg">
           <div className="shrink-0 border-b border-border/60 bg-bg px-5 pt-4 pb-3">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">

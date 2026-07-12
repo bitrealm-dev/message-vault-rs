@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import {
   AddressBookIcon,
   EllipsisIcon,
@@ -393,56 +394,40 @@ function GroupsNav({ groups }: { groups: string[] }) {
 }
 
 const NAV_COLLAPSED_KEY = "message-vault:navCollapsed";
-const NAV_WIDTH_KEY = "message-vault:navWidth";
-const NAV_WIDTH_DEFAULT = 200;
-const NAV_WIDTH_MIN = 160;
-const NAV_WIDTH_MAX = 360;
 /** Collapse nav when the viewport is narrower than this. */
 const NAV_AUTO_COLLAPSE_BELOW = 900;
-
-/** Last client-known nav width so remounts don't snap to the default. */
-let cachedNavWidth: number | null = null;
-
-function clampNavWidth(w: number): number {
-  return Math.min(NAV_WIDTH_MAX, Math.max(NAV_WIDTH_MIN, w));
-}
-
-function readStoredNavWidth(): number {
-  if (typeof window === "undefined") return NAV_WIDTH_DEFAULT;
-  const raw = window.localStorage.getItem(NAV_WIDTH_KEY);
-  if (!raw) return NAV_WIDTH_DEFAULT;
-  const n = Number(raw);
-  return Number.isFinite(n) ? clampNavWidth(n) : NAV_WIDTH_DEFAULT;
-}
-
-function initialNavWidth(): number {
-  return cachedNavWidth ?? NAV_WIDTH_DEFAULT;
-}
 
 export function AppSidebar({
   active,
   groups = [],
+  navPanelRef,
+  onCollapsedChange,
 }: {
   active: string;
   groups?: string[];
+  /** When set, collapse/expand drives the parent resizable Panel. */
+  navPanelRef?: RefObject<PanelImperativeHandle | null>;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [forceExpand, setForceExpand] = useState(false);
-  // Cache after first client read; SSR/first paint use default for hydration match.
-  const [navWidth, setNavWidth] = useState(initialNavWidth);
-  const navWidthRef = useRef(initialNavWidth());
   const wasNarrowRef = useRef(false);
-  const dragging = useRef(false);
 
   const collapsed = narrow ? !forceExpand : userCollapsed;
 
   useEffect(() => {
+    onCollapsedChange?.(collapsed);
+  }, [collapsed, onCollapsedChange]);
+
+  useEffect(() => {
+    if (!navPanelRef?.current) return;
+    if (collapsed) navPanelRef.current.collapse();
+    else navPanelRef.current.expand();
+  }, [collapsed, navPanelRef]);
+
+  useEffect(() => {
     setUserCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
-    const w = readStoredNavWidth();
-    cachedNavWidth = w;
-    navWidthRef.current = w;
-    setNavWidth((prev) => (prev === w ? prev : w));
 
     const syncNarrow = () => {
       const next = window.innerWidth < NAV_AUTO_COLLAPSE_BELOW;
@@ -453,36 +438,6 @@ export function AppSidebar({
     syncNarrow();
     window.addEventListener("resize", syncNarrow);
     return () => window.removeEventListener("resize", syncNarrow);
-  }, []);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragging.current) return;
-      e.preventDefault();
-      const next = clampNavWidth(e.clientX);
-      navWidthRef.current = next;
-      cachedNavWidth = next;
-      setNavWidth(next);
-    };
-    const onUp = () => {
-      if (!dragging.current) return;
-      dragging.current = false;
-      cachedNavWidth = navWidthRef.current;
-      window.localStorage.setItem(NAV_WIDTH_KEY, String(navWidthRef.current));
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      if (dragging.current) {
-        dragging.current = false;
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      }
-    };
   }, []);
 
   const toggleCollapsed = () => {
@@ -497,24 +452,12 @@ export function AppSidebar({
     });
   };
 
-  const startResize = (e: { preventDefault(): void; stopPropagation(): void }) => {
-    if (collapsed) return;
-    e.preventDefault();
-    e.stopPropagation();
-    dragging.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  };
-
   const groupIcon = (
     <PeopleGroupIcon className="size-3.5 shrink-0 opacity-80" />
   );
 
   return (
-    <aside
-      className="relative flex h-full shrink-0 flex-col border-r border-border bg-sidebar"
-      style={{ width: collapsed ? 40 : navWidth }}
-    >
+    <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="flex h-[45px] shrink-0 items-center gap-1 border-b border-border px-2">
         <button
           type="button"
@@ -594,15 +537,6 @@ export function AppSidebar({
 
           <GroupsNav groups={groups} />
         </nav>
-      )}
-      {!collapsed && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize navigation"
-          onMouseDown={startResize}
-          className="absolute top-0 right-0 z-30 h-full w-1.5 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-accent/60 before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']"
-        />
       )}
     </aside>
   );
