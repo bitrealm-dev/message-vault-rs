@@ -15,29 +15,23 @@ import {
   writeStoredGroupDateFormat,
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
-import { formatSourceLabel } from "@/lib/sourceLabels";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import {
-  ContactPhoneList,
-  displayGroupNames,
   draftHasName,
   emptyContactEditDraft,
   phonesForSave,
   seedContactEditDraft,
   type ContactEditDraft,
 } from "./ContactEditPane";
-import {
-  PeopleGroupIcon,
-  PersonDetailIcon,
-  PhoneIcon,
-  RangeIcon,
-} from "./icons";
+import { ContactDetailsCard } from "./ContactDetailsCard";
 import { MessageBubble } from "./MessageBubble";
+import { MessageSourcePicker } from "./MessageSourcePicker";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
+import { YearThreadPicker } from "./YearThreadPicker";
 
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
@@ -123,7 +117,7 @@ export function BrowseShell({
   const selectionDirtyRef = useRef(false);
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
+  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId } =
     useResizablePanes("browse");
 
   const saveContactPatch = useCallback(
@@ -1338,7 +1332,7 @@ export function BrowseShell({
           </div>
         ) : (
           <div
-            id="browse-split"
+            id={splitId}
             className="flex min-h-0 flex-1 flex-col"
           >
         <section
@@ -1347,273 +1341,50 @@ export function BrowseShell({
         >
           {((detail && contactId) || (contactCreating && editDraft)) && (
             <>
-              <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-                <h2 className="text-[13px] font-semibold text-text">Contact details</h2>
-                <div className="mt-3">
-                  {formOpen && editDraft && (
-                    <div className="mb-3 flex gap-3">
-                      <div className="pt-0.5">
-                        <PersonDetailIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">Name</div>
-                        <div className="mt-0.5 grid grid-cols-2 gap-2">
-                          <input
-                            type="text"
-                            value={editDraft.firstName}
-                            onChange={(e) =>
-                              setEditDraft({
-                                ...editDraft,
-                                firstName: e.target.value,
-                              })
-                            }
-                            placeholder="First"
-                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
-                          />
-                          <input
-                            type="text"
-                            value={editDraft.lastName}
-                            onChange={(e) =>
-                              setEditDraft({
-                                ...editDraft,
-                                lastName: e.target.value,
-                              })
-                            }
-                            placeholder="Last"
-                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex min-w-0 gap-3">
-                      <div className="pt-0.5">
-                        <PeopleGroupIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">Groups</div>
-                        <div className="mt-0.5">
-                          {(() => {
-                            const rawTags =
-                              contactCreating && editDraft
-                                ? editDraft.tags
-                                : detail
-                                  ? tagsFor(detail.id, detail.tags)
-                                  : [];
-                            const excluded =
-                              contactCreating && editDraft
-                                ? editDraft.exclude
-                                : detail
-                                  ? (excludeOverrides.get(detail.id) ??
-                                    detail.exclude)
-                                  : false;
-                            const shownTags = displayGroupNames(
-                              rawTags,
-                              excluded,
-                            );
-                            if (shownTags.length === 0) {
-                              return (
-                                <span className="text-[13px] text-muted">
-                                  None
-                                </span>
-                              );
-                            }
-                            return (
-                              <div className="flex flex-col gap-0.5">
-                                {shownTags.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className={
-                                      tag === "Excluded"
-                                        ? "truncate text-[13px] font-semibold text-amber-400/90"
-                                        : "truncate text-[13px] text-text"
-                                    }
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex min-w-0 gap-3">
-                      <div className="pt-0.5">
-                        <PhoneIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">
-                          {(formOpen && editDraft
-                            ? editDraft.phones.filter((p) => p.trim()).length
-                            : detail?.phones.length ?? 0) === 1
-                            ? "Phone"
-                            : "Phones"}
-                        </div>
-                        <div className="mt-0.5">
-                          {formOpen && editDraft ? (
-                            <ContactPhoneList
-                              phones={editDraft.phones}
-                              onChange={(phones) =>
-                                setEditDraft({ ...editDraft, phones })
-                              }
-                            />
-                          ) : detail && detail.phones.length > 0 ? (
-                            <div className="flex flex-col gap-0.5">
-                              {detail.phones.map((phone) => (
-                                <span
-                                  key={phone}
-                                  className="truncate text-[13px] text-text"
-                                >
-                                  {phone}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[13px] text-muted">None</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {detail?.dateStart && detail.dateEnd && (
-                    <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
-                      <div className="pt-0.5">
-                        <RangeIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">
-                          Message range
-                        </div>
-                        <div className="mt-0.5 text-[13px] text-text">
-                          {detail.dateStart === detail.dateEnd
-                            ? detail.dateStart
-                            : `${detail.dateStart} — ${detail.dateEnd}`}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ContactDetailsCard
+                formOpen={formOpen}
+                draft={editDraft}
+                onDraftChange={setEditDraft}
+                tags={
+                  contactCreating && editDraft
+                    ? editDraft.tags
+                    : detail
+                      ? tagsFor(detail.id, detail.tags)
+                      : []
+                }
+                excluded={
+                  contactCreating && editDraft
+                    ? editDraft.exclude
+                    : detail
+                      ? (excludeOverrides.get(detail.id) ?? detail.exclude)
+                      : false
+                }
+                phonesView={detail?.phones ?? []}
+                dateStart={detail?.dateStart ?? null}
+                dateEnd={detail?.dateEnd ?? null}
+              />
 
               {!contactCreating && (
               <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-              {sources.length > 0 && (
-                <div className="mb-5">
-                  <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                    Message Sources
-                  </h3>
-                  <div className="mt-2 flex flex-wrap items-start gap-x-0 gap-y-2">
-                    {[
-                      {
-                        id: null as string | null,
-                        label: "Combined",
-                        enabled: true,
-                        count: sourceCounts.all,
-                      },
-                      ...sources.map((id) => ({
-                        id,
-                        label: formatSourceLabel(id),
-                        enabled: messageSources.includes(id),
-                        count: sourceCounts.bySource[id] ?? 0,
-                      })),
-                    ].map((opt, i) => {
-                      const active =
-                        opt.id === null ? source === null : source === opt.id;
-                      const disabled = !opt.enabled;
-                      const countLabel = opt.count.toLocaleString();
-                      return (
-                        <span key={opt.id ?? "all"} className="flex items-start">
-                          {i > 0 && (
-                            <span
-                              className="mx-2 pt-0.5 text-[13px] text-muted/50"
-                              aria-hidden
-                            >
-                              |
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            disabled={disabled}
-                            aria-disabled={disabled}
-                            title={`${opt.label}: ${countLabel} messages`}
-                            onClick={() => {
-                              if (disabled) return;
-                              setSource(opt.id);
-                            }}
-                            className={`group flex min-w-0 flex-col items-start text-left ${
-                              disabled ? "cursor-default" : ""
-                            }`}
-                          >
-                            <span
-                              className={`text-[13px] font-medium leading-tight ${
-                                disabled
-                                  ? "text-muted/40"
-                                  : active
-                                    ? "text-accent"
-                                    : "text-text group-hover:text-accent"
-                              }`}
-                            >
-                              {opt.label}
-                            </span>
-                            <span
-                              className={`mt-0.5 inline-block w-[6ch] text-[11px] leading-tight tabular-nums ${
-                                disabled ? "text-muted/30" : "text-muted"
-                              }`}
-                            >
-                              {countLabel}
-                            </span>
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div>
-                <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  Yearly messages
-                </h3>
-                {yearly.length === 0 ? (
-                  <p className="mt-2 text-[12px] text-muted">No individual messages</p>
-                ) : (
-                  <div className="mt-2 flex flex-wrap items-center gap-y-1.5">
-                    {yearly.map((y, i) => {
-                      const key = `y-${y.year}`;
-                      const active = activeThread === key;
-                      return (
-                        <span key={key} className="flex items-center">
-                          {i > 0 && (
-                            <span className="mx-2 text-[13px] text-muted/50" aria-hidden>
-                              |
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            title={`${y.messageCount} msgs · ${y.dateStart}${
-                              y.dateEnd !== y.dateStart ? ` — ${y.dateEnd}` : ""
-                            }`}
-                            onClick={() =>
-                              loadMessages(y.conversationIds, y.year, key)
-                            }
-                            className={`text-[13px] font-medium ${
-                              active
-                                ? "text-accent"
-                                : "text-text hover:text-accent"
-                            }`}
-                          >
-                            {y.year}
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <MessageSourcePicker
+                sources={sources}
+                messageSources={messageSources}
+                sourceCounts={sourceCounts}
+                source={source}
+                onSourceChange={setSource}
+              />
+              <YearThreadPicker
+                years={yearly}
+                activeYear={
+                  activeThread?.startsWith("y-")
+                    ? Number(activeThread.slice(2))
+                    : null
+                }
+                onSelect={(y) =>
+                  loadMessages(y.conversationIds, y.year, `y-${y.year}`)
+                }
+                emptyLabel="No individual messages"
+              />
 
               <div className="mt-5">
                 <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">

@@ -1,4 +1,4 @@
-import { AppSidebar } from "@/components/AppSidebar";
+import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { TrashShell } from "@/components/TrashShell";
 import {
   listContactsForPicker,
@@ -6,7 +6,6 @@ import {
   listTrashedGroupYearRows,
   listTrashedHandles,
 } from "@/lib/db";
-import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -28,23 +27,16 @@ export default async function UnmatchedTrashPage({
   const tags = listTags();
 
   return (
-    <div className="flex h-full min-h-0">
-      <AppSidebar active="/unmatched/trash" tags={tags} />
-      <div className="min-h-0 min-w-0 flex-1">
-        <Suspense
-          fallback={<div className="p-4 text-sm text-muted">Loading…</div>}
-        >
-          <TrashShell
-            handles={handles}
-            groups={groups}
-            assignContacts={assignContacts}
-            initialHandle={initialHandle}
-            initialGroupId={initialGroupId}
-            initialYear={initialYear}
-            initialTab={initialTab}
-          />
-        </Suspense>
-      </div>
-    </div>
+    <BrowsePageLayout active="/unmatched/trash" tags={tags}>
+      <TrashShell
+        handles={handles}
+        groups={groups}
+        assignContacts={assignContacts}
+        initialHandle={initialHandle}
+        initialGroupId={initialGroupId}
+        initialYear={initialYear}
+        initialTab={initialTab}
+      />
+    </BrowsePageLayout>
   );
 }

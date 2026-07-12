@@ -34,7 +34,11 @@ function readSharedSidebarWidth(storagePrefix: string): number {
   );
 }
 
-export function useResizablePanes(storagePrefix: string) {
+export function useResizablePanes(
+  storagePrefix: string,
+  options?: { splitId?: string },
+) {
+  const splitId = options?.splitId ?? `${storagePrefix}-split`;
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     readSharedSidebarWidth(storagePrefix),
   );
@@ -63,7 +67,7 @@ export function useResizablePanes(storagePrefix: string) {
         sidebarRef.current = next;
         setSidebarWidth(next);
       } else if (dragging.current === "threads") {
-        const el = document.getElementById(`${storagePrefix}-split`);
+        const el = document.getElementById(splitId);
         if (!el) return;
         const rect = el.getBoundingClientRect();
         if (rect.height <= 0) return;
@@ -96,7 +100,7 @@ export function useResizablePanes(storagePrefix: string) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [storagePrefix]);
+  }, [storagePrefix, splitId]);
 
   const startSide = useCallback(() => {
     dragging.current = "side";
@@ -110,5 +114,5 @@ export function useResizablePanes(storagePrefix: string) {
     document.body.style.userSelect = "none";
   }, []);
 
-  return { sidebarWidth, threadsPct, startSide, startThreads, shellRef };
+  return { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId };
 }

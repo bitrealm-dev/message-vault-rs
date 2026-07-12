@@ -1,7 +1,6 @@
-import { AppSidebar } from "@/components/AppSidebar";
+import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { GroupsShell } from "@/components/GroupsShell";
 import { listGroupYearRows, listTags } from "@/lib/db";
-import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -19,17 +18,12 @@ export default async function GroupsPage({
   const tags = listTags();
 
   return (
-    <div className="flex h-full min-h-0">
-      <AppSidebar active="/groups" tags={tags} />
-      <div className="min-w-0 min-h-0 flex-1">
-        <Suspense fallback={<div className="p-4 text-sm text-muted">Loading…</div>}>
-          <GroupsShell
-            groups={groups}
-            initialGroupId={groupId}
-            initialYear={year}
-          />
-        </Suspense>
-      </div>
-    </div>
+    <BrowsePageLayout active="/groups" tags={tags}>
+      <GroupsShell
+        groups={groups}
+        initialGroupId={groupId}
+        initialYear={year}
+      />
+    </BrowsePageLayout>
   );
 }

@@ -7,26 +7,19 @@ import type {
   YearThread,
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
-import { formatSourceLabel } from "@/lib/sourceLabels";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  ContactPhoneList,
-  displayGroupNames,
   draftHasName,
   emptyContactEditDraft,
   phonesForSave,
   type ContactEditDraft,
 } from "./ContactEditPane";
+import { ContactDetailsCard } from "./ContactDetailsCard";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
-import {
-  EllipsisIcon,
-  PeopleGroupIcon,
-  PersonDetailIcon,
-  PhoneIcon,
-  RangeIcon,
-} from "./icons";
+import { EllipsisIcon } from "./icons";
 import { MessageBubble } from "./MessageBubble";
+import { MessageSourcePicker } from "./MessageSourcePicker";
 import {
   UnmatchedSortMenu,
   type SortOrder,
@@ -34,6 +27,7 @@ import {
 } from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
+import { YearThreadPicker } from "./YearThreadPicker";
 
 const UNMATCHED_SORT_ORDER_KEY = "mv-unmatched-sort-order";
 const UNMATCHED_SORT_BY_KEY = "mv-unmatched-sort-by";
@@ -106,8 +100,8 @@ export function UnmatchedShell({
   const assignRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const selectionAnchorRef = useRef<string | null>(null);
-  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
-    useResizablePanes("browse");
+  const { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId } =
+    useResizablePanes("browse", { splitId: "unmatched-split" });
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
   const multiSelected = selectedHandles.size > 1;
@@ -1146,7 +1140,7 @@ export function UnmatchedShell({
           </div>
         )}
 
-        <div id="browse-split" className="flex min-h-0 flex-1 flex-col">
+        <div id={splitId} className="flex min-h-0 flex-1 flex-col">
         <section
           className="flex flex-col overflow-y-auto bg-panel px-5 py-4"
           style={{ height: `${threadsPct}%`, minHeight: 140 }}
@@ -1199,256 +1193,35 @@ export function UnmatchedShell({
             </p>
           ) : (
             <>
-              <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-                <h2 className="text-[13px] font-semibold text-text">
-                  Contact details
-                </h2>
-                <div className="mt-3">
-                  {creating && createDraft ? (
-                    <div className="mb-3 flex gap-3">
-                      <div className="pt-0.5">
-                        <PersonDetailIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">
-                          Name
-                        </div>
-                        <div className="mt-0.5 grid grid-cols-2 gap-2">
-                          <input
-                            type="text"
-                            value={createDraft.firstName}
-                            onChange={(e) =>
-                              setCreateDraft({
-                                ...createDraft,
-                                firstName: e.target.value,
-                              })
-                            }
-                            placeholder="First"
-                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
-                          />
-                          <input
-                            type="text"
-                            value={createDraft.lastName}
-                            onChange={(e) =>
-                              setCreateDraft({
-                                ...createDraft,
-                                lastName: e.target.value,
-                              })
-                            }
-                            placeholder="Last"
-                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex min-w-0 gap-3">
-                      <div className="pt-0.5">
-                        <PeopleGroupIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">
-                          Groups
-                        </div>
-                        <div className="mt-0.5">
-                          {(() => {
-                            const shownTags = displayGroupNames(
-                              creating ? (createDraft?.tags ?? []) : [],
-                              creating
-                                ? Boolean(createDraft?.exclude)
-                                : false,
-                            );
-                            if (shownTags.length === 0) {
-                              return (
-                                <span className="text-[13px] text-muted">
-                                  None
-                                </span>
-                              );
-                            }
-                            return (
-                              <div className="flex flex-col gap-0.5">
-                                {shownTags.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className={
-                                      tag === "Excluded"
-                                        ? "truncate text-[13px] font-semibold text-amber-400/90"
-                                        : "truncate text-[13px] text-text"
-                                    }
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex min-w-0 gap-3">
-                      <div className="pt-0.5">
-                        <PhoneIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">
-                          {(creating && createDraft
-                            ? createDraft.phones.filter((p) => p.trim()).length
-                            : 1) === 1
-                            ? "Phone"
-                            : "Phones"}
-                        </div>
-                        <div className="mt-0.5">
-                          {creating && createDraft ? (
-                            <ContactPhoneList
-                              phones={createDraft.phones}
-                              onChange={(phones) =>
-                                setCreateDraft({ ...createDraft, phones })
-                              }
-                            />
-                          ) : (
-                            <span className="truncate text-[13px] text-text">
-                              {selected.handle}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selected.dateStart && selected.dateEnd && (
-                    <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
-                      <div className="pt-0.5">
-                        <RangeIcon className="size-4 shrink-0 text-muted" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] tracking-wide text-muted">
-                          Message range
-                        </div>
-                        <div className="mt-0.5 text-[13px] text-text">
-                          {selected.dateStart === selected.dateEnd
-                            ? selected.dateStart
-                            : `${selected.dateStart} — ${selected.dateEnd}`}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ContactDetailsCard
+                formOpen={creating}
+                draft={createDraft}
+                onDraftChange={setCreateDraft}
+                tags={creating ? (createDraft?.tags ?? []) : []}
+                excluded={
+                  creating ? Boolean(createDraft?.exclude) : false
+                }
+                phonesView={selected ? [selected.handle] : []}
+                dateStart={selected.dateStart}
+                dateEnd={selected.dateEnd}
+              />
 
               <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-                {sources.length > 0 && (
-                  <div className="mb-5">
-                    <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                      Message Sources
-                    </h3>
-                    <div className="mt-2 flex flex-wrap items-start gap-x-0 gap-y-2">
-                      {[
-                        {
-                          id: null as string | null,
-                          label: "Combined",
-                          enabled: true,
-                          count: sourceCounts.all,
-                        },
-                        ...sources.map((id) => ({
-                          id,
-                          label: formatSourceLabel(id),
-                          enabled: messageSources.includes(id),
-                          count: sourceCounts.bySource[id] ?? 0,
-                        })),
-                      ].map((opt, i) => {
-                        const active =
-                          opt.id === null
-                            ? source === null
-                            : source === opt.id;
-                        const disabled = !opt.enabled;
-                        return (
-                          <span
-                            key={opt.id ?? "all"}
-                            className="flex items-start"
-                          >
-                            {i > 0 && (
-                              <span
-                                className="mx-2 pt-0.5 text-[13px] text-muted/50"
-                                aria-hidden
-                              >
-                                |
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => {
-                                if (disabled) return;
-                                setSource(opt.id);
-                              }}
-                              className={`flex min-w-0 flex-col items-start text-left ${
-                                disabled ? "cursor-default" : ""
-                              }`}
-                            >
-                              <span
-                                className={`text-[13px] font-medium ${
-                                  disabled
-                                    ? "text-muted/40"
-                                    : active
-                                      ? "text-accent"
-                                      : "text-text hover:text-accent"
-                                }`}
-                              >
-                                {opt.label}
-                              </span>
-                              <span className="mt-0.5 w-[6ch] text-[11px] tabular-nums text-muted">
-                                {opt.count.toLocaleString()}
-                              </span>
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  Yearly messages
-                </h3>
-                {loadingThreads ? (
-                  <p className="mt-2 text-[12px] text-muted">Loading…</p>
-                ) : yearly.length === 0 ? (
-                  <p className="mt-2 text-[12px] text-muted">
-                    No messages for this source
-                  </p>
-                ) : (
-                  <div className="mt-2 flex flex-wrap items-center gap-y-1.5">
-                    {yearly.map((y, i) => (
-                      <span key={y.year} className="flex items-center">
-                        {i > 0 && (
-                          <span
-                            className="mx-2 text-[13px] text-muted/50"
-                            aria-hidden
-                          >
-                            |
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => loadYear(y.year, y.conversationIds)}
-                          className={`text-[13px] font-medium ${
-                            activeYear === y.year
-                              ? "text-accent"
-                              : "text-text hover:text-accent"
-                          }`}
-                        >
-                          {y.year}
-                          <span className="ml-2 text-muted">
-                            {y.messageCount}
-                          </span>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <MessageSourcePicker
+                  sources={sources}
+                  messageSources={messageSources}
+                  sourceCounts={sourceCounts}
+                  source={source}
+                  onSourceChange={setSource}
+                />
+                <YearThreadPicker
+                  years={yearly}
+                  activeYear={activeYear}
+                  onSelect={(y) => loadYear(y.year, y.conversationIds)}
+                  emptyLabel="No messages for this source"
+                  loading={loadingThreads}
+                  showCounts
+                />
               </div>
             </>
           )}

@@ -1,8 +1,7 @@
-import { AppSidebar } from "@/components/AppSidebar";
+import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { BrowseShell } from "@/components/BrowseShell";
 import { listContacts, listTags, tagSlug } from "@/lib/db";
 import type { ContactSection } from "@/lib/types";
-import { Suspense } from "react";
 
 export function ContactBrowsePage({
   section,
@@ -21,21 +20,16 @@ export function ContactBrowsePage({
     typeof section === "object" ? `tag-${tagSlug(section.tag)}` : section;
 
   return (
-    <div className="flex h-full min-h-0">
-      <AppSidebar active={nav} tags={tags} />
-      <div className="min-h-0 min-w-0 flex-1">
-        <Suspense fallback={<div className="p-4 text-sm text-muted">Loading…</div>}>
-          <BrowseShell
-            section={paneKey}
-            sectionLabel={label}
-            browseSection={section}
-            contacts={contacts}
-            allTags={tags}
-            initialContactId={contactId}
-          />
-        </Suspense>
-      </div>
-    </div>
+    <BrowsePageLayout active={nav} tags={tags}>
+      <BrowseShell
+        section={paneKey}
+        sectionLabel={label}
+        browseSection={section}
+        contacts={contacts}
+        allTags={tags}
+        initialContactId={contactId}
+      />
+    </BrowsePageLayout>
   );
 }
 
