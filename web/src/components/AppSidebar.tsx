@@ -730,9 +730,9 @@ export function AppSidebar({
             icon={groupIcon}
           />
           <NavLink
-            href="/unassigned/trash"
+            href="/trash"
             label="Trash"
-            active={active === "/unassigned/trash"}
+            active={active === "/trash"}
             icon={<TrashIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 
