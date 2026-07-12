@@ -536,10 +536,16 @@ export function AppSidebar({
             </span>
           </div>
           <NavLink
+            href="/contacts"
+            label="Contacts"
+            active={active === "/contacts"}
+            icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+          <NavLink
             href="/all"
             label="All"
             active={active === "/all"}
-            icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<PersonDetailIcon className="size-3.5 shrink-0 opacity-80" />}
           />
           <NavLink
             href="/no-messages"

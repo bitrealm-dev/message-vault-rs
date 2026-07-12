@@ -159,3 +159,9 @@ cd web && npm run process-assets && npm run dev
 ```
 
 Use the **Source** dropdown in the sidebar for a single source or **All (combined)** person threads.
+
+Contact browsing:
+
+- **Contacts** — everyone with messages who is not excluded (`exclude=false` in `config/contacts.csv`). Derived as All − Excluded; you only manage the `exclude` column.
+- **All** — every contact with messages, including excluded.
+- **Excluded** — `exclude=true`. Still browsable; hidden from Contacts and from groups.

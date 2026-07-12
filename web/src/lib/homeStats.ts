@@ -7,6 +7,7 @@ import type { HomeStats } from "./types";
 export function homeStats(): HomeStats {
   const db = getDb();
   return {
+    included: countContacts("contacts"),
     all: countContacts("all"),
     excluded: countContacts("excluded"),
     noMessages: countContacts("no-messages"),

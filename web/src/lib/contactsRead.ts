@@ -80,12 +80,21 @@ function sectionQueryBody(
     };
   }
   switch (section) {
-    case "all":
+    case "contacts":
+      // Innate set: All − Excluded (manage exclude only; this is derived).
       return {
         fromWhere: `
           FROM contacts c
           WHERE c.exclude = 0
             AND ${CONTACT_HAS_MESSAGES_SQL}
+        `,
+        params: [],
+      };
+    case "all":
+      return {
+        fromWhere: `
+          FROM contacts c
+          WHERE ${CONTACT_HAS_MESSAGES_SQL}
         `,
         params: [],
       };

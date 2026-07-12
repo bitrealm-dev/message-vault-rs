@@ -33,6 +33,18 @@ The sidebar **Source** dropdown lists configured sources from `config/config.tom
 - A single source shows every message from that archive.
 - **All (combined)** merges person threads and hides soft-deduped copies (`duplicate_of`).
 
+## Contact sections
+
+Manage visibility with the `exclude` column in `config/contacts.csv` only:
+
+| Section | Meaning |
+|---------|---------|
+| **Contacts** | Non-excluded contacts with messages (All − Excluded) |
+| **All** | Every contact with messages, including excluded |
+| **Excluded** | `exclude=true` |
+
+Groups and No group list only non-excluded contacts.
+
 ## Notes
 
 - Paths and DB location are read from the repo-root `config/config.toml`.

@@ -153,12 +153,12 @@ export function BrowseShell({
     [excludeOverrides],
   );
 
-  /** Excluded contacts stay out of All / groups; No messages may include them. */
+  /** Excluded stay out of Contacts / groups; All and No messages may include them. */
   const visibleContacts = useMemo(() => {
     if (contactSection === "excluded") {
       return contacts.filter((c) => isContactExcluded(c));
     }
-    if (contactSection === "no-messages") {
+    if (contactSection === "all" || contactSection === "no-messages") {
       return contacts;
     }
     return contacts.filter((c) => !isContactExcluded(c));

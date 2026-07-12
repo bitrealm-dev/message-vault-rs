@@ -201,12 +201,10 @@ fn apply_filters(contact: &mut ContactOut, filters: &HashMap<String, String>) {
             "girls" | "dating" | "dated" => {
                 push_tag(&mut contact.tags, "Girls");
             }
-            "historical" => {
-                push_tag(&mut contact.tags, "Historical");
-            }
+            // Legacy filter categories: visibility is exclude only (no Current/Historical groups).
+            "historical" => {}
             "historical-exclude" => {
                 contact.exclude = true;
-                push_tag(&mut contact.tags, "Historical");
             }
             other => {
                 let tag = normalize_tag(other);

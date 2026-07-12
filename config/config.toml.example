@@ -4,6 +4,7 @@
 #   cp config/blacklist.csv.example config/blacklist.csv
 #
 # Real config/contacts/blacklist files are gitignored.
+# contacts.csv: set exclude=true to hide from Contacts/groups (All still lists them).
 
 [owner]
 display_name = "Your Name"

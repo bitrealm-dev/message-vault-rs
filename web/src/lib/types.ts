@@ -1,4 +1,5 @@
 export type ContactSection =
+  | "contacts"
   | "all"
   | "excluded"
   | "no-messages"
@@ -102,11 +103,15 @@ export type UnassignedHandle = {
 };
 
 export type HomeStats = {
+  /** Non-excluded contacts with messages (`/contacts`). */
+  included: number;
+  /** All contacts with messages, including excluded (`/all`). */
   all: number;
   excluded: number;
   noMessages: number;
   unassigned: number;
   groupChats: number;
   messages: number;
+  /** Total contact rows in the DB. */
   contacts: number;
 };

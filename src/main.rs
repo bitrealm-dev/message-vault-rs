@@ -175,7 +175,7 @@ enum Commands {
         #[arg(long)]
         blacklist: Option<PathBuf>,
 
-        /// Optional message-vault filter-people.csv (sets Historical group / exclude / groups)
+        /// Optional message-vault filter-people.csv (sets exclude / groups)
         #[arg(long)]
         filter_people: Option<PathBuf>,
 

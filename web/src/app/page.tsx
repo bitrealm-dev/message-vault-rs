@@ -9,7 +9,8 @@ export default function HomePage() {
   const groups = listGroups();
 
   const cards = [
-    { href: "/all", label: "All Contacts", value: stats.all },
+    { href: "/contacts", label: "Contacts", value: stats.included },
+    { href: "/all", label: "All", value: stats.all },
     { href: "/excluded", label: "Excluded", value: stats.excluded },
     { href: "/no-messages", label: "No Messages", value: stats.noMessages },
     { href: "/unassigned", label: "Unassigned", value: stats.unassigned },
