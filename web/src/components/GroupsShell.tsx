@@ -40,24 +40,103 @@ function formatGroupDate(isoDate: string, style: GroupDateFormat): string {
   const monthNum = Number(m[2]);
   const dayNum = Number(m[3]);
   const mon = MONTH_SHORT[monthNum - 1] ?? m[2];
+  // Pad day so every date string is a fixed character width (monospace cell).
+  const day = String(dayNum).padStart(2, "0");
   switch (style) {
     case "mon-d":
-      return `${mon} ${dayNum}, ${year}`;
+      // "Sep 30, 2025" = 12 chars
+      return `${mon} ${day}, ${year}`;
     case "d-mon":
-      return `${dayNum} ${mon} ${year}`;
+      // "30 Sep 2025" = 11 chars
+      return `${day} ${mon} ${year}`;
     case "md":
     default:
+      // "09-30-2025" = 10 chars
       return `${m[2]}-${m[3]}-${year}`;
   }
 }
 
-function groupDateMeta(
-  g: { dateStart: string; dateEnd: string },
-  style: GroupDateFormat,
-): string {
+function dateColClass(style: GroupDateFormat): string {
+  switch (style) {
+    case "mon-d":
+      return "inline-block w-[13ch] whitespace-nowrap";
+    case "d-mon":
+      return "inline-block w-[12ch] whitespace-nowrap";
+    case "md":
+    default:
+      return "inline-block w-[11ch] whitespace-nowrap";
+  }
+}
+
+/** Width of year range block: start + dash gap + end (matches full range rows). */
+function rangeBlockClass(style: GroupDateFormat): string {
+  switch (style) {
+    case "mon-d":
+      return "inline-flex w-[calc(13ch+0.5rem+13ch)] flex-nowrap items-center justify-center whitespace-nowrap";
+    case "d-mon":
+      return "inline-flex w-[calc(12ch+0.5rem+12ch)] flex-nowrap items-center justify-center whitespace-nowrap";
+    case "md":
+    default:
+      return "inline-flex w-[calc(11ch+0.5rem+11ch)] flex-nowrap items-center justify-center whitespace-nowrap";
+  }
+}
+
+function GroupDateCell({
+  g,
+  style,
+}: {
+  g: {
+    dateStart: string;
+    dateEnd: string;
+    conversationDateStart: string;
+  };
+  style: GroupDateFormat;
+}) {
+  const threadStart = formatGroupDate(g.conversationDateStart, style);
   const start = formatGroupDate(g.dateStart, style);
-  if (g.dateEnd === g.dateStart) return start;
-  return `${start} – ${formatGroupDate(g.dateEnd, style)}`;
+  const end = formatGroupDate(g.dateEnd, style);
+  const same = g.dateEnd === g.dateStart;
+  const dateCol = dateColClass(style);
+
+  return (
+    <span className="inline-flex shrink-0 items-center whitespace-nowrap font-mono text-[11px] leading-none text-muted">
+      <span className={`${dateCol} text-left`} title="Thread started">
+        {threadStart}
+      </span>
+      <span className="mx-2 inline-block w-px self-stretch bg-border/80" aria-hidden />
+      <span className={rangeBlockClass(style)}>
+        <span className={dateCol}>{start}</span>
+        {same ? (
+          <>
+            <span className="mx-1 invisible" aria-hidden>
+              –
+            </span>
+            <span className={`${dateCol} invisible`} aria-hidden>
+              {start}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="mx-1 inline-block" aria-hidden>
+              –
+            </span>
+            <span className={dateCol}>{end}</span>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
+function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
+  const dateCol = dateColClass(style);
+  return (
+    <span className="inline-flex shrink-0 items-center font-mono text-[10px] leading-none tracking-wide text-muted uppercase">
+      <span className={`${dateCol} text-left`}>Started</span>
+      <span className="mx-2 inline-block w-px" aria-hidden />
+      <span className={rangeBlockClass(style)}>Range</span>
+    </span>
+  );
 }
 
 function readStoredGroupDateFormat(): GroupDateFormat {
@@ -561,31 +640,31 @@ export function GroupsShell({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {mode === "groups" && canAct && (
+                {mode === "groups" && (
                   <button
                     type="button"
-                    disabled={saving}
+                    disabled={!canAct}
                     onClick={() => void moveToTrash()}
-                    className="rounded-md border border-border bg-elevated px-2 py-1 text-[12px] text-text hover:bg-white/10 disabled:opacity-50"
+                    className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
                   >
                     Delete
                   </button>
                 )}
-                {mode === "trash" && canAct && (
+                {mode === "trash" && (
                   <>
                     <button
                       type="button"
-                      disabled={saving}
+                      disabled={!canAct}
                       onClick={() => void restoreFromTrash()}
-                      className="rounded-md border border-border bg-elevated px-2 py-1 text-[12px] text-text hover:bg-white/10 disabled:opacity-50"
+                      className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-white/12 hover:text-text disabled:pointer-events-none disabled:opacity-40"
                     >
                       Undelete
                     </button>
                     <button
                       type="button"
-                      disabled={saving}
+                      disabled={!canAct}
                       onClick={() => void permanentlyDeleteFromTrash()}
-                      className="rounded-md border border-border bg-elevated px-2 py-1 text-[12px] text-text hover:bg-white/10 disabled:opacity-50"
+                      className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
                     >
                       Delete permanently
                     </button>
@@ -644,17 +723,18 @@ export function GroupsShell({
                 No matching groups
               </p>
             ) : (
-              rowsByYear.map(([year, items], yearIdx) => (
+              rowsByYear.map(([year, items]) => (
                 <div key={year} id={`group-year-${year}`} className="pb-6">
-                  <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-bg px-5 py-1.5">
-                    <div className="text-[13px] font-semibold text-text">
-                      {year}
-                    </div>
-                    {yearIdx === 0 && (
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-bg py-1.5 pr-5 pl-5">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <div className="text-[13px] font-semibold text-text">
+                        {year}
+                      </div>
                       <span className="text-[11px] text-muted">
                         {items.length} group{items.length === 1 ? "" : "s"}
                       </span>
-                    )}
+                    </div>
+                    <GroupDateHeadings style={groupDateFormat} />
                   </div>
                   <ul className="divide-y divide-border/50 border-b border-border/50">
                     {items.map((g) => {
@@ -728,20 +808,7 @@ export function GroupsShell({
                                   {g.messageCount} msgs
                                 </span>
                               </span>
-                              <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-[11px] text-muted tabular-nums">
-                                {g.spansMultipleYears && (
-                                  <span
-                                    title="Spans multiple years"
-                                    aria-label="Spans multiple years"
-                                    className="text-muted"
-                                  >
-                                    ↔
-                                  </span>
-                                )}
-                                <span>
-                                  {groupDateMeta(g, groupDateFormat)}
-                                </span>
-                              </span>
+                              <GroupDateCell g={g} style={groupDateFormat} />
                             </button>
                           </div>
                         </li>
@@ -839,7 +906,7 @@ export function GroupsShell({
           {mode === "groups" ? (
             <button
               type="button"
-              className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+              className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
               onClick={() => void moveToTrash(ctxMenu.conversationId)}
             >
               Delete
@@ -855,7 +922,7 @@ export function GroupsShell({
               </button>
               <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                 onClick={() =>
                   void permanentlyDeleteFromTrash(ctxMenu.conversationId)
                 }
