@@ -1,0 +1,508 @@
+import { loadOwner } from "./config";
+import {
+  combinedDedupeSql,
+  getDb,
+  hasDuplicateOfColumn,
+  hasTrashedConversationsTable,
+  resetDb,
+  usefulNameHint,
+} from "./dbCore";
+import type { GroupThread, GroupYearRow } from "./types";
+
+const MAX_VISIBLE_NAMES = 8;
+
+function isGenericGroupTitle(title: string | null | undefined): boolean {
+  if (!title) return true;
+  const t = title.trim();
+  if (!t) return true;
+  // iMessage chat identifiers look like chat31771234567890...
+  if (/^chat\d+/i.test(t)) return true;
+  return false;
+}
+
+function participantLabel(row: {
+  first_name: string | null;
+  last_name: string | null;
+  name_hint: string | null;
+  handle: string;
+}): { name: string; unknown: boolean } {
+  const first = row.first_name?.trim() ?? "";
+  const last = row.last_name?.trim() ?? "";
+  const full = `${first} ${last}`.trim();
+  if (full) return { name: full, unknown: false };
+  const hint = usefulNameHint(row.name_hint, row.handle);
+  if (hint) return { name: hint, unknown: false };
+  return { name: row.handle, unknown: true };
+}
+
+function formatPeopleTitle(
+  labels: Array<{ name: string; unknown: boolean }>,
+): {
+  short: string;
+  full: string;
+  count: number;
+} {
+  const seen = new Set<string>();
+  const unique: Array<{ name: string; unknown: boolean }> = [];
+  for (const label of labels) {
+    if (!label.name || seen.has(label.name)) continue;
+    seen.add(label.name);
+    unique.push(label);
+  }
+
+  unique.sort((a, b) => {
+    if (a.unknown !== b.unknown) return a.unknown ? 1 : -1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+
+  const names = unique.map((l) => l.name);
+  const sep = "\u00a0\u00a0·\u00a0\u00a0";
+  const full = names.join(sep);
+  if (names.length === 0) {
+    return { short: "Group chat", full: "Group chat", count: 0 };
+  }
+  if (names.length <= MAX_VISIBLE_NAMES) {
+    return { short: full, full, count: names.length };
+  }
+  const shown = names.slice(0, MAX_VISIBLE_NAMES).join(sep);
+  return {
+    short: `${shown}\u00a0\u00a0+${names.length - MAX_VISIBLE_NAMES}`,
+    full,
+    count: names.length,
+  };
+}
+
+type GroupPeopleTitle = {
+  title: string;
+  titleFull: string;
+  namedTitle: string | null;
+  participantCount: number;
+  participantNames: string[];
+  participantHandles: string[];
+};
+
+/** Resolve people labels for group conversations, excluding owner (+ optional focus contact). */
+function groupPeopleTitles(
+  conversationIds: number[],
+  excludePhones: string[] = [],
+): Map<number, GroupPeopleTitle> {
+  const out = new Map<number, GroupPeopleTitle>();
+  if (!conversationIds.length) return out;
+
+  const db = getDb();
+  const owner = loadOwner();
+  const exclude = new Set(
+    [owner.phone_e164, ...excludePhones].filter(Boolean).map((p) => p.trim()),
+  );
+
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const meta = db
+    .prepare(
+      `SELECT id, group_title FROM conversations WHERE id IN (${placeholders})`,
+    )
+    .all(...conversationIds) as Array<{ id: number; group_title: string | null }>;
+  const namedById = new Map(
+    meta.map((r) => [
+      r.id,
+      isGenericGroupTitle(r.group_title) ? null : (r.group_title?.trim() ?? null),
+    ]),
+  );
+
+  const rows = db
+    .prepare(
+      `SELECT p.conversation_id, p.handle, p.name_hint,
+              c.first_name, c.last_name
+       FROM participants p
+       LEFT JOIN contact_phones cp ON cp.phone_e164 = p.handle
+       LEFT JOIN contacts c ON c.id = cp.contact_id
+       WHERE p.conversation_id IN (${placeholders})`,
+    )
+    .all(...conversationIds) as Array<{
+    conversation_id: number;
+    handle: string;
+    name_hint: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  }>;
+
+  const byConv = new Map<
+    number,
+    Array<{ name: string; unknown: boolean; handle: string }>
+  >();
+  for (const r of rows) {
+    const handle = r.handle.trim();
+    if (exclude.has(handle)) continue;
+    const list = byConv.get(r.conversation_id) ?? [];
+    list.push({ ...participantLabel(r), handle });
+    byConv.set(r.conversation_id, list);
+  }
+
+  for (const id of conversationIds) {
+    const entries = byConv.get(id) ?? [];
+    const people = formatPeopleTitle(entries);
+    const namedTitle = namedById.get(id) ?? null;
+    const nameSeen = new Set<string>();
+    const participantNames: string[] = [];
+    const handleSeen = new Set<string>();
+    const participantHandles: string[] = [];
+    for (const e of entries) {
+      if (e.name && !nameSeen.has(e.name)) {
+        nameSeen.add(e.name);
+        participantNames.push(e.name);
+      }
+      if (e.handle && !handleSeen.has(e.handle)) {
+        handleSeen.add(e.handle);
+        participantHandles.push(e.handle);
+      }
+    }
+    out.set(id, {
+      title: people.short,
+      titleFull: namedTitle ? `${namedTitle}\n${people.full}` : people.full,
+      namedTitle,
+      participantCount: people.count,
+      participantNames,
+      participantHandles,
+    });
+  }
+  return out;
+}
+
+export function contactGroupThreadsForPhones(
+  phones: string[],
+  source?: string | null,
+): GroupThread[] {
+  if (!phones.length) return [];
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  const sourceSql = source ? " AND m.source = ?" : "";
+  const params: Array<string | number> = [...phones];
+  if (source) params.push(source);
+  const hasTrash = hasTrashedConversationsTable(db);
+  const trashFilter = hasTrash
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+       )`
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT c.id AS conversation_id,
+              CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
+              COUNT(*) AS message_count,
+              MIN(substr(m.timestamp, 1, 10)) AS date_start,
+              MAX(substr(m.timestamp, 1, 10)) AS date_end
+       FROM conversations c
+       JOIN messages m ON m.conversation_id = c.id
+       WHERE c.conv_type = 'group'
+         AND EXISTS (
+           SELECT 1 FROM participants p
+           WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
+         )${trashFilter}${sourceSql}${combinedDedupeSql(source, "m")}
+       GROUP BY c.id, year
+       HAVING message_count > 0
+       ORDER BY year DESC, c.id`,
+    )
+    .all(...params) as Array<{
+    conversation_id: number;
+    year: number;
+    message_count: number;
+    date_start: string;
+    date_end: string;
+  }>;
+
+  const conversationIds = [...new Set(rows.map((r) => r.conversation_id))];
+  const titles = groupPeopleTitles(conversationIds, phones);
+  const fingerprints = groupParticipantFingerprints(conversationIds);
+
+  const mapped = rows.map((r) => {
+    const t = titles.get(r.conversation_id) ?? {
+      title: "Group chat",
+      titleFull: "Group chat",
+      namedTitle: null,
+      participantCount: 0,
+      participantNames: [] as string[],
+      participantHandles: [] as string[],
+    };
+    return {
+      conversationId: r.conversation_id,
+      conversationIds: [r.conversation_id],
+      title: t.title,
+      titleFull: t.titleFull,
+      namedTitle: t.namedTitle,
+      participantCount: t.participantCount,
+      year: r.year,
+      messageCount: r.message_count,
+      dateStart: r.date_start,
+      dateEnd: r.date_end,
+      fingerprint: fingerprints.get(r.conversation_id) ?? `id:${r.conversation_id}`,
+    };
+  });
+
+  // Combined view: collapse the same people across exporters into one row.
+  if (source) {
+    return mapped.map(({ fingerprint: _fp, ...rest }) => rest);
+  }
+
+  const byKey = new Map<string, (typeof mapped)[number]>();
+  for (const row of mapped) {
+    const key = `${row.year}|${row.fingerprint}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...row, conversationIds: [...row.conversationIds] });
+      continue;
+    }
+    for (const id of row.conversationIds) {
+      if (!existing.conversationIds.includes(id)) {
+        existing.conversationIds.push(id);
+      }
+    }
+    existing.messageCount += row.messageCount;
+    if (row.dateStart < existing.dateStart) existing.dateStart = row.dateStart;
+    if (row.dateEnd > existing.dateEnd) existing.dateEnd = row.dateEnd;
+    if (row.participantCount > existing.participantCount) {
+      existing.participantCount = row.participantCount;
+      existing.title = row.title;
+      existing.titleFull = row.titleFull;
+      existing.namedTitle = row.namedTitle;
+    }
+  }
+
+  // Recount soft-deduped messages across merged conversation ids so we don't
+  // sum pre-dedupe copies when duplicate_of is not yet set / partially set.
+  const merged = [...byKey.values()].map(({ fingerprint: _fp, ...rest }) => {
+    if (rest.conversationIds.length === 1) return rest;
+    const stats = groupYearStatsForConversations(
+      rest.conversationIds,
+      rest.year,
+      source,
+    );
+    return {
+      ...rest,
+      conversationId: rest.conversationIds[0]!,
+      messageCount: stats.messageCount,
+      dateStart: stats.dateStart || rest.dateStart,
+      dateEnd: stats.dateEnd || rest.dateEnd,
+    };
+  });
+
+  merged.sort((a, b) => b.year - a.year || a.conversationId - b.conversationId);
+  return merged;
+}
+
+function groupParticipantFingerprints(
+  conversationIds: number[],
+): Map<number, string> {
+  const out = new Map<number, string>();
+  if (!conversationIds.length) return out;
+  const db = getDb();
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT conversation_id, handle
+       FROM participants
+       WHERE conversation_id IN (${placeholders})
+         AND handle IS NOT NULL AND handle != ''
+       ORDER BY conversation_id, handle`,
+    )
+    .all(...conversationIds) as Array<{ conversation_id: number; handle: string }>;
+  const byConv = new Map<number, string[]>();
+  for (const r of rows) {
+    const list = byConv.get(r.conversation_id) ?? [];
+    list.push(r.handle.trim());
+    byConv.set(r.conversation_id, list);
+  }
+  for (const id of conversationIds) {
+    const handles = [...new Set(byConv.get(id) ?? [])].sort();
+    out.set(id, handles.length ? `group:${handles.join("|")}` : `id:${id}`);
+  }
+  return out;
+}
+
+function groupYearStatsForConversations(
+  conversationIds: number[],
+  year: number,
+  source?: string | null,
+): { messageCount: number; dateStart: string; dateEnd: string } {
+  const db = getDb();
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const sourceSql = source ? " AND source = ?" : "";
+  const params: Array<string | number> = [
+    ...conversationIds,
+    `${year}-`,
+    `${year + 1}-`,
+  ];
+  if (source) params.push(source);
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS message_count,
+              MIN(substr(timestamp, 1, 10)) AS date_start,
+              MAX(substr(timestamp, 1, 10)) AS date_end
+       FROM messages
+       WHERE conversation_id IN (${placeholders})
+         AND timestamp >= ? AND timestamp < ?${sourceSql}${combinedDedupeSql(source)}`,
+    )
+    .get(...params) as {
+    message_count: number;
+    date_start: string | null;
+    date_end: string | null;
+  };
+  return {
+    messageCount: row.message_count,
+    dateStart: row.date_start ?? "",
+    dateEnd: row.date_end ?? "",
+  };
+}
+
+/** Group chats split by calendar year for the Groups page list. */
+export function listGroupYearRows(): GroupYearRow[] {
+  // Re-open after API writes (trash/restore) so RSC sees committed rows.
+  resetDb();
+  return listGroupYearRowsSection("active");
+}
+
+/** Trashed group chats split by calendar year. */
+export function listTrashedGroupYearRows(): GroupYearRow[] {
+  resetDb();
+  return listGroupYearRowsSection("trash");
+}
+
+
+
+function listGroupYearRowsSection(
+  section: "active" | "trash",
+): GroupYearRow[] {
+  const db = getDb();
+  const joinDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const hasTrash = hasTrashedConversationsTable(db);
+  if (section === "trash" && !hasTrash) return [];
+
+  const trashFilter = !hasTrash
+    ? ""
+    : section === "trash"
+      ? `AND EXISTS (
+           SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+         )`
+      : `AND NOT EXISTS (
+           SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+         )`;
+
+  const rows = db
+    .prepare(
+      `SELECT c.id,
+              CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
+              COUNT(m.id) AS message_count,
+              MIN(substr(m.timestamp, 1, 10)) AS date_start,
+              MAX(substr(m.timestamp, 1, 10)) AS date_end
+       FROM conversations c
+       JOIN messages m ON m.conversation_id = c.id${joinDupes}
+       WHERE c.conv_type = 'group'
+         ${trashFilter}
+       GROUP BY c.id, year
+       HAVING message_count > 0`,
+    )
+    .all() as Array<{
+    id: number;
+    year: number;
+    message_count: number;
+    date_start: string;
+    date_end: string;
+  }>;
+
+  if (!rows.length) return [];
+
+  const conversationIds = [...new Set(rows.map((r) => r.id))];
+  const titles = groupPeopleTitles(conversationIds);
+
+  const yearsByConv = new Map<number, Set<number>>();
+  const rangeByConv = new Map<
+    number,
+    { dateStart: string; dateEnd: string }
+  >();
+  for (const r of rows) {
+    const years = yearsByConv.get(r.id) ?? new Set<number>();
+    years.add(r.year);
+    yearsByConv.set(r.id, years);
+
+    const range = rangeByConv.get(r.id);
+    if (!range) {
+      rangeByConv.set(r.id, {
+        dateStart: r.date_start,
+        dateEnd: r.date_end,
+      });
+    } else {
+      if (r.date_start < range.dateStart) range.dateStart = r.date_start;
+      if (r.date_end > range.dateEnd) range.dateEnd = r.date_end;
+    }
+  }
+
+  const emptyTitle = {
+    title: "Group chat",
+    titleFull: "Group chat",
+    namedTitle: null as string | null,
+    participantCount: 0,
+    participantNames: [] as string[],
+    participantHandles: [] as string[],
+  };
+
+  const items: GroupYearRow[] = rows.map((r) => {
+    const t = titles.get(r.id) ?? emptyTitle;
+    const range = rangeByConv.get(r.id)!;
+    const yearCount = yearsByConv.get(r.id)?.size ?? 1;
+    return {
+      id: r.id,
+      year: r.year,
+      title: t.title,
+      titleFull: t.titleFull,
+      namedTitle: t.namedTitle,
+      participantCount: t.participantCount,
+      participantNames: t.participantNames,
+      participantHandles: t.participantHandles,
+      messageCount: r.message_count,
+      dateStart: r.date_start,
+      dateEnd: r.date_end,
+      conversationDateStart: range.dateStart,
+      conversationDateEnd: range.dateEnd,
+      spansMultipleYears: yearCount > 1,
+    };
+  });
+
+  items.sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    const byEnd = b.dateEnd.localeCompare(a.dateEnd);
+    if (byEnd !== 0) return byEnd;
+    const byStart = b.dateStart.localeCompare(a.dateStart);
+    if (byStart !== 0) return byStart;
+    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+  });
+  return items;
+}
+
+
+export function countGroupChats(): number {
+  const db = getDb();
+  const hasTrash = hasTrashedConversationsTable(db);
+  const trashFilter = hasTrash
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+       )`
+    : "";
+  const joinDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const groupsRow = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT c.id
+         FROM conversations c
+         LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
+         WHERE c.conv_type = 'group'
+           ${trashFilter}
+         GROUP BY c.id
+         HAVING COUNT(m.id) > 0
+       )`,
+    )
+    .get() as { n: number };
+  return groupsRow.n;
+}
+

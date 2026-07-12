@@ -1,0 +1,508 @@
+import {
+  combinedDedupeSql,
+  displayName,
+  getDb,
+  hasDuplicateOfColumn,
+  sortFields,
+} from "./dbCore";
+import { groupSlug } from "./groupSlug";
+import { contactGroupThreadsForPhones } from "./groupChatsRead";
+import { RESERVED_GROUP_NAMES } from "./reservedGroups";
+import type {
+  ContactDetail,
+  ContactListItem,
+  ContactSection,
+  GroupThread,
+  YearThread,
+} from "./types";
+
+/** Contact groups (GUI "Groups"). Stored in SQLite `tags` / `contact_tags`. */
+export function listGroups(): string[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT name FROM tags
+       ORDER BY name COLLATE NOCASE`,
+    )
+    .all() as Array<{ name: string }>;
+  return rows
+    .map((r) => r.name)
+    .filter((name) => !RESERVED_GROUP_NAMES.has(name.trim().toLowerCase()));
+}
+
+export function groupFromSlug(slug: string): string | null {
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized) return null;
+  for (const name of listGroups()) {
+    if (groupSlug(name) === normalized) return name;
+  }
+  return null;
+}
+
+const CONTACT_HAS_MESSAGES_SQL = `
+  EXISTS (
+    SELECT 1
+    FROM contact_phones cp
+    WHERE cp.contact_id = c.id
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM conversations cv
+          JOIN messages m ON m.conversation_id = cv.id
+          WHERE cv.conv_type = 'individual'
+            AND cv.chat_identifier = cp.phone_e164
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM participants p
+          JOIN messages m ON m.conversation_id = p.conversation_id
+          WHERE p.handle = cp.phone_e164
+        )
+      )
+  )
+`;
+
+function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
+  if (typeof section === "object" && "group" in section) {
+    // Exclude and no-messages override groups: those contacts only appear under
+    // their implicit sections.
+    return {
+      sql: `
+        SELECT DISTINCT c.*
+        FROM contacts c
+        JOIN contact_tags ct ON ct.contact_id = c.id
+        JOIN tags t ON t.id = ct.tag_id AND t.name = ?
+        WHERE c.exclude = 0
+          AND ${CONTACT_HAS_MESSAGES_SQL}
+      `,
+      params: [section.group],
+    };
+  }
+  switch (section) {
+    case "all":
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.exclude = 0
+            AND ${CONTACT_HAS_MESSAGES_SQL}
+        `,
+        params: [],
+      };
+    case "excluded":
+      // Excluded overrides no-messages: all excluded contacts live here.
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.exclude = 1
+        `,
+        params: [],
+      };
+    case "no-messages":
+      // Includes excluded contacts with no messages (they also appear under Excluded).
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE NOT (${CONTACT_HAS_MESSAGES_SQL})
+        `,
+        params: [],
+      };
+    case "no-group":
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE c.exclude = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM contact_tags ct WHERE ct.contact_id = c.id
+            )
+            AND ${CONTACT_HAS_MESSAGES_SQL}
+        `,
+        params: [],
+      };
+  }
+}
+
+export function listContacts(section: ContactSection): ContactListItem[] {
+  const db = getDb();
+  const { sql, params } = sectionSql(section);
+  const rows = db.prepare(sql).all(...params) as Array<{
+    id: number;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_phone: string | null;
+    exclude: number;
+  }>;
+
+  const tagRows = db
+    .prepare(
+      `SELECT ct.contact_id AS contact_id, t.name AS name
+       FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tag_id
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all() as Array<{ contact_id: number; name: string }>;
+  const tagsByContact = new Map<number, string[]>();
+  for (const row of tagRows) {
+    const list = tagsByContact.get(row.contact_id);
+    if (list) list.push(row.name);
+    else tagsByContact.set(row.contact_id, [row.name]);
+  }
+
+  const messageCounts = contactMessageCountsById(rows.map((r) => r.id));
+
+  return rows
+    .map((row) => {
+      const name = displayName(row);
+      const sorts = sortFields(row);
+      return {
+        id: row.id,
+        displayName: name,
+        preferredPhone: row.preferred_phone,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        groups: tagsByContact.get(row.id) ?? [],
+        exclude: row.exclude !== 0,
+        messageCount: messageCounts.get(row.id) ?? 0,
+        ...sorts,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" }) ||
+        a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" }),
+    );
+}
+
+export function getContact(id: number): ContactDetail | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT id, first_name, last_name, exclude, preferred_phone
+       FROM contacts WHERE id = ?`,
+    )
+    .get(id) as
+    | {
+        id: number;
+        first_name: string | null;
+        last_name: string | null;
+        exclude: number;
+        preferred_phone: string | null;
+      }
+    | undefined;
+  if (!row) return null;
+
+  const phones = db
+    .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ? ORDER BY phone_e164`)
+    .all(id) as Array<{ phone_e164: string }>;
+
+  const groups = db
+    .prepare(
+      `SELECT t.name FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tag_id
+       WHERE ct.contact_id = ?
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all(id) as Array<{ name: string }>;
+
+  const phoneList = phones.map((p) => p.phone_e164);
+  const dateRange = contactDateRange(phoneList);
+  const messageCount = contactMessageSourceCountsForConversations(
+    contactIndividualConversationIds(phoneList),
+  ).all;
+
+  const sorts = sortFields(row);
+  return {
+    id: row.id,
+    displayName: displayName(row),
+    preferredPhone: row.preferred_phone,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    exclude: row.exclude !== 0,
+    groups: groups.map((t) => t.name),
+    phones: phoneList,
+    dateStart: dateRange?.start ?? null,
+    dateEnd: dateRange?.end ?? null,
+    messageCount,
+    ...sorts,
+  };
+}
+
+function contactDateRange(
+  phones: string[],
+): { start: string; end: string } | null {
+  if (!phones.length) return null;
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const row = db
+    .prepare(
+      `SELECT MIN(substr(m.timestamp, 1, 10)) AS start, MAX(substr(m.timestamp, 1, 10)) AS end
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.conv_type = 'individual'
+         AND c.chat_identifier IN (${placeholders})${hideDupes}`,
+    )
+    .get(...phones) as { start: string | null; end: string | null } | undefined;
+  if (!row?.start || !row?.end) return null;
+  return { start: row.start, end: row.end };
+}
+
+function contactPhones(contactId: number): string[] {
+  const db = getDb();
+  return (
+    db
+      .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ?`)
+      .all(contactId) as Array<{ phone_e164: string }>
+  ).map((r) => r.phone_e164);
+}
+
+function contactIndividualConversationIds(phones: string[]): number[] {
+  if (!phones.length) return [];
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  return (
+    db
+      .prepare(
+        `SELECT id FROM conversations
+         WHERE conv_type = 'individual' AND chat_identifier IN (${placeholders})`,
+      )
+      .all(...phones) as Array<{ id: number }>
+  ).map((r) => r.id);
+}
+
+function contactConversationIds(phones: string[]): number[] {
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  const individual = contactIndividualConversationIds(phones);
+  const groups = db
+    .prepare(
+      `SELECT DISTINCT c.id AS id
+       FROM conversations c
+       JOIN participants p ON p.conversation_id = c.id
+       WHERE c.conv_type = 'group' AND p.handle IN (${placeholders})`,
+    )
+    .all(...phones) as Array<{ id: number }>;
+  const ids = new Set<number>(individual);
+  for (const r of groups) ids.add(r.id);
+  return [...ids];
+}
+
+export type ContactSourceCounts = {
+  /** Soft-deduped 1:1 total (Combined view). Group chats are listed separately. */
+  all: number;
+  /** Per-source 1:1 totals (single-source view; includes soft-hidden copies). */
+  bySource: Record<string, number>;
+};
+
+export function contactMessageSourceCountsForConversations(
+  conversationIds: number[],
+): ContactSourceCounts {
+  if (!conversationIds.length) {
+    return { all: 0, bySource: {} };
+  }
+  const db = getDb();
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const bySource: Record<string, number> = {};
+  const sourceRows = db
+    .prepare(
+      `SELECT source, COUNT(*) AS n
+       FROM messages
+       WHERE conversation_id IN (${placeholders})
+       GROUP BY source`,
+    )
+    .all(...conversationIds) as Array<{ source: string; n: number }>;
+  for (const r of sourceRows) {
+    if (r.source) bySource[r.source] = r.n;
+  }
+
+  const hideDupes = hasDuplicateOfColumn()
+    ? " AND duplicate_of IS NULL"
+    : "";
+  const allRow = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages
+       WHERE conversation_id IN (${placeholders})${hideDupes}`,
+    )
+    .get(...conversationIds) as { n: number };
+  return { all: allRow.n, bySource };
+}
+
+/** Soft-deduped 1:1 message totals for many contacts (Combined view). */
+function contactMessageCountsById(
+  contactIds: number[],
+): Map<number, number> {
+  const counts = new Map<number, number>();
+  if (!contactIds.length) return counts;
+  const db = getDb();
+  const placeholders = contactIds.map(() => "?").join(",");
+  const hideDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT cp.contact_id AS contact_id, COUNT(m.id) AS n
+       FROM contact_phones cp
+       JOIN conversations c
+         ON c.chat_identifier = cp.phone_e164
+        AND c.conv_type = 'individual'
+       JOIN messages m ON m.conversation_id = c.id
+       WHERE cp.contact_id IN (${placeholders})${hideDupes}
+       GROUP BY cp.contact_id`,
+    )
+    .all(...contactIds) as Array<{ contact_id: number; n: number }>;
+  for (const r of rows) counts.set(r.contact_id, r.n);
+  return counts;
+}
+
+/** One contact open: yearly + groups + available sources with shared phone/conv lookups. */
+export function contactThreadsBundle(
+  contactId: number,
+  source?: string | null,
+): {
+  yearly: YearThread[];
+  groups: GroupThread[];
+  messageSources: string[];
+  sourceCounts: ContactSourceCounts;
+} {
+  const phones = contactPhones(contactId);
+  if (!phones.length) {
+    return {
+      yearly: [],
+      groups: [],
+      messageSources: [],
+      sourceCounts: { all: 0, bySource: {} },
+    };
+  }
+  const allConvIds = contactConversationIds(phones);
+  const individualIds = contactIndividualConversationIds(phones);
+  const sourceCounts =
+    contactMessageSourceCountsForConversations(individualIds);
+  // Enable sources that appear in 1:1 or groups so group-only archives stay selectable.
+  const anySourceCounts =
+    contactMessageSourceCountsForConversations(allConvIds);
+  return {
+    yearly: contactYearlyThreadsForPhones(phones, source),
+    groups: contactGroupThreadsForPhones(phones, source),
+    messageSources: Object.keys(anySourceCounts.bySource).sort(),
+    sourceCounts,
+  };
+}
+
+export function contactYearlyThreadsForPhones(
+  phones: string[],
+  source?: string | null,
+): YearThread[] {
+  if (!phones.length) return [];
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  const sourceSql = source ? " AND m.source = ?" : "";
+  const params: Array<string | number> = [...phones];
+  if (source) params.push(source);
+  const rows = db
+    .prepare(
+      `SELECT CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
+              COUNT(*) AS message_count,
+              MIN(substr(m.timestamp, 1, 10)) AS date_start,
+              MAX(substr(m.timestamp, 1, 10)) AS date_end,
+              GROUP_CONCAT(DISTINCT c.id) AS conversation_ids
+       FROM conversations c
+       JOIN messages m ON m.conversation_id = c.id
+       WHERE c.conv_type = 'individual'
+         AND c.chat_identifier IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
+       GROUP BY year
+       ORDER BY year DESC`,
+    )
+    .all(...params) as Array<{
+    year: number;
+    message_count: number;
+    date_start: string;
+    date_end: string;
+    conversation_ids: string;
+  }>;
+
+  return rows.map((r) => ({
+    year: r.year,
+    messageCount: r.message_count,
+    dateStart: r.date_start,
+    dateEnd: r.date_end,
+    conversationIds: r.conversation_ids
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id)),
+  }));
+}
+
+
+export function countContacts(section: ContactSection): number {
+  const db = getDb();
+  const { sql, params } = sectionSql(section);
+  const countSql = sql.replace(
+    /SELECT DISTINCT c\.\*/,
+    "SELECT COUNT(DISTINCT c.id) AS n",
+  );
+  const row = db.prepare(countSql).get(...params) as { n: number };
+  return row.n;
+}
+
+
+/** All contacts for assign-to-existing pickers (includes excluded / no-messages). */
+export function listContactsForPicker(): ContactListItem[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, first_name, last_name, preferred_phone, exclude
+       FROM contacts`,
+    )
+    .all() as Array<{
+    id: number;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_phone: string | null;
+    exclude: number;
+  }>;
+
+  const tagRows = db
+    .prepare(
+      `SELECT ct.contact_id AS contact_id, t.name AS name
+       FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tag_id
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all() as Array<{ contact_id: number; name: string }>;
+  const tagsByContact = new Map<number, string[]>();
+  for (const row of tagRows) {
+    const list = tagsByContact.get(row.contact_id);
+    if (list) list.push(row.name);
+    else tagsByContact.set(row.contact_id, [row.name]);
+  }
+
+  return rows
+    .map((row) => {
+      const name = displayName(row);
+      const sorts = sortFields(row);
+      return {
+        id: row.id,
+        displayName: name,
+        preferredPhone: row.preferred_phone,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        groups: tagsByContact.get(row.id) ?? [],
+        exclude: row.exclude !== 0,
+        messageCount: 0,
+        ...sorts,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.sortFirst.localeCompare(b.sortFirst, undefined, {
+          sensitivity: "base",
+        }) ||
+        a.sortLast.localeCompare(b.sortLast, undefined, {
+          sensitivity: "base",
+        }),
+    );
+}
+
