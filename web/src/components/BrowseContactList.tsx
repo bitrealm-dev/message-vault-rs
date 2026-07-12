@@ -57,7 +57,7 @@ export function BrowseContactList({
             disabled={visibleCount === 0}
             aria-label={`Select all ${sectionLabel}`}
             onChange={onToggleSelectAll}
-            className="checkbox-people"
+            className="checkbox-list"
           />
           <span className="truncate text-[13px] text-muted">
             {query.trim() ? `${sortedCount}/` : ""}
@@ -168,7 +168,7 @@ export function BrowseContactList({
                       readOnly
                       tabIndex={-1}
                       aria-hidden
-                      className="checkbox-people pointer-events-none"
+                      className="checkbox-list pointer-events-none"
                     />
                   </button>
                   <button

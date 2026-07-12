@@ -69,7 +69,7 @@ export function UnassignedContactList({
               mode === "trash" ? "Select all trash" : "Select all unassigned"
             }
             onChange={onToggleSelectAll}
-            className="checkbox-people"
+            className="checkbox-list"
           />
           <span className="truncate text-[13px] text-muted">{handleCount}</span>
         </label>
@@ -126,7 +126,7 @@ export function UnassignedContactList({
                   readOnly
                   tabIndex={-1}
                   aria-hidden
-                  className="checkbox-people pointer-events-none"
+                  className="checkbox-list pointer-events-none"
                 />
               </button>
               <button

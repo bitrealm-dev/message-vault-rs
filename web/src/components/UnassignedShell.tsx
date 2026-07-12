@@ -34,8 +34,6 @@ const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
 const UNASSIGNED_SORT_BY_KEY = "mv-unassigned-sort-by";
 const UNASSIGNED_SORT_BY_ALLOWED = ["phone", "date", "messages"] as const;
 const UNASSIGNED_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
-const LEGACY_SORT_ORDER_KEY = "mv-unmatched-sort-order";
-const LEGACY_SORT_BY_KEY = "mv-unmatched-sort-by";
 
 export function UnassignedShell({
   handles: initialHandles,
@@ -59,13 +57,11 @@ export function UnassignedShell({
     UNASSIGNED_SORT_BY_KEY,
     UNASSIGNED_SORT_BY_ALLOWED,
     "phone",
-    [LEGACY_SORT_BY_KEY],
   );
   const [sortOrder, setSortOrder] = usePersistedEnum(
     UNASSIGNED_SORT_ORDER_KEY,
     UNASSIGNED_SORT_ORDER_ALLOWED,
     "asc",
-    [LEGACY_SORT_ORDER_KEY],
   );
   const setUnassignedSort = useCallback(
     (next: { sortBy: UnassignedSortBy; order: SortOrder }) => {

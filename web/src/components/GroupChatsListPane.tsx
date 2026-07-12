@@ -171,7 +171,7 @@ export function GroupChatsListPane({
                         : "Select all group chats"
                     }
                     onChange={onToggleSelectAll}
-                    className="checkbox-people"
+                    className="checkbox-list"
                   />
                 </label>
                 <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
@@ -338,7 +338,7 @@ export function GroupChatsListPane({
                                 readOnly
                                 tabIndex={-1}
                                 aria-hidden
-                                className="checkbox-people pointer-events-none"
+                                className="checkbox-list pointer-events-none"
                               />
                             </button>
                             <button
