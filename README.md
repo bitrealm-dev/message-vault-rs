@@ -42,27 +42,44 @@ Resolved asset roots default to `data/<source_id>/assets` and `data/<source_id>/
 
 One shared SQLite DB holds all sources. Each message row has a `source` column. The web UI can filter by source or show the combined (all) view.
 
-## Staging pipeline
+## Ingest (primary path)
 
-Raw source archives (iPhone backup, SMS Backup+ EML, etc.) live outside the repo. The workspace exporters turn them into NDJSON under `staging/`, then the vault imports:
+One command exports raw source data → NDJSON under `staging/<source>/` → imports that source → soft-dedupes across sources:
 
 ```bash
-# 1. Build NDJSON (+ media) into staging/<source>/ from archived source-data
-./message-exporter/build-staging.sh
-# or: ./message-exporter/build-staging.sh imessage
+cargo run --release -- ingest imessage --from /path/to/iphone_backup
+cargo run --release -- ingest go-sms-pro --from /path/to/gosms-export
+cargo run --release -- ingest sms-backup-plus --from /path/to/eml-tree
+cargo run --release -- ingest sms-backup-restore --from /path/to/sms-xml
 
-# 2. Import into data/vault.db, then soft-hide cross-source duplicates
-./message-exporter/import-staging.sh                 # all sources, replace + dedupe
-./message-exporter/import-staging.sh --append        # all sources, append + dedupe
-./message-exporter/import-staging.sh imessage        # one source, replace + dedupe
-./message-exporter/import-staging.sh --append go-sms-pro
+# optional flags:
+#   --mode append | replace   (default replace)
+#   --overwrite-contacts
+#   --skip-dedupe
+#   --window-secs 2
+#   --staging-dir staging/custom
+```
 
-# 3. Generate converted media under data/<source>/assets_converted/
+Archive helper (fixed paths under `/pool/archive/.../source-data/`):
+
+```bash
+./scripts/ingest-staging.sh go-sms-pro
+./scripts/ingest-staging.sh --append sms-backup-plus
+./scripts/ingest-staging.sh imessage
+```
+
+Then generate converted media and browse:
+
+```bash
 cd web && npm run process-assets
-# or: npm run process-assets -- --source imessage
-
-# 4. Browse
 npm run dev
+```
+
+NDJSON under `staging/` is an implementation detail of ingest. Lower-level scripts remain for debugging:
+
+```bash
+./scripts/build-staging.sh          # export only
+./scripts/import-staging.sh         # import + dedupe only
 ```
 
 ### Import modes
@@ -74,7 +91,7 @@ Other sources are left alone.
 
 ### Cross-source dedupe
 
-`import-staging.sh` finishes with `dedupe-cross-source`. That pass:
+Ingest (and `import-staging.sh`) finish with `dedupe-cross-source`. That pass:
 
 1. Rebuilds every message **content key** (chat + UTC epoch seconds + direction + normalized body + attachment hashes).
 2. Soft-hides exact cross-source matches (`duplicate_of`).
@@ -87,9 +104,7 @@ Full walkthrough with diagrams: [docs/dedupe.md](docs/dedupe.md).
 ```bash
 cargo run --release -- import --source imessage --mode replace
 cargo run --release -- import --all --mode replace
-cargo run --release -- import --source go-sms-pro --mode append
 cargo run --release -- dedupe-cross-source
-# optional: --window-secs 2
 ```
 
 ## Web

@@ -57,7 +57,7 @@ Runs after import:
 
 ```bash
 cargo run --release -- dedupe-cross-source
-# also run automatically by ./message-exporter/import-staging.sh
+# also run automatically by ./scripts/import-staging.sh
 ```
 
 ### Content key
@@ -156,7 +156,7 @@ flowchart TB
 
 ```bash
 # Import + cross-source dedupe
-./message-exporter/import-staging.sh
+./scripts/import-staging.sh
 
 # Dedupe alone (on an existing DB)
 cargo run --release -- dedupe-cross-source

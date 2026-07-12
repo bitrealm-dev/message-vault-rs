@@ -4,6 +4,7 @@ mod contacts;
 mod dedupe;
 mod exclude;
 mod import;
+mod ingest;
 mod models;
 mod ndjson;
 mod schema;
@@ -27,6 +28,40 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Export raw source data, import into the vault, then soft-dedupe across sources
+    Ingest {
+        /// Configured source id (imessage, go-sms-pro, sms-backup-plus, sms-backup-restore)
+        source: String,
+
+        /// Path to raw source data (iPhone backup, XML export, EML tree, …)
+        #[arg(long)]
+        from: PathBuf,
+
+        /// Path to config.toml
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
+
+        /// Override staging/output dir (defaults to the source's export_dir)
+        #[arg(long)]
+        staging_dir: Option<PathBuf>,
+
+        /// Import mode: replace (wipe this source's messages) or append
+        #[arg(long, default_value = "replace")]
+        mode: String,
+
+        /// Reload contacts CSV even if the table is non-empty
+        #[arg(long)]
+        overwrite_contacts: bool,
+
+        /// Skip the cross-source soft-dedupe pass
+        #[arg(long)]
+        skip_dedupe: bool,
+
+        /// Near-time window in seconds for Pass B (default 2)
+        #[arg(long, default_value_t = 2)]
+        window_secs: i64,
+    },
+
     /// Import NDJSON export(s) into SQLite
     Import {
         /// Path to config.toml
@@ -132,6 +167,64 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Ingest {
+            source,
+            from,
+            config,
+            staging_dir,
+            mode,
+            overwrite_contacts,
+            skip_dedupe,
+            window_secs,
+        } => {
+            let cfg = Config::load(&config)?;
+            if window_secs < 0 {
+                bail!("--window-secs must be >= 0");
+            }
+            let mode = import::ImportMode::parse(&mode)?;
+            // Validate source early for a clearer error listing configured ids.
+            let _ = cfg.source(&source)?;
+
+            let stats = ingest::ingest(
+                &cfg,
+                &ingest::IngestOptions {
+                    source_id: source,
+                    from,
+                    staging_dir,
+                    mode,
+                    overwrite_contacts,
+                    skip_dedupe,
+                    window_secs,
+                },
+            )?;
+
+            println!();
+            println!("Import into {}", cfg.paths.db.display());
+            println!("  staging:       {}", stats.staging_dir.display());
+            if let Some(archive) = &stats.rotated_to {
+                println!("  rotated from:  {}", archive.display());
+            }
+            println!("  files:         {}", stats.import.files);
+            println!("  conversations: {}", stats.import.conversations);
+            println!("  messages:      {}", stats.import.messages);
+            println!("  messages deduped: {}", stats.import.messages_deduped);
+            if stats.import.mode == "append" {
+                println!("  messages appended: {}", stats.import.messages_appended);
+            }
+            println!("  attachments:   {}", stats.import.attachments);
+            println!("  assets copied: {}", stats.import.assets_copied);
+            println!("  assets missing:{}", stats.import.assets_missing);
+            if let Some(d) = stats.dedupe {
+                println!("Cross-source dedupe");
+                println!("  keys filled:   {}", d.keys_filled);
+                println!("  exact groups:  {}", d.exact_groups);
+                println!("  exact flagged: {}", d.exact_flagged);
+                println!("  near flagged:  {}", d.near_flagged);
+            } else {
+                println!("Cross-source dedupe skipped (--skip-dedupe)");
+            }
+        }
+
         Commands::Import {
             config,
             source,

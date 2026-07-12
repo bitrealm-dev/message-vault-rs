@@ -19,11 +19,15 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+chrono = "0.4.45"
 clap = { version = "4.6.1", features = ["derive"] }
 csv = "1.4.0"
+go-sms-pro-exporter = { path = "crates/go-sms-pro-exporter" }
 message_json = { workspace = true }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha2 = "0.11.0"
+sms-backup-plus-exporter = { path = "crates/sms-backup-plus-exporter" }
+sms-backup-restore-exporter = { path = "crates/sms-backup-restore-exporter" }
 toml = "1.1.2"

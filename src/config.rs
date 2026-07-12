@@ -18,7 +18,6 @@ pub struct OwnerConfig {
     pub display_name: String,
     pub phone_e164: String,
     #[serde(default)]
-    #[allow(dead_code)]
     pub emails: Vec<String>,
 }
 

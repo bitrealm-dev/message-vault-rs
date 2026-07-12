@@ -2,11 +2,11 @@
 # import-staging.sh — import NDJSON from staging/ into the vault DB
 #
 # Usage:
-#   ./message-exporter/import-staging.sh                 # all sources, replace
-#   ./message-exporter/import-staging.sh --append        # all sources, append
-#   ./message-exporter/import-staging.sh imessage        # one source, replace
-#   ./message-exporter/import-staging.sh --append go-sms-pro
-#   ./message-exporter/import-staging.sh --overwrite-contacts
+#   ./scripts/import-staging.sh                 # all sources, replace
+#   ./scripts/import-staging.sh --append        # all sources, append
+#   ./scripts/import-staging.sh imessage        # one source, replace
+#   ./scripts/import-staging.sh --append go-sms-pro
+#   ./scripts/import-staging.sh --overwrite-contacts
 #
 # Modes:
 #   replace (default) — delete that source's messages, then import

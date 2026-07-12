@@ -40,7 +40,3 @@ target
 !/sources/.gitkeep
 /staging/*
 !/staging/.gitkeep
-
-# Staging helper scripts only (exporters live under crates/)
-message-exporter/*
-!message-exporter/*.sh
