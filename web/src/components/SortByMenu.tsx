@@ -2,16 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export type SortMode = "first" | "last";
-export type UnmatchedSortBy = "phone" | "date";
+export type SortMode = "first" | "last" | "messages";
+export type UnmatchedSortBy = "phone" | "date" | "messages";
 export type SortOrder = "asc" | "desc";
 
 export function SortByMenu({
   sort,
+  order,
   onChange,
 }: {
   sort: SortMode;
-  onChange: (mode: SortMode) => void;
+  order: SortOrder;
+  onChange: (next: { sort: SortMode; order: SortOrder }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -52,7 +54,7 @@ export function SortByMenu({
             label="First Name"
             selected={sort === "first"}
             onSelect={() => {
-              onChange("first");
+              onChange({ sort: "first", order });
               setOpen(false);
             }}
           />
@@ -60,7 +62,35 @@ export function SortByMenu({
             label="Last Name"
             selected={sort === "last"}
             onSelect={() => {
-              onChange("last");
+              onChange({ sort: "last", order });
+              setOpen(false);
+            }}
+          />
+          <SortOption
+            label="Message Count"
+            selected={sort === "messages"}
+            onSelect={() => {
+              onChange({ sort: "messages", order });
+              setOpen(false);
+            }}
+          />
+          <div className="my-1.5 border-t border-border" />
+          <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
+            Order
+          </div>
+          <SortOption
+            label="Ascending"
+            selected={order === "asc"}
+            onSelect={() => {
+              onChange({ sort, order: "asc" });
+              setOpen(false);
+            }}
+          />
+          <SortOption
+            label="Descending"
+            selected={order === "desc"}
+            onSelect={() => {
+              onChange({ sort, order: "desc" });
               setOpen(false);
             }}
           />
@@ -70,7 +100,7 @@ export function SortByMenu({
   );
 }
 
-/** Phone/date + ascending/descending for Unmatched (same icon placement as SortByMenu). */
+/** Phone/date/messages + ascending/descending for Unassigned. */
 export function UnmatchedSortMenu({
   sortBy,
   order,
@@ -103,7 +133,7 @@ export function UnmatchedSortMenu({
     <div className="relative" ref={rootRef}>
       <button
         type="button"
-        aria-label="Sort unmatched"
+        aria-label="Sort unassigned"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
@@ -128,6 +158,14 @@ export function UnmatchedSortMenu({
             selected={sortBy === "date"}
             onSelect={() => {
               onChange({ sortBy: "date", order });
+              setOpen(false);
+            }}
+          />
+          <SortOption
+            label="Message Count"
+            selected={sortBy === "messages"}
+            onSelect={() => {
+              onChange({ sortBy: "messages", order });
               setOpen(false);
             }}
           />

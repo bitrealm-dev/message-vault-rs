@@ -20,6 +20,7 @@ const RESERVED_GROUP_NAMES = new Set([
   "no messages",
   "no-messages",
   "unmatched",
+  "unassigned",
   "trash",
 ]);
 
@@ -29,8 +30,8 @@ function assertAllowedTagName(name: string): void {
     throw new Error(
       key === "excluded"
         ? "Excluded is a reserved group"
-        : key === "unmatched"
-          ? "Unmatched is a reserved group"
+        : key === "unmatched" || key === "unassigned"
+          ? "Unassigned is a reserved group"
           : key === "trash"
             ? "Trash is a reserved group"
             : "No messages is a reserved group",
@@ -617,7 +618,7 @@ export function patchContact(
   return updated;
 }
 
-/** Append a phone/email handle to an existing contact (for Unmatched assign). */
+/** Append a phone/email handle to an existing contact (for Unassigned assign). */
 export function addPhoneToContact(id: number, phone: string): ContactDetail {
   const existing = getContact(id);
   if (!existing) throw new Error("contact not found");

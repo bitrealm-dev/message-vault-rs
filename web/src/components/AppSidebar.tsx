@@ -752,7 +752,7 @@ export function AppSidebar({
           />
           <NavLink
             href="/no-messages"
-            label="Unused"
+            label="No Messages"
             active={active === "/no-messages"}
             icon={<EmptyChatIcon className="size-3.5 shrink-0 opacity-80" />}
           />
@@ -770,7 +770,7 @@ export function AppSidebar({
           </div>
           <NavLink
             href="/unmatched"
-            label="Unmatched"
+            label="Unassigned"
             active={active === "/unmatched"}
             icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
           />

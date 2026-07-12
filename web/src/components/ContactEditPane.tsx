@@ -41,6 +41,15 @@ export function draftHasName(draft: ContactEditDraft): boolean {
   return draft.firstName.trim() !== "" || draft.lastName.trim() !== "";
 }
 
+/** Groups list for the contact card: Excluded first when set. */
+export function displayGroupNames(
+  tags: string[],
+  excluded: boolean,
+): string[] {
+  const rest = tags.filter((t) => t.toLowerCase() !== "excluded");
+  return excluded ? ["Excluded", ...rest] : rest;
+}
+
 /** Drop empty non-trailing rows; ensure exactly one trailing empty row. */
 export function normalizePhoneRows(phones: string[]): string[] {
   const filled = phones.filter((p, i) => {

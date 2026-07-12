@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } fr
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ContactPhoneList,
+  displayGroupNames,
   draftHasName,
   emptyContactEditDraft,
   phonesForSave,
@@ -65,7 +66,7 @@ export function UnmatchedShell({
   const [sortBy, setSortByState] = useState<UnmatchedSortBy>(() => {
     if (typeof window === "undefined") return "phone";
     const v = localStorage.getItem(UNMATCHED_SORT_BY_KEY);
-    return v === "phone" || v === "date" ? v : "phone";
+    return v === "phone" || v === "date" || v === "messages" ? v : "phone";
   });
   const [sortOrder, setSortOrderState] = useState<SortOrder>(() => {
     if (typeof window === "undefined") return "asc";
@@ -122,7 +123,14 @@ export function UnmatchedShell({
     const copy = [...handles];
     copy.sort((a, b) => {
       let cmp = 0;
-      if (sortBy === "date") {
+      if (sortBy === "messages") {
+        cmp = a.messageCount - b.messageCount;
+        if (cmp === 0) {
+          cmp = a.handle.localeCompare(b.handle, undefined, {
+            sensitivity: "base",
+          });
+        }
+      } else if (sortBy === "date") {
         const aDate = a.dateEnd ?? a.dateStart ?? "";
         const bDate = b.dateEnd ?? b.dateStart ?? "";
         cmp = aDate.localeCompare(bDate);
@@ -727,7 +735,7 @@ export function UnmatchedShell({
       }
       setStatus(
         targets.length === 1
-          ? "Undeleted — back in Unmatched"
+          ? "Undeleted — back in Unassigned"
           : `Undeleted ${targets.length} handles`,
       );
       clearFocusAfterRemoval(targets);
@@ -848,7 +856,7 @@ export function UnmatchedShell({
               checked={allHandlesSelected}
               disabled={sortedHandles.length === 0}
               aria-label={
-                mode === "trash" ? "Select all trash" : "Select all unmatched"
+                mode === "trash" ? "Select all trash" : "Select all unassigned"
               }
               onChange={toggleSelectAll}
               className="checkbox-people"
@@ -868,7 +876,7 @@ export function UnmatchedShell({
             <p className="px-3 py-4 text-[12px] text-muted">
               {mode === "trash"
                 ? "Trash is empty"
-                : "No unmatched 1:1 threads"}
+                : "No unassigned 1:1 threads"}
             </p>
           )}
           {sortedHandles.map((h) => {
@@ -936,25 +944,27 @@ export function UnmatchedShell({
                       );
                     }
                   }}
-                  className="flex min-w-0 flex-1 flex-col text-left"
+                  className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
                 >
-                  <span className="truncate text-[13px] text-text">
-                    {h.displayName}
-                  </span>
-                  {h.nameHint && (
-                    <span className="truncate text-[11px] text-muted">
-                      {h.handle}
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] text-text">
+                      {h.displayName}
                     </span>
-                  )}
-                  <span className="text-[11px] text-muted">
-                    {h.messageCount} msgs
-                    {h.dateStart
-                      ? ` · ${h.dateStart}${
-                          h.dateEnd && h.dateEnd !== h.dateStart
-                            ? ` — ${h.dateEnd}`
-                            : ""
-                        }`
-                      : ""}
+                    {h.nameHint && (
+                      <span className="block truncate text-[11px] text-muted">
+                        {h.handle}
+                      </span>
+                    )}
+                    {h.dateStart && (
+                      <span className="block text-[11px] text-muted">
+                        {h.dateStart === h.dateEnd || !h.dateEnd
+                          ? h.dateStart
+                          : `${h.dateStart} — ${h.dateEnd}`}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted">
+                    {h.messageCount.toLocaleString()}
                   </span>
                 </button>
                 {mode === "trash" && (
@@ -1003,7 +1013,7 @@ export function UnmatchedShell({
                   selected?.displayName ||
                   "New contact"
                 : (selected?.displayName ??
-                  (mode === "trash" ? "Trash" : "Unmatched"))}
+                  (mode === "trash" ? "Trash" : "Unassigned"))}
           </h1>
           {multiSelected && (
             <div className="flex shrink-0 items-center gap-2">
@@ -1153,7 +1163,7 @@ export function UnmatchedShell({
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
                 <h2 className="text-[14px] font-semibold text-text">
                   {selectedItems.length}{" "}
-                  {mode === "trash" ? "trashed" : "unmatched"} handle
+                  {mode === "trash" ? "trashed" : "unassigned"} handle
                   {selectedItems.length === 1 ? "" : "s"} selected
                 </h2>
                 <button
@@ -1192,7 +1202,7 @@ export function UnmatchedShell({
             <p className="text-[13px] text-muted">
               {mode === "trash"
                 ? "Choose a trashed number or email to read messages, or use Undelete / Delete permanently from the menu."
-                : "Choose an unmatched number or email to create a contact or add the handle to someone existing."}
+                : "Choose an unassigned number or email to create a contact or add the handle to someone existing."}
             </p>
           ) : (
             <>
@@ -1251,9 +1261,12 @@ export function UnmatchedShell({
                         </div>
                         <div className="mt-0.5">
                           {(() => {
-                            const shownTags = creating
-                              ? (createDraft?.tags ?? [])
-                              : [];
+                            const shownTags = displayGroupNames(
+                              creating ? (createDraft?.tags ?? []) : [],
+                              creating
+                                ? Boolean(createDraft?.exclude)
+                                : false,
+                            );
                             if (shownTags.length === 0) {
                               return (
                                 <span className="text-[13px] text-muted">
@@ -1266,7 +1279,11 @@ export function UnmatchedShell({
                                 {shownTags.map((tag) => (
                                   <span
                                     key={tag}
-                                    className="truncate text-[13px] text-text"
+                                    className={
+                                      tag === "Excluded"
+                                        ? "truncate text-[13px] font-semibold text-amber-400/90"
+                                        : "truncate text-[13px] text-text"
+                                    }
                                   >
                                     {tag}
                                   </span>
@@ -1304,36 +1321,6 @@ export function UnmatchedShell({
                             </span>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
-                    <div className="pt-0.5">
-                      <ProhibitedIcon className="size-4 shrink-0 text-muted" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] tracking-wide text-muted">
-                        Excluded
-                      </div>
-                      <div className="mt-0.5">
-                        {creating && createDraft ? (
-                          <select
-                            value={createDraft.exclude ? "yes" : "no"}
-                            onChange={(e) =>
-                              setCreateDraft({
-                                ...createDraft,
-                                exclude: e.target.value === "yes",
-                              })
-                            }
-                            className="rounded-md border border-border bg-[#1c1c1e] px-2 py-1 text-[13px] text-text outline-none focus:border-accent/60"
-                          >
-                            <option value="no">No</option>
-                            <option value="yes">Yes</option>
-                          </select>
-                        ) : (
-                          <span className="text-[13px] text-text">No</span>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -1667,24 +1654,6 @@ function PeopleGroupIcon({ className }: { className?: string }) {
       <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
       <circle cx="17" cy="9" r="2.5" />
       <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
-    </svg>
-  );
-}
-
-function ProhibitedIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M6 6l12 12" />
     </svg>
   );
 }

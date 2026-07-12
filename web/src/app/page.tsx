@@ -11,8 +11,8 @@ export default function HomePage() {
   const cards = [
     { href: "/all", label: "All Contacts", value: stats.all },
     { href: "/excluded", label: "Excluded", value: stats.excluded },
-    { href: "/no-messages", label: "No messages", value: stats.noMessages },
-    { href: "/unmatched", label: "Unmatched", value: stats.unmatched },
+    { href: "/no-messages", label: "No Messages", value: stats.noMessages },
+    { href: "/unmatched", label: "Unassigned", value: stats.unmatched },
     { href: "/groups", label: "Group Chats", value: stats.groups },
   ];
 

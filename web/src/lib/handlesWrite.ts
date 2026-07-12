@@ -52,7 +52,7 @@ export function trashHandle(handle: string): void {
   resetDb();
 }
 
-/** Restore a handle from Trash back to Unmatched. */
+/** Restore a handle from Trash back to Unassigned. */
 export function restoreHandle(handle: string): void {
   const trimmed = handle.trim();
   if (!trimmed) throw new Error("handle required");

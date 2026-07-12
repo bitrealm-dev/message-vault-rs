@@ -11,7 +11,7 @@ export default async function NoMessagesPage({
   return (
     <ContactBrowsePage
       section="no-messages"
-      label="No messages"
+      label="No Messages"
       nav="/no-messages"
       contactId={parseContactId(sp.c)}
     />

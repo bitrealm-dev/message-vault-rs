@@ -97,6 +97,7 @@ const RESERVED_TAG_LABELS = new Set(
     "no-messages",
     "no messages",
     "unmatched",
+    "unassigned",
     "trash",
     "groups",
     "no-group",
@@ -238,6 +239,8 @@ export function listContacts(section: ContactSection): ContactListItem[] {
     else tagsByContact.set(row.contact_id, [row.name]);
   }
 
+  const messageCounts = contactMessageCountsById(rows.map((r) => r.id));
+
   return rows
     .map((row) => {
       const name = displayName(row);
@@ -250,6 +253,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         lastName: row.last_name,
         tags: tagsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
+        messageCount: messageCounts.get(row.id) ?? 0,
         ...sorts,
       };
     })
@@ -293,6 +297,9 @@ export function getContact(id: number): ContactDetail | null {
 
   const phoneList = phones.map((p) => p.phone_e164);
   const dateRange = contactDateRange(phoneList);
+  const messageCount = contactMessageSourceCountsForConversations(
+    contactIndividualConversationIds(phoneList),
+  ).all;
 
   const sorts = sortFields(row);
   return {
@@ -306,6 +313,7 @@ export function getContact(id: number): ContactDetail | null {
     phones: phoneList,
     dateStart: dateRange?.start ?? null,
     dateEnd: dateRange?.end ?? null,
+    messageCount,
     ...sorts,
   };
 }
@@ -418,6 +426,33 @@ function contactMessageSourceCountsForConversations(
     )
     .get(...conversationIds) as { n: number };
   return { all: allRow.n, bySource };
+}
+
+/** Soft-deduped 1:1 message totals for many contacts (Combined view). */
+function contactMessageCountsById(
+  contactIds: number[],
+): Map<number, number> {
+  const counts = new Map<number, number>();
+  if (!contactIds.length) return counts;
+  const db = getDb();
+  const placeholders = contactIds.map(() => "?").join(",");
+  const hideDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT cp.contact_id AS contact_id, COUNT(m.id) AS n
+       FROM contact_phones cp
+       JOIN conversations c
+         ON c.chat_identifier = cp.phone_e164
+        AND c.conv_type = 'individual'
+       JOIN messages m ON m.conversation_id = c.id
+       WHERE cp.contact_id IN (${placeholders})${hideDupes}
+       GROUP BY cp.contact_id`,
+    )
+    .all(...contactIds) as Array<{ contact_id: number; n: number }>;
+  for (const r of rows) counts.set(r.contact_id, r.n);
+  return counts;
 }
 
 export function contactMessageSourceCounts(
@@ -1482,6 +1517,7 @@ export function listContactsForPicker(): ContactListItem[] {
         lastName: row.last_name,
         tags: tagsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
+        messageCount: 0,
         ...sorts,
       };
     })

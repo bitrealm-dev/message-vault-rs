@@ -6,7 +6,7 @@ const SIDEBAR_MIN = 160;
 const SIDEBAR_MAX = 720;
 const SIDEBAR_DEFAULT = 272;
 
-/** Shared across All / Unused / Excluded / Unmatched / tag groups / group chats. */
+/** Shared across All / No Messages / Excluded / Unassigned / tag groups / group chats. */
 const SHARED_SIDEBAR_KEY = "browse:sidebarWidth";
 
 function readStored(key: string, fallback: number): number {

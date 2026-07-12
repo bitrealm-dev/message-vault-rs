@@ -4,10 +4,11 @@ import type { ContactListItem, ContactSection, MessageRow } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { SortByMenu, type SortMode } from "./SortByMenu";
+import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import {
   ContactPhoneList,
+  displayGroupNames,
   draftHasName,
   emptyContactEditDraft,
   phonesForSave,
@@ -51,6 +52,7 @@ type GroupDateFormat = "md" | "mon-d" | "d-mon";
 
 const GROUP_DATE_FORMAT_KEY = "mv-group-date-format";
 const SORT_MODE_KEY = "mv-contact-sort";
+const SORT_ORDER_KEY = "mv-contact-sort-order";
 const MONTH_SHORT = [
   "Jan",
   "Feb",
@@ -122,12 +124,19 @@ export function BrowseShell({
   const [sort, setSortState] = useState<SortMode>(() => {
     if (typeof window === "undefined") return "last";
     const v = localStorage.getItem(SORT_MODE_KEY);
-    return v === "first" || v === "last" ? v : "last";
+    return v === "first" || v === "last" || v === "messages" ? v : "last";
+  });
+  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => {
+    if (typeof window === "undefined") return "asc";
+    const v = localStorage.getItem(SORT_ORDER_KEY);
+    return v === "asc" || v === "desc" ? v : "asc";
   });
 
-  const setSort = useCallback((next: SortMode) => {
-    setSortState(next);
-    localStorage.setItem(SORT_MODE_KEY, next);
+  const setSort = useCallback((next: { sort: SortMode; order: SortOrder }) => {
+    setSortState(next.sort);
+    setSortOrderState(next.order);
+    localStorage.setItem(SORT_MODE_KEY, next.sort);
+    localStorage.setItem(SORT_ORDER_KEY, next.order);
   }, []);
   const [query, setQuery] = useState("");
   const [contactId, setContactId] = useState<number | null>(initialContactId);
@@ -231,21 +240,44 @@ export function BrowseShell({
     }
     const copy = [...visibleContacts];
     copy.sort((a, b) => {
-      if (sort === "first") {
-        return (
-          a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" }) ||
-          a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" })
-        );
+      let cmp = 0;
+      if (sort === "messages") {
+        cmp = a.messageCount - b.messageCount;
+        if (cmp === 0) {
+          cmp =
+            a.sortLast.localeCompare(b.sortLast, undefined, {
+              sensitivity: "base",
+            }) ||
+            a.sortFirst.localeCompare(b.sortFirst, undefined, {
+              sensitivity: "base",
+            });
+        }
+      } else if (sort === "first") {
+        cmp =
+          a.sortFirst.localeCompare(b.sortFirst, undefined, {
+            sensitivity: "base",
+          }) ||
+          a.sortLast.localeCompare(b.sortLast, undefined, {
+            sensitivity: "base",
+          });
+      } else {
+        cmp =
+          a.sortLast.localeCompare(b.sortLast, undefined, {
+            sensitivity: "base",
+          }) ||
+          a.sortFirst.localeCompare(b.sortFirst, undefined, {
+            sensitivity: "base",
+          });
       }
-      return (
-        a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" }) ||
-        a.sortFirst.localeCompare(b.sortFirst, undefined, { sensitivity: "base" })
-      );
+      return sortOrder === "desc" ? -cmp : cmp;
     });
     return copy;
-  }, [visibleContacts, sort, query]);
+  }, [visibleContacts, sort, sortOrder, query]);
 
   const grouped = useMemo(() => {
+    if (sort === "messages") {
+      return [["", sorted]] as [string, ContactListItem[]][];
+    }
     const map = new Map<string, ContactListItem[]>();
     for (const c of sorted) {
       const letter =
@@ -1067,7 +1099,7 @@ export function BrowseShell({
             >
               <NewContactIcon className="size-4" />
             </button>
-            <SortByMenu sort={sort} onChange={setSort} />
+            <SortByMenu sort={sort} order={sortOrder} onChange={setSort} />
           </div>
         </div>
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
@@ -1084,8 +1116,8 @@ export function BrowseShell({
             <p className="px-3 py-4 text-[12px] text-muted">No matches</p>
           )}
           {grouped.map(([letter, items]) => (
-            <div key={letter}>
-              {!query.trim() && (
+            <div key={letter || "all"}>
+              {!query.trim() && letter && (
                 <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
                   {letter}
                 </div>
@@ -1173,16 +1205,21 @@ export function BrowseShell({
                       onMouseDown={(e) => {
                         if (e.shiftKey) e.preventDefault();
                       }}
-                      className="min-w-0 flex-1 text-left"
+                      className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
                     >
-                      <span className="block truncate text-[13px] font-semibold text-text">
-                        {c.displayName}
-                      </span>
-                      {c.preferredPhone && (
-                        <span className="block truncate text-[11px] text-muted">
-                          {c.preferredPhone}
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13px] font-semibold text-text">
+                          {c.displayName}
                         </span>
-                      )}
+                        {c.preferredPhone && (
+                          <span className="block truncate text-[11px] text-muted">
+                            {c.preferredPhone}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted">
+                        {c.messageCount.toLocaleString()}
+                      </span>
                     </button>
                     {showInsetDivider && (
                       <span
@@ -1419,12 +1456,23 @@ export function BrowseShell({
                         <div className="text-[11px] tracking-wide text-muted">Groups</div>
                         <div className="mt-0.5">
                           {(() => {
-                            const shownTags =
+                            const rawTags =
                               contactCreating && editDraft
                                 ? editDraft.tags
                                 : detail
                                   ? tagsFor(detail.id, detail.tags)
                                   : [];
+                            const excluded =
+                              contactCreating && editDraft
+                                ? editDraft.exclude
+                                : detail
+                                  ? (excludeOverrides.get(detail.id) ??
+                                    detail.exclude)
+                                  : false;
+                            const shownTags = displayGroupNames(
+                              rawTags,
+                              excluded,
+                            );
                             if (shownTags.length === 0) {
                               return (
                                 <span className="text-[13px] text-muted">
@@ -1437,7 +1485,11 @@ export function BrowseShell({
                                 {shownTags.map((tag) => (
                                   <span
                                     key={tag}
-                                    className="truncate text-[13px] text-text"
+                                    className={
+                                      tag === "Excluded"
+                                        ? "truncate text-[13px] font-semibold text-amber-400/90"
+                                        : "truncate text-[13px] text-text"
+                                    }
                                   >
                                     {tag}
                                   </span>
@@ -1484,38 +1536,6 @@ export function BrowseShell({
                             <span className="text-[13px] text-muted">None</span>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
-                    <div className="pt-0.5">
-                      <ProhibitedIcon className="size-4 shrink-0 text-muted" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] tracking-wide text-muted">Excluded</div>
-                      <div className="mt-0.5">
-                        {formOpen && editDraft ? (
-                          <select
-                            value={editDraft.exclude ? "yes" : "no"}
-                            onChange={(e) =>
-                              setEditDraft({
-                                ...editDraft,
-                                exclude: e.target.value === "yes",
-                              })
-                            }
-                            className="rounded-md border border-border bg-[#1c1c1e] px-2 py-1 text-[13px] text-text outline-none focus:border-accent/60"
-                          >
-                            <option value="no">No</option>
-                            <option value="yes">Yes</option>
-                          </select>
-                        ) : detail ? (
-                          <span className="text-[13px] text-text">
-                            {(excludeOverrides.get(detail.id) ?? detail.exclude)
-                              ? "Yes"
-                              : "No"}
-                          </span>
-                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -1871,24 +1891,6 @@ function PeopleGroupIcon({ className }: { className?: string }) {
       <path d="M2.75 19.25c.6-3.1 2.85-4.75 6.25-4.75s5.65 1.65 6.25 4.75" />
       <circle cx="17" cy="9" r="2.5" />
       <path d="M14.5 19.25c.35-1.85 1.55-3.1 3.5-3.55" />
-    </svg>
-  );
-}
-
-function ProhibitedIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="8.25" />
-      <path d="M6.2 6.2 17.8 17.8" />
     </svg>
   );
 }

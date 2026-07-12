@@ -126,7 +126,8 @@ export function GroupsMenu({
     if (
       name.toLowerCase() === "no messages" ||
       name.toLowerCase() === "no-messages" ||
-      name.toLowerCase() === "unmatched"
+      name.toLowerCase() === "unmatched" ||
+      name.toLowerCase() === "unassigned"
     )
       return;
 

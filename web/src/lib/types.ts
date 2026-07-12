@@ -16,6 +16,8 @@ export type ContactListItem = {
   letter: string;
   tags: string[];
   exclude: boolean;
+  /** Soft-deduped 1:1 message total (Combined view). */
+  messageCount: number;
 };
 
 export type ContactDetail = ContactListItem & {
