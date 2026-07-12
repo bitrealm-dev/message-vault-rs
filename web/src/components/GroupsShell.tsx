@@ -297,6 +297,22 @@ export function GroupsShell({
     };
   }, [ctxMenu]);
 
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    selectionAnchorRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (ctxMenu) return;
+      clearSelection();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selectedIds.size, ctxMenu, clearSelection]);
+
   const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
     setGroupDateFormatState(next);
     localStorage.setItem(GROUP_DATE_FORMAT_KEY, next);
@@ -305,9 +321,10 @@ export function GroupsShell({
   const jumpToYearSection = useCallback((year: number) => {
     setListYear(year);
     const el = document.getElementById(`group-year-${year}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    el?.scrollIntoView({ behavior: "auto", block: "start" });
   }, []);
 
+  /** Drop every year row for the given conversation ids (one thread → all years). */
   const clearFocusAfterRemoval = useCallback(
     (removedIds: number[]) => {
       const removed = new Set(removedIds);
@@ -329,6 +346,22 @@ export function GroupsShell({
       }
     },
     [groupId, pathname, router, searchParams],
+  );
+
+  const conversationSpansMultipleYears = useCallback(
+    (conversationId: number) =>
+      groups.some((g) => g.id === conversationId && g.spansMultipleYears),
+    [groups],
+  );
+
+  /** Resolve delete/restore targets to unique conversation ids. */
+  const resolveConversationTargets = useCallback(
+    (forId?: number) => {
+      const raw =
+        forId != null && !multiSelected ? [forId] : actionTargets;
+      return [...new Set(raw)];
+    },
+    [actionTargets, multiSelected],
   );
 
   const selectGroup = useCallback(
@@ -466,13 +499,17 @@ export function GroupsShell({
 
   const moveToTrash = async (forId?: number) => {
     if (mode !== "groups") return;
-    const targets =
-      forId != null && !multiSelected ? [forId] : actionTargets;
+    const targets = resolveConversationTargets(forId);
     if (targets.length === 0) return;
+    const multiYear =
+      targets.length === 1 &&
+      conversationSpansMultipleYears(targets[0]!);
     const label =
       targets.length === 1
-        ? "Move this group chat to Trash?"
-        : `Move ${targets.length} group chats to Trash?`;
+        ? multiYear
+          ? "Move this group chat to Trash? It appears under multiple years and will be removed from all of them."
+          : "Move this group chat to Trash?"
+        : `Move ${targets.length} group chats to Trash? Each chat will be removed from every year it appears under.`;
     if (!window.confirm(label)) return;
     setSaving(true);
     setCtxMenu(null);
@@ -504,8 +541,7 @@ export function GroupsShell({
 
   const restoreFromTrash = async (forId?: number) => {
     if (mode !== "trash") return;
-    const targets =
-      forId != null && !multiSelected ? [forId] : actionTargets;
+    const targets = resolveConversationTargets(forId);
     if (targets.length === 0) return;
     setSaving(true);
     setCtxMenu(null);
@@ -537,13 +573,17 @@ export function GroupsShell({
 
   const permanentlyDeleteFromTrash = async (forId?: number) => {
     if (mode !== "trash") return;
-    const targets =
-      forId != null && !multiSelected ? [forId] : actionTargets;
+    const targets = resolveConversationTargets(forId);
     if (targets.length === 0) return;
+    const multiYear =
+      targets.length === 1 &&
+      conversationSpansMultipleYears(targets[0]!);
     const label =
       targets.length === 1
-        ? "Permanently delete this group chat? This cannot be undone."
-        : `Permanently delete ${targets.length} group chats? This cannot be undone.`;
+        ? multiYear
+          ? "Permanently delete this group chat? It appears under multiple years and will be removed from all of them. This cannot be undone."
+          : "Permanently delete this group chat? This cannot be undone."
+        : `Permanently delete ${targets.length} group chats? Each chat will be removed from every year it appears under. This cannot be undone.`;
     if (!window.confirm(label)) return;
     setSaving(true);
     setCtxMenu(null);
