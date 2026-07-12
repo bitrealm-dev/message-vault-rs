@@ -82,9 +82,21 @@ cargo run --release -- ingest go-sms-pro
 Helper (uses each source’s `source_dir` from config):
 
 ```bash
+# one source
 ./scripts/ingest-staging.sh go-sms-pro
 ./scripts/ingest-staging.sh --append sms-backup-plus
-./scripts/ingest-staging.sh imessage
+
+# several, or all configured sources (omit ids → all)
+./scripts/ingest-staging.sh imessage go-sms-pro sms-backup-plus sms-backup-restore
+./scripts/ingest-staging.sh
+```
+
+Or call `ingest` once per source yourself (same flags each time):
+
+```bash
+for id in imessage go-sms-pro sms-backup-plus sms-backup-restore; do
+  cargo run --release -- ingest "$id"
+done
 ```
 
 Then generate converted media and browse:

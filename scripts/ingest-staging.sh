@@ -2,13 +2,18 @@
 # ingest-staging.sh — one-shot export+import+dedupe using config source_dir
 #
 # Usage:
+#   ./scripts/ingest-staging.sh                         # all known sources
 #   ./scripts/ingest-staging.sh go-sms-pro
+#   ./scripts/ingest-staging.sh imessage go-sms-pro sms-backup-plus
 #   ./scripts/ingest-staging.sh --append sms-backup-plus
 #   ./scripts/ingest-staging.sh --overwrite-contacts imessage
 #   ./scripts/ingest-staging.sh --skip-dedupe go-sms-pro
 #
 # Requires each SOURCE_ID to have source_dir set in config/config.toml, then runs:
 #   cargo run --release -- ingest <id> …
+#
+# When multiple sources run, cross-source dedupe runs once after the last ingest
+# (unless --skip-dedupe).
 #
 # Override the path for one run:
 #   cargo run --release -- ingest go-sms-pro --from /path/to/export
@@ -24,9 +29,14 @@ OVERWRITE_CONTACTS=0
 SKIP_DEDUPE=0
 SOURCES=()
 
+# Default order when no SOURCE_ID args are given.
+ALL_SOURCES=(imessage go-sms-pro sms-backup-restore sms-backup-plus)
+
 usage() {
   cat <<'EOF'
-Usage: ingest-staging.sh [OPTIONS] SOURCE_ID…
+Usage: ingest-staging.sh [OPTIONS] [SOURCE_ID…]
+
+With no SOURCE_ID, ingests all known sources (each must have source_dir in config).
 
 Options:
   --append               Import mode append (default: replace)
@@ -34,7 +44,7 @@ Options:
   --skip-dedupe          Skip cross-source soft-dedupe after import
   -h, --help             Show this help
 
-SOURCE_ID must exist in config/config.toml with source_dir set:
+SOURCE_ID:
   imessage
   go-sms-pro
   sms-backup-restore
@@ -73,14 +83,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#SOURCES[@]} -eq 0 ]]; then
-  echo "error: pass at least one SOURCE_ID" >&2
-  usage >&2
-  exit 1
+  SOURCES=("${ALL_SOURCES[@]}")
 fi
 
 cd "${REPO_ROOT}"
 
-for id in "${SOURCES[@]}"; do
+last_idx=$((${#SOURCES[@]} - 1))
+echo "Ingesting ${#SOURCES[@]} source(s): ${SOURCES[*]}"
+echo
+
+for i in "${!SOURCES[@]}"; do
+  id="${SOURCES[$i]}"
+  n=$((i + 1))
+  echo "==> [${n}/${#SOURCES[@]}] ${id}"
+
   # imessage needs the release binary for the shell-out exporter.
   if [[ "${id}" == "imessage" && ! -x target/release/imessage-exporter-json ]]; then
     echo "building imessage-exporter-json…"
@@ -95,10 +111,14 @@ for id in "${SOURCES[@]}"; do
   if [[ "${OVERWRITE_CONTACTS}" -eq 1 ]]; then
     cmd+=(--overwrite-contacts)
   fi
-  if [[ "${SKIP_DEDUPE}" -eq 1 ]]; then
+  # Dedupe once after the last source (or never if --skip-dedupe).
+  if [[ "${SKIP_DEDUPE}" -eq 1 || "${i}" -lt "${last_idx}" ]]; then
     cmd+=(--skip-dedupe)
   fi
 
   echo "+" "${cmd[@]}"
   "${cmd[@]}"
+  echo
 done
+
+echo "All ${#SOURCES[@]} source(s) finished."

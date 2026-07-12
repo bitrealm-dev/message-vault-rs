@@ -1,6 +1,8 @@
 //! Cross-source content fingerprint and soft-hide dedupe.
 
 use std::collections::{HashMap, HashSet};
+use std::io::{self, Write};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -92,26 +94,49 @@ pub fn dedupe_cross_source(
         .enumerate()
         .map(|(i, s)| (s.as_str(), i))
         .collect();
+    let started = Instant::now();
 
     {
+        println!("  dedupe:   recomputing content keys…");
+        let _ = io::stdout().flush();
         let tx = conn.transaction()?;
         stats.keys_filled = recompute_all_content_keys(&tx)?;
         tx.execute("UPDATE messages SET duplicate_of = NULL", [])?;
         tx.commit()?;
+        println!(
+            "  dedupe:   keys filled={}  ({:.1}s)",
+            stats.keys_filled,
+            started.elapsed().as_secs_f64()
+        );
     }
 
     {
+        println!("  dedupe:   pass A exact content_key…");
+        let _ = io::stdout().flush();
         let tx = conn.transaction()?;
         let (groups, flagged) = flag_exact_content_key_dupes(&tx, &prio)?;
         stats.exact_groups = groups;
         stats.exact_flagged = flagged;
         tx.commit()?;
+        println!(
+            "  dedupe:   exact groups={} flagged={}  ({:.1}s)",
+            stats.exact_groups,
+            stats.exact_flagged,
+            started.elapsed().as_secs_f64()
+        );
     }
 
     {
+        println!("  dedupe:   pass B near-time (±{near_window_secs}s)…");
+        let _ = io::stdout().flush();
         let tx = conn.transaction()?;
         stats.near_flagged = flag_near_time_dupes(&tx, &prio, near_window_secs)?;
         tx.commit()?;
+        println!(
+            "  dedupe:   near flagged={}  ({:.1}s total)",
+            stats.near_flagged,
+            started.elapsed().as_secs_f64()
+        );
     }
 
     Ok(stats)

@@ -56,9 +56,12 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         println!("  rotated:  {}", archive.display());
     }
 
+    println!("  phase:    export");
     export_source(cfg, &src.id, from, &staging)?;
 
     let assets = src.resolved_assets_dir(&cfg.paths);
+    println!("  phase:    import → {}", cfg.paths.db.display());
+    println!("  assets:   {}", assets.display());
     let import_stats = import::import_export(
         &staging,
         &cfg.paths.db,
@@ -71,8 +74,10 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
     )?;
 
     let dedupe_stats = if opts.skip_dedupe {
+        println!("  phase:    dedupe skipped");
         None
     } else {
+        println!("  phase:    cross-source dedupe");
         let priority: Vec<String> = cfg.sources.iter().map(|s| s.id.clone()).collect();
         Some(dedupe::run_dedupe(
             &cfg.paths.db,
@@ -80,6 +85,8 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
             opts.window_secs,
         )?)
     };
+
+    println!("  phase:    done");
 
     Ok(IngestStats {
         staging_dir: staging,

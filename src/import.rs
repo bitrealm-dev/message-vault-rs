@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, Write};
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+
 
 use crate::assets::{self, AssetStats, StoredAsset};
 use crate::contacts;
@@ -92,16 +95,41 @@ pub fn import_export(
     let mut conn = Connection::open(db_path)
         .with_context(|| format!("failed to open database {}", db_path.display()))?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    println!("  sql:      opened {}", db_path.display());
+    let _ = io::stdout().flush();
 
+    println!(
+        "  sql:      loading contacts from {}…",
+        contacts_csv.display()
+    );
+    let _ = io::stdout().flush();
     let contact_stats =
         contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
+    if contact_stats.skipped {
+        println!("  sql:      contacts skipped (already loaded)");
+    } else {
+        println!(
+            "  sql:      contacts={} phones={} tags={}",
+            contact_stats.contacts, contact_stats.phones, contact_stats.tags
+        );
+    }
     let exclude = ExcludeSet::load(blacklist_csv)?;
+    println!(
+        "  sql:      blacklist entries from {}",
+        blacklist_csv.display()
+    );
 
+    println!("  sql:      ensuring schema + recreating staging tables…");
+    let _ = io::stdout().flush();
     schema::ensure_messages_schema(&conn)?;
     schema::recreate_staging(&conn)?;
     if mode == ImportMode::Replace {
+        println!("  sql:      deleting existing messages for source '{source}'…");
+        let _ = io::stdout().flush();
         schema::delete_messages_for_source(&conn, source)?;
+        println!("  sql:      wipe complete");
     }
+    let _ = io::stdout().flush();
 
     let mut paths: Vec<_> = fs::read_dir(export_dir)
         .with_context(|| format!("failed to read {}", export_dir.display()))?
@@ -115,6 +143,18 @@ pub fn import_export(
         .collect();
     paths.sort();
 
+    let total_files = paths.len();
+    println!(
+        "  import:   {} NDJSON file{} under {}",
+        total_files,
+        if total_files == 1 { "" } else { "s" },
+        export_dir.display()
+    );
+    if mode == ImportMode::Replace {
+        println!("  import:   wiped existing rows for source '{source}'");
+    }
+    let _ = io::stdout().flush();
+
     let mut stats = ImportStats {
         contacts: contact_stats.contacts,
         contact_phones: contact_stats.phones,
@@ -124,8 +164,15 @@ pub fn import_export(
         ..Default::default()
     };
     let mut asset_stats = AssetStats::default();
+    let started = Instant::now();
+    // Log often enough to feel alive on large iMessage exports without flooding.
+    let progress_every = if total_files <= 20 {
+        1usize
+    } else {
+        (total_files / 40).max(10)
+    };
 
-    for path in paths {
+    for (idx, path) in paths.into_iter().enumerate() {
         let file_stats = import_file_to_staging(
             &mut conn,
             export_dir,
@@ -145,9 +192,31 @@ pub fn import_export(
         stats.messages_excluded += file_stats.messages_excluded;
         stats.participants_excluded += file_stats.participants_excluded;
         stats.files += 1;
+
+        let n = idx + 1;
+        if n == 1 || n == total_files || n % progress_every == 0 {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("?");
+            println!(
+                "  import:   [{n}/{total_files}] {name}  msgs={} attachments={} assets_copied={} missing={}  ({:.0}s)",
+                stats.messages,
+                stats.attachments,
+                asset_stats.copied,
+                asset_stats.missing,
+                started.elapsed().as_secs_f64()
+            );
+            let _ = io::stdout().flush();
+        }
     }
 
     // Always merge staging into production (replace already deleted this source's rows).
+    println!(
+        "  import:   promoting staging → production ({:.0}s so far)…",
+        started.elapsed().as_secs_f64()
+    );
+    let _ = io::stdout().flush();
     let promote_stats = promote_append(&mut conn)?;
     stats.messages_deduped += promote_stats.messages_deduped;
     stats.messages_appended = promote_stats.messages_appended;
@@ -164,6 +233,15 @@ pub fn import_export(
     stats.assets_copied = asset_stats.copied;
     stats.assets_deduped = asset_stats.deduped;
     stats.assets_missing = asset_stats.missing;
+
+    println!(
+        "  import:   finished in {:.1}s  files={} msgs={} attachments={} assets_copied={}",
+        started.elapsed().as_secs_f64(),
+        stats.files,
+        stats.messages,
+        stats.attachments,
+        stats.assets_copied
+    );
 
     Ok(stats)
 }
@@ -467,8 +545,11 @@ struct PromoteStats {
 
 fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
     let mut stats = PromoteStats::default();
+    let started = Instant::now();
     let tx = conn.transaction()?;
 
+    println!("  sql:      promote: reading staging conversations…");
+    let _ = io::stdout().flush();
     let mut staging_convs = tx.prepare(
         r#"
         SELECT id, chat_identifier, service, conv_type, group_title, exported_at, source_file
@@ -499,6 +580,11 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     drop(staging_convs);
+    println!(
+        "  sql:      promote: {} staging conversations → production…",
+        staging_conv_rows.len()
+    );
+    let _ = io::stdout().flush();
 
     let mut conv_map: HashMap<i64, i64> = HashMap::new();
 
@@ -548,7 +634,14 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         };
         conv_map.insert(staging_id, prod_id);
     }
+    println!(
+        "  sql:      promote: conversations done (new={})  ({:.1}s)",
+        stats.conversations,
+        started.elapsed().as_secs_f64()
+    );
 
+    println!("  sql:      promote: reading staging participants…");
+    let _ = io::stdout().flush();
     let mut staging_parts = tx.prepare(
         "SELECT conversation_id, handle, name_hint FROM staging_participants ORDER BY id",
     )?;
@@ -556,6 +649,11 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
     drop(staging_parts);
+    println!(
+        "  sql:      promote: {} staging participants → production…",
+        staging_part_rows.len()
+    );
+    let _ = io::stdout().flush();
 
     for (staging_conv_id, handle, name_hint) in staging_part_rows {
         let Some(&prod_conv_id) = conv_map.get(&staging_conv_id) else {
@@ -572,7 +670,14 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
             stats.participants += 1;
         }
     }
+    println!(
+        "  sql:      promote: participants done (new={})  ({:.1}s)",
+        stats.participants,
+        started.elapsed().as_secs_f64()
+    );
 
+    println!("  sql:      promote: reading staging messages…");
+    let _ = io::stdout().flush();
     let mut staging_msgs = tx.prepare(
         r#"
         SELECT id, conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
@@ -623,27 +728,38 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     drop(staging_msgs);
+    let total_msgs = staging_msg_rows.len();
+    println!("  sql:      promote: {total_msgs} staging messages → production…");
+    let _ = io::stdout().flush();
 
     let mut msg_map: HashMap<i64, i64> = HashMap::new();
+    let msg_progress_every = if total_msgs <= 5_000 {
+        500usize
+    } else {
+        (total_msgs / 20).max(1_000)
+    };
 
     for (
-        staging_msg_id,
-        staging_conv_id,
-        source,
-        guid,
-        timestamp,
-        timestamp_utc,
-        is_from_me,
-        sender,
-        subject,
-        body,
-        is_announcement,
-        is_reply,
-        thread_originator_guid,
-        thread_originator_part,
-        num_replies,
-        sort_order,
-    ) in staging_msg_rows
+        msg_idx,
+        (
+            staging_msg_id,
+            staging_conv_id,
+            source,
+            guid,
+            timestamp,
+            timestamp_utc,
+            is_from_me,
+            sender,
+            subject,
+            body,
+            is_announcement,
+            is_reply,
+            thread_originator_guid,
+            thread_originator_part,
+            num_replies,
+            sort_order,
+        ),
+    ) in staging_msg_rows.into_iter().enumerate()
     {
         let Some(&prod_conv_id) = conv_map.get(&staging_conv_id) else {
             continue;
@@ -694,8 +810,27 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         msg_map.insert(staging_msg_id, prod_msg_id);
         stats.messages += 1;
         stats.messages_appended += 1;
-    }
 
+        let n = msg_idx + 1;
+        if n == 1 || n == total_msgs || n % msg_progress_every == 0 {
+            println!(
+                "  sql:      promote: messages [{n}/{total_msgs}] inserted={} skipped={}  ({:.1}s)",
+                stats.messages,
+                stats.messages_deduped,
+                started.elapsed().as_secs_f64()
+            );
+            let _ = io::stdout().flush();
+        }
+    }
+    println!(
+        "  sql:      promote: messages done (inserted={} skipped={})  ({:.1}s)",
+        stats.messages,
+        stats.messages_deduped,
+        started.elapsed().as_secs_f64()
+    );
+
+    println!("  sql:      promote: reading staging attachments…");
+    let _ = io::stdout().flush();
     let mut staging_atts = tx.prepare(
         r#"
         SELECT message_id, path, original_name, mime_type, is_sticker, transcription,
@@ -728,9 +863,28 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     drop(staging_atts);
+    let total_atts = staging_att_rows.len();
+    println!("  sql:      promote: {total_atts} staging attachments → production…");
+    let _ = io::stdout().flush();
+    let att_progress_every = if total_atts <= 2_000 {
+        250usize
+    } else {
+        (total_atts / 20).max(500)
+    };
 
-    for (staging_msg_id, path, original_name, mime_type, is_sticker, transcription, sha256, assets_path) in
-        staging_att_rows
+    for (
+        att_idx,
+        (
+            staging_msg_id,
+            path,
+            original_name,
+            mime_type,
+            is_sticker,
+            transcription,
+            sha256,
+            assets_path,
+        ),
+    ) in staging_att_rows.into_iter().enumerate()
     {
         let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
             continue;
@@ -754,8 +908,25 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
             ],
         )?;
         stats.attachments += 1;
-    }
 
+        let n = att_idx + 1;
+        if total_atts > 0 && (n == 1 || n == total_atts || n % att_progress_every == 0) {
+            println!(
+                "  sql:      promote: attachments [{n}/{total_atts}] inserted={}  ({:.1}s)",
+                stats.attachments,
+                started.elapsed().as_secs_f64()
+            );
+            let _ = io::stdout().flush();
+        }
+    }
+    println!(
+        "  sql:      promote: attachments done (inserted={})  ({:.1}s)",
+        stats.attachments,
+        started.elapsed().as_secs_f64()
+    );
+
+    println!("  sql:      promote: reading staging tapbacks…");
+    let _ = io::stdout().flush();
     let mut staging_taps = tx.prepare(
         r#"
         SELECT message_id, part_index, kind, emoji, is_from_me, sender
@@ -777,6 +948,11 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
             })?
             .collect::<Result<Vec<_>, _>>()?;
     drop(staging_taps);
+    println!(
+        "  sql:      promote: {} staging tapbacks → production…",
+        staging_tap_rows.len()
+    );
+    let _ = io::stdout().flush();
 
     for (staging_msg_id, part_index, kind, emoji, is_from_me, sender) in staging_tap_rows {
         let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
@@ -792,10 +968,33 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         )?;
         stats.tapbacks += 1;
     }
+    println!(
+        "  sql:      promote: tapbacks done (inserted={})  ({:.1}s)",
+        stats.tapbacks,
+        started.elapsed().as_secs_f64()
+    );
 
+    println!("  sql:      promote: filling content keys…");
+    let _ = io::stdout().flush();
     // Content keys need attachment sha256 rows; fill any missing before commit.
-    crate::dedupe::fill_missing_content_keys(&tx)?;
+    let keys = crate::dedupe::fill_missing_content_keys(&tx)?;
+    println!(
+        "  sql:      promote: content keys filled={keys}  ({:.1}s)",
+        started.elapsed().as_secs_f64()
+    );
 
+    println!("  sql:      promote: committing transaction…");
+    let _ = io::stdout().flush();
     tx.commit()?;
+    println!(
+        "  sql:      promote: committed  ({:.1}s)  convs={} parts={} msgs={} atts={} taps={}",
+        started.elapsed().as_secs_f64(),
+        stats.conversations,
+        stats.participants,
+        stats.messages,
+        stats.attachments,
+        stats.tapbacks
+    );
+
     Ok(stats)
 }
