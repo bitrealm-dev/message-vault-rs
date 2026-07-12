@@ -81,22 +81,9 @@ struct EmailSnapshot {
 fn snapshot_email_handles(conn: &Connection) -> Result<EmailSnapshot> {
     let mut by_contact: HashMap<i64, (HashSet<String>, Vec<String>)> = HashMap::new();
 
-    // Prefer new table; fall back to legacy contact_phones during schema migration.
-    let sql = if crate::schema::contacts_schema_outdated(conn).unwrap_or(true)
-        && conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contact_phones'",
-                [],
-                |_| Ok(true),
-            )
-            .unwrap_or(false)
-    {
-        "SELECT contact_id, phone_e164 FROM contact_phones ORDER BY contact_id, phone_e164"
-    } else {
-        "SELECT contact_id, handle FROM contact_handles ORDER BY contact_id, handle"
-    };
-
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(
+        "SELECT contact_id, handle FROM contact_handles ORDER BY contact_id, handle",
+    )?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
@@ -170,43 +157,33 @@ fn restore_email_handles(
     Ok(restored)
 }
 
-/// Load contacts from CSV when the table is empty, when `overwrite` is true,
-/// or when the contacts schema is outdated (handle rename).
+/// Load contacts from CSV when the table is empty or when `overwrite` is true.
 ///
-/// On overwrite / schema upgrade, email handles already in SQLite are snapshotted
-/// by phone set and reattached after CSV reload (contacts.csv is phone-only).
+/// On overwrite, email handles already in SQLite are snapshotted by phone set
+/// and reattached after CSV reload (contacts.csv is phone-only).
 pub fn load_contacts_if_needed(
     conn: &mut Connection,
     csv_path: &Path,
     overwrite: bool,
 ) -> Result<ContactLoadStats> {
-    // Ensure we can query contacts; recreate if the legacy schema is present.
-    if conn
-        .prepare("SELECT exclude FROM contacts LIMIT 1")
-        .is_err()
-    {
+    crate::schema::ensure_contacts_schema(conn)?;
+    if !crate::schema::contacts_schema_ready(conn)? {
+        eprintln!("contacts: schema not current; recreating tables before CSV load");
         crate::schema::recreate_contacts(conn)?;
-    } else if crate::schema::contacts_schema_outdated(conn)? {
-        eprintln!(
-            "contacts: schema outdated (phone→handle rename); reloading from CSV"
-        );
-    } else {
-        crate::schema::ensure_contacts_schema(conn)?;
     }
 
-    let outdated = crate::schema::contacts_schema_outdated(conn).unwrap_or(false);
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM contacts", [], |row| row.get(0))
         .unwrap_or(0);
 
-    if count > 0 && !overwrite && !outdated {
+    if count > 0 && !overwrite {
         return Ok(ContactLoadStats {
             skipped: true,
             ..Default::default()
         });
     }
 
-    let email_snapshot = if count > 0 && (overwrite || outdated) {
+    let email_snapshot = if count > 0 && overwrite {
         snapshot_email_handles(conn)?
     } else {
         EmailSnapshot::default()

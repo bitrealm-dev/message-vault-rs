@@ -7,7 +7,7 @@
 # contacts.csv: phone numbers only (semicolon-separated). Set exclude=true to hide from
 # Contacts/groups (All still lists them). iMessage emails attach in the UI into
 # contact_handles (DB only) — never written to this CSV.
-# Breaking rename: contact_phones → contact_handles (reload contacts / wipe vault.db).
+# Older contact_phones / preferred_phone DBs are not upgraded — wipe vault.db and re-ingest.
 # exclude.csv: handles skipped entirely on import (short codes, banks, etc.).
 
 [owner]

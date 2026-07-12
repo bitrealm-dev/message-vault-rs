@@ -325,43 +325,24 @@ pub fn clear_staging(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// True when an older contacts schema is present (pre-handle rename).
-pub fn contacts_schema_outdated(conn: &Connection) -> Result<bool> {
-    let has_legacy_phones: bool = conn.query_row(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contact_phones'",
-        [],
-        |_| Ok(true),
-    ).unwrap_or(false);
-    if has_legacy_phones {
-        return Ok(true);
-    }
-
-    let has_handles: bool = conn.query_row(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contact_handles'",
-        [],
-        |_| Ok(true),
-    ).unwrap_or(false);
-    if !has_handles {
-        // contacts table may exist without handles after a partial upgrade
-        let has_contacts: bool = conn.query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contacts'",
+/// True when contacts tables match the current handle-based schema.
+pub fn contacts_schema_ready(conn: &Connection) -> Result<bool> {
+    let has_handles: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contact_handles'",
             [],
             |_| Ok(true),
-        ).unwrap_or(false);
-        return Ok(has_contacts);
+        )
+        .unwrap_or(false);
+    if !has_handles {
+        return Ok(false);
     }
 
     let mut stmt = conn.prepare("PRAGMA table_info(contacts)")?;
     let cols: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
-    if cols.iter().any(|c| c == "preferred_phone") {
-        return Ok(true);
-    }
-    if !cols.iter().any(|c| c == "preferred_handle") {
-        return Ok(true);
-    }
-    Ok(false)
+    Ok(cols.iter().any(|c| c == "preferred_handle"))
 }
 
 /// Create contacts tables if they do not already exist.
@@ -419,10 +400,6 @@ pub fn recreate_contacts(conn: &Connection) -> Result<()> {
 
         DROP TABLE IF EXISTS contact_group_members;
         DROP TABLE IF EXISTS contact_groups;
-        DROP TABLE IF EXISTS contact_tags;
-        DROP TABLE IF EXISTS tags;
-        DROP TABLE IF EXISTS groups;
-        DROP TABLE IF EXISTS contact_phones;
         DROP TABLE IF EXISTS contact_handles;
         DROP TABLE IF EXISTS contacts;
         "#,

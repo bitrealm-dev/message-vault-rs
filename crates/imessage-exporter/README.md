@@ -250,8 +250,6 @@ Tapbacks (reactions) are attached inline to the message they react to. Reply thr
 
 As with the other formats, use `-c clone` (or `basic`/`full`) to copy attachments into the export directory; the attachment `path` field is then relative to the export directory. With `-c disabled` (the default), `path` references the attachment in-place.
 
-Schema v3 is **additive**: consumers that ignore unknown fields keep working.
-
 ### Schema
 
 `conversation` record (first line of each file):

@@ -29,9 +29,9 @@ impl WireSchema {
                 _ => Self::Imessage,
             };
         }
-        // No schema field: schema_version 1 or 2 ⇒ sms; otherwise imessage.
+        // No schema field: schema_version 2 ⇒ sms; otherwise imessage.
         match v.get("schema_version").and_then(|x| x.as_u64()) {
-            Some(1) | Some(2) => Self::Sms,
+            Some(2) => Self::Sms,
             _ => Self::Imessage,
         }
     }
@@ -91,7 +91,7 @@ fn message_from_sms(m: message_json::sms::MessageRecord) -> MessageRecord {
 /// Parse NDJSON lines from one file into imessage-shaped records.
 ///
 /// Conversation `schema` selects sms vs imessage parsing for following messages.
-/// Missing `schema` with schema_version not in {1, 2} is treated as imessage.
+/// Missing `schema` with schema_version ≠ 2 is treated as imessage.
 pub fn parse_export_lines(lines: impl IntoIterator<Item = String>) -> Result<Vec<ExportRecord>> {
     let mut active_schema: Option<WireSchema> = None;
     let mut records = Vec::new();

@@ -26,27 +26,15 @@ struct ContactOut {
 
 #[derive(Debug, Deserialize)]
 struct ExcludeCsvRow {
-    /// Prefer `phones` (exclude.csv); accept legacy `number` column.
-    #[serde(alias = "number")]
     phones: String,
     #[serde(default)]
     label: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct FilterPeopleRow {
-    e164: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    vcf_name: String,
-    category: String,
 }
 
 pub fn convert(
     vcf_path: &Path,
     out_path: &Path,
     exclude_path: Option<&Path>,
-    filter_people_path: Option<&Path>,
     force: bool,
 ) -> Result<ConvertStats> {
     if out_path.exists() && !force {
@@ -58,7 +46,6 @@ pub fn convert(
 
     let cards = vcf::parse_vcf(vcf_path)?;
     let exclude_map = load_exclude(exclude_path)?;
-    let filters = load_filters(filter_people_path)?;
 
     let mut stats = ConvertStats {
         cards_total: cards.len() as u64,
@@ -77,7 +64,6 @@ pub fn convert(
 
         let mut contact = card_to_contact(card);
         apply_exclude(&mut contact, &exclude_map);
-        apply_filters(&mut contact, &filters);
         finalize_contact(&mut contact);
 
         // Merge into an existing contact if any phone already seen.
@@ -194,30 +180,6 @@ fn apply_exclude(contact: &mut ContactOut, exclude_map: &HashMap<String, String>
     }
 }
 
-fn apply_filters(contact: &mut ContactOut, filters: &HashMap<String, String>) {
-    for phone in &contact.phones.clone() {
-        let Some(category) = filters.get(phone) else {
-            continue;
-        };
-        match category.to_ascii_lowercase().as_str() {
-            "girls" | "dating" | "dated" => {
-                push_tag(&mut contact.tags, "Girls");
-            }
-            // Legacy filter categories: visibility is exclude only (no Current/Historical groups).
-            "historical" => {}
-            "historical-exclude" => {
-                contact.exclude = true;
-            }
-            other => {
-                let tag = normalize_tag(other);
-                if !tag.eq_ignore_ascii_case("People") {
-                    push_tag(&mut contact.tags, &tag);
-                }
-            }
-        }
-    }
-}
-
 fn finalize_contact(contact: &mut ContactOut) {
     contact.tags.sort();
     contact.tags.dedup();
@@ -261,30 +223,6 @@ fn load_exclude(path: Option<&Path>) -> Result<HashMap<String, String>> {
         }
         map.entry(number)
             .or_insert_with(|| row.label.trim().to_string());
-    }
-    Ok(map)
-}
-
-fn load_filters(path: Option<&Path>) -> Result<HashMap<String, String>> {
-    let Some(path) = path else {
-        return Ok(HashMap::new());
-    };
-    let file = File::open(path)
-        .with_context(|| format!("failed to open filter-people {}", path.display()))?;
-    let mut reader = csv::ReaderBuilder::new()
-        .comment(Some(b'#'))
-        .flexible(true)
-        .from_reader(file);
-    let mut map = HashMap::new();
-    for result in reader.deserialize() {
-        let row: FilterPeopleRow = result.with_context(|| {
-            format!("failed to parse filter-people row in {}", path.display())
-        })?;
-        let e164 = row.e164.trim().to_string();
-        if e164.is_empty() {
-            continue;
-        }
-        map.insert(e164, row.category.trim().to_string());
     }
     Ok(map)
 }

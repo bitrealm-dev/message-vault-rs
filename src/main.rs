@@ -175,10 +175,6 @@ enum Commands {
         #[arg(long = "exclude")]
         exclude: Option<PathBuf>,
 
-        /// Optional message-vault filter-people.csv (sets exclude / groups)
-        #[arg(long)]
-        filter_people: Option<PathBuf>,
-
         /// Overwrite --out if it already exists
         #[arg(long)]
         force: bool,
@@ -467,7 +463,6 @@ fn main() -> Result<()> {
             vcf,
             out,
             exclude,
-            filter_people,
             force,
         } => {
             let cfg = Config::load(&config)?;
@@ -478,7 +473,6 @@ fn main() -> Result<()> {
                 &vcf,
                 &out,
                 exclude.as_deref(),
-                filter_people.as_deref(),
                 force,
             )?;
             println!("Wrote {}", out.display());

@@ -1,4 +1,4 @@
-//! Structured data helpers for JSON schema v3 (edits, parts, balloons).
+//! Structured data helpers for JSON schema v4 (edits, parts, balloons).
 
 use serde::Serialize;
 use serde_json::{json, Value};

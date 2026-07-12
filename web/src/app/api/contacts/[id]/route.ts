@@ -37,7 +37,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (typeof body.exclude === "boolean") {
     patch.exclude = body.exclude;
   }
-  const groupsBody = body.contactGroups ?? body.groups;
+  const groupsBody = body.contactGroups;
   if (
     Array.isArray(groupsBody) &&
     groupsBody.every((t) => typeof t === "string")

@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       ? body.phones.map((p) => p.trim()).filter(Boolean)
       : undefined;
   const exclude = typeof body.exclude === "boolean" ? body.exclude : undefined;
-  const groupsBody = body.contactGroups ?? body.groups;
+  const groupsBody = body.contactGroups;
   const contactGroups =
     Array.isArray(groupsBody) && groupsBody.every((t) => typeof t === "string")
       ? groupsBody.map((t) => t.trim()).filter(Boolean)

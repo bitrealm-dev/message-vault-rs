@@ -433,12 +433,14 @@ async function main() {
 
   const cols = db.prepare(`PRAGMA table_info(attachments)`).all() as Array<{ name: string }>;
   const names = new Set(cols.map((c) => c.name));
-  if (!names.has("derived_sha256")) {
-    db.exec(`
-      ALTER TABLE attachments ADD COLUMN derived_sha256 TEXT;
-      ALTER TABLE attachments ADD COLUMN derived_assets_path TEXT;
-      ALTER TABLE attachments ADD COLUMN derived_mime_type TEXT;
-    `);
+  if (
+    !names.has("derived_sha256") ||
+    !names.has("derived_assets_path") ||
+    !names.has("derived_mime_type")
+  ) {
+    throw new Error(
+      `attachments.derived_* columns missing in ${dbPath} — wipe vault.db and re-ingest (or re-import) before process-assets`,
+    );
   }
 
   const msgCols = db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>;

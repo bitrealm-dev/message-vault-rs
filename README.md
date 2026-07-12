@@ -186,4 +186,4 @@ Contact browsing:
 
 `contacts.csv` maps **phone numbers** only. In SQLite, `contact_handles` stores phones and optional iMessage emails for thread linking; emails are never written back to the CSV. Email-only peers you do not want to map stay under Unassigned.
 
-**Breaking:** older DBs used `contact_phones` / `preferred_phone`. Import or ingest with contacts reload upgrades the schema (or wipe `data/vault.db` and re-ingest).
+Older DBs with `contact_phones` / `preferred_phone` are not upgraded — wipe `data/vault.db` and re-ingest.
