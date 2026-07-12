@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# build-staging.sh — run each message-exporter against source-data into staging/
+# build-staging.sh — run workspace exporter crates against source-data into staging/
 #
 # Usage:
 #   ./message-exporter/build-staging.sh              # all sources
 #   ./message-exporter/build-staging.sh imessage      # one source id
 #
 # Input:  /pool/archive/projects/message-vault-rs/source-data/<source>/…
-# Output: <repo>/staging/<staging-dir>/   (NDJSON + assets)
+# Output: <repo>/staging/<staging-dir>/   (NDJSON + media)
+#
+# Exporters live under crates/ and are invoked with cargo -p from the repo root.
+# (No sibling checkouts or message-exporter/ symlinks required.)
 #
 # Rotate: if staging/<id>/ already has current files (not .gitkeep / not prior
 # YYYYMMDDTHHMMSSZ archives), move them into a new UTC timestamp sibling dir
@@ -26,7 +29,6 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_DATA="/pool/archive/projects/message-vault-rs/source-data"
 STAGING="${REPO_ROOT}/staging"
 CONFIG="${REPO_ROOT}/config/config.toml"
-EXPORTERS="${SCRIPT_DIR}"
 
 OWNER_PHONE="+19412660605"
 OWNER_EMAILS=()

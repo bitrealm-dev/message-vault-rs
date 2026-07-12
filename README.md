@@ -2,6 +2,22 @@
 
 Import NDJSON message archives into SQLite and browse them in a local web UI.
 
+This repo is a **Cargo workspace**: the vault binary plus the NDJSON schema crate and per-source exporters live under [`crates/`](crates/). One clone is enough — no sibling exporter checkouts.
+
+```text
+crates/
+  message-json/                 # shared NDJSON schema
+  go-sms-pro-exporter/
+  sms-backup-restore-exporter/
+  sms-backup-plus-exporter/
+  imessage-database/            # iMessage SQLite parsers
+  imessage-exporter/            # bin: imessage-exporter-json
+```
+
+```bash
+cargo build --workspace --release
+```
+
 ## Multi-source layout
 
 Configure sources in [`config/config.toml`](config/config.toml):
@@ -27,6 +43,8 @@ Resolved asset roots default to `data/<source_id>/assets` and `data/<source_id>/
 One shared SQLite DB holds all sources. Each message row has a `source` column. The web UI can filter by source or show the combined (all) view.
 
 ## Staging pipeline
+
+Raw source archives (iPhone backup, SMS Backup+ EML, etc.) live outside the repo. The workspace exporters turn them into NDJSON under `staging/`, then the vault imports:
 
 ```bash
 # 1. Build NDJSON (+ media) into staging/<source>/ from archived source-data
