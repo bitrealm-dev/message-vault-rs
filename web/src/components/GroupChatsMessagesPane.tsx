@@ -12,6 +12,7 @@ export function GroupChatsMessagesPane({
   focusYear,
   loading,
   messages,
+  conversationSelected,
 }: {
   messagesPaneRef: RefObject<HTMLElement | null>;
   multiSelected: boolean;
@@ -20,6 +21,8 @@ export function GroupChatsMessagesPane({
   focusYear: number | null;
   loading: boolean;
   messages: MessageRow[];
+  /** True when a conversation id is focused (year may still be resolving). */
+  conversationSelected: boolean;
 }) {
   return (
         <section
@@ -32,11 +35,19 @@ export function GroupChatsMessagesPane({
               {selectedIds.size === 1 ? "" : "s"} selected
             </p>
           )}
-          {!multiSelected && !selectedRow && (
+          {!multiSelected && !conversationSelected && (
             <p className="pt-8 text-center text-[13px] text-muted">
               Select a group to read messages.
             </p>
           )}
+          {!multiSelected &&
+            conversationSelected &&
+            focusYear == null &&
+            !loading && (
+              <p className="pt-8 text-center text-[13px] text-muted">
+                Select a year to read messages.
+              </p>
+            )}
           {!multiSelected && selectedRow && loading && messages.length === 0 && (
             <p className="pt-8 text-center text-[13px] text-muted">
               Loading messages…
@@ -44,6 +55,7 @@ export function GroupChatsMessagesPane({
           )}
           {!multiSelected &&
             selectedRow &&
+            focusYear != null &&
             !loading &&
             messages.length === 0 && (
               <p className="pt-8 text-center text-[13px] text-muted">

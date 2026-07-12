@@ -448,6 +448,14 @@ export function UnassignedShell({
     getTargets: getTrashTargets,
     canTrash: mode === "unassigned",
     canRestoreOrDelete: mode === "trash",
+    confirmTrash: (targets) =>
+      targets.length === 1
+        ? "Move this number or email to Trash?"
+        : `Move ${targets.length} numbers/emails to Trash?`,
+    confirmPermanent: (targets) =>
+      targets.length === 1
+        ? "Permanently delete this number or email? This cannot be undone."
+        : `Permanently delete ${targets.length} numbers/emails? This cannot be undone.`,
     status: {
       trashedOne: "Moved to Trash",
       trashedMany: (n) => `Moved ${n} to Trash`,

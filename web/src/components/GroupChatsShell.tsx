@@ -23,6 +23,20 @@ import { useThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
+
+/** Newest calendar year for a conversation in the year-row list. */
+function newestYearForConversation(
+  rows: GroupYearRow[],
+  id: number,
+): number | null {
+  let newest: number | null = null;
+  for (const g of rows) {
+    if (g.id !== id) continue;
+    if (newest == null || g.year > newest) newest = g.year;
+  }
+  return newest;
+}
+
 export function GroupChatsShell({
   groups: initialGroups,
   initialConversationId,
@@ -135,14 +149,12 @@ export function GroupChatsShell({
   }, [filtered]);
 
   const selectedRow = useMemo(() => {
-    if (conversationId == null) return null;
-    if (focusYear != null) {
-      const match = groups.find(
+    if (conversationId == null || focusYear == null) return null;
+    return (
+      groups.find(
         (g) => g.id === conversationId && g.year === focusYear,
-      );
-      if (match) return match;
-    }
-    return groups.find((g) => g.id === conversationId) ?? null;
+      ) ?? null
+    );
   }, [groups, conversationId, focusYear]);
 
   const actionTargets = useMemo(() => {
@@ -161,6 +173,26 @@ export function GroupChatsShell({
     sourceQuery,
     enabled: !multiSelected,
   });
+
+  // Deep link / refresh: require a valid year for the selected conversation.
+  useEffect(() => {
+    if (conversationId == null) return;
+    if (!groups.some((g) => g.id === conversationId)) return;
+
+    const yearOk =
+      focusYear != null &&
+      groups.some((g) => g.id === conversationId && g.year === focusYear);
+    if (yearOk) return;
+
+    const nextYear = newestYearForConversation(groups, conversationId);
+    if (nextYear == null) return;
+    setFocusYear(nextYear);
+    pendingScrollYearRef.current = nextYear;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("g", String(conversationId));
+    params.set("y", String(nextYear));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [groups, conversationId, focusYear, pathname, router, searchParams]);
 
   useEffect(() => {
     setGroups(initialGroups);
@@ -414,6 +446,7 @@ export function GroupChatsShell({
           focusYear={focusYear}
           loading={loading}
           messages={messages}
+          conversationSelected={conversationId != null}
         />
       </div>
 

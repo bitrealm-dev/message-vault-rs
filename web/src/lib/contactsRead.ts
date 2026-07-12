@@ -62,13 +62,14 @@ const CONTACT_HAS_MESSAGES_SQL = `
   )
 `;
 
-function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
+function sectionQueryBody(
+  section: ContactSection,
+): { fromWhere: string; params: unknown[] } {
   if (typeof section === "object" && "group" in section) {
     // Exclude and no-messages override groups: those contacts only appear under
     // their implicit sections.
     return {
-      sql: `
-        SELECT DISTINCT c.*
+      fromWhere: `
         FROM contacts c
         JOIN contact_tags ct ON ct.contact_id = c.id
         JOIN tags t ON t.id = ct.tag_id AND t.name = ?
@@ -81,8 +82,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
   switch (section) {
     case "all":
       return {
-        sql: `
-          SELECT DISTINCT c.*
+        fromWhere: `
           FROM contacts c
           WHERE c.exclude = 0
             AND ${CONTACT_HAS_MESSAGES_SQL}
@@ -92,8 +92,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
     case "excluded":
       // Excluded overrides no-messages: all excluded contacts live here.
       return {
-        sql: `
-          SELECT DISTINCT c.*
+        fromWhere: `
           FROM contacts c
           WHERE c.exclude = 1
         `,
@@ -102,8 +101,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
     case "no-messages":
       // Includes excluded contacts with no messages (they also appear under Excluded).
       return {
-        sql: `
-          SELECT DISTINCT c.*
+        fromWhere: `
           FROM contacts c
           WHERE NOT (${CONTACT_HAS_MESSAGES_SQL})
         `,
@@ -111,8 +109,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
       };
     case "no-group":
       return {
-        sql: `
-          SELECT DISTINCT c.*
+        fromWhere: `
           FROM contacts c
           WHERE c.exclude = 0
             AND NOT EXISTS (
@@ -123,6 +120,15 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         params: [],
       };
   }
+}
+
+function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
+  const { fromWhere, params } = sectionQueryBody(section);
+  return {
+    sql: `SELECT DISTINCT c.*
+      ${fromWhere}`,
+    params,
+  };
 }
 
 export function listContacts(section: ContactSection): ContactListItem[] {
@@ -438,12 +444,13 @@ export function contactYearlyThreadsForPhones(
 
 export function countContacts(section: ContactSection): number {
   const db = getDb();
-  const { sql, params } = sectionSql(section);
-  const countSql = sql.replace(
-    /SELECT DISTINCT c\.\*/,
-    "SELECT COUNT(DISTINCT c.id) AS n",
-  );
-  const row = db.prepare(countSql).get(...params) as { n: number };
+  const { fromWhere, params } = sectionQueryBody(section);
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT c.id) AS n
+       ${fromWhere}`,
+    )
+    .get(...params) as { n: number };
   return row.n;
 }
 
