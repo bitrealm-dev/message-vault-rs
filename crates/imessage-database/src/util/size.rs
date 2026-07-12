@@ -1,0 +1,62 @@
+/*!
+ Human-readable file size formatting.
+*/
+
+const DIVISOR: f64 = 1024.;
+const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+
+/// Format a byte count with a binary unit suffix.
+///
+/// # Example:
+///
+/// ```
+/// use imessage_database::util::size::format_file_size;
+///
+/// let size: String = format_file_size(5612000);
+/// println!("{size}"); // 5.35 MB
+/// ```
+#[must_use]
+pub fn format_file_size(total_bytes: u64) -> String {
+    let mut index: usize = 0;
+    let mut bytes = total_bytes as f64;
+    while index < UNITS.len() - 1 && bytes > DIVISOR {
+        index += 1;
+        bytes /= DIVISOR;
+    }
+
+    format!("{bytes:.2} {}", UNITS[index])
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::util::size::format_file_size;
+
+    #[test]
+    fn can_get_file_size_bytes() {
+        assert_eq!(format_file_size(100), String::from("100.00 B"));
+    }
+
+    #[test]
+    fn can_get_file_size_kb() {
+        let actual = format_file_size(2300);
+        assert_eq!(actual, String::from("2.25 KB"));
+    }
+
+    #[test]
+    fn can_get_file_size_mb() {
+        let actual = format_file_size(5612000);
+        assert_eq!(actual, String::from("5.35 MB"));
+    }
+
+    #[test]
+    fn can_get_file_size_gb() {
+        let actual = format_file_size(9234712394);
+        assert_eq!(actual, String::from("8.60 GB"));
+    }
+
+    #[test]
+    fn can_get_file_size_cap() {
+        let actual = format_file_size(u64::MAX);
+        assert_eq!(actual, String::from("16777216.00 TB"));
+    }
+}
