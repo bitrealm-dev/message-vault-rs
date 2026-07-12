@@ -107,7 +107,7 @@ export function UnmatchedShell({
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const selectionAnchorRef = useRef<string | null>(null);
   const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
-    useResizablePanes("browse-unmatched");
+    useResizablePanes("browse");
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
   const multiSelected = selectedHandles.size > 1;
@@ -140,6 +140,38 @@ export function UnmatchedShell({
     [sortedHandles, selectedHandles],
   );
 
+  const clearSelection = useCallback(() => {
+    setSelectedHandles(new Set());
+    selectionAnchorRef.current = null;
+  }, []);
+
+  const allHandlesSelected = useMemo(() => {
+    if (sortedHandles.length === 0) return false;
+    return sortedHandles.every((h) => selectedHandles.has(h.handle));
+  }, [sortedHandles, selectedHandles]);
+
+  const someHandlesSelected = useMemo(() => {
+    if (sortedHandles.length === 0) return false;
+    return sortedHandles.some((h) => selectedHandles.has(h.handle));
+  }, [sortedHandles, selectedHandles]);
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate =
+      someHandlesSelected && !allHandlesSelected;
+  }, [someHandlesSelected, allHandlesSelected]);
+
+  const toggleSelectAll = useCallback(() => {
+    if (allHandlesSelected) {
+      clearSelection();
+      return;
+    }
+    setSelectedHandles(new Set(sortedHandles.map((h) => h.handle)));
+    selectionAnchorRef.current = sortedHandles[0]?.handle ?? null;
+  }, [allHandlesSelected, clearSelection, sortedHandles]);
+
   const actionTargets = useMemo(() => {
     if (multiSelected) return selectedItems.map((h) => h.handle);
     if (handle) return [handle];
@@ -151,11 +183,6 @@ export function UnmatchedShell({
     sortedHandles.forEach((h, i) => map.set(h.handle, i));
     return map;
   }, [sortedHandles]);
-
-  const clearSelection = useCallback(() => {
-    setSelectedHandles(new Set());
-    selectionAnchorRef.current = null;
-  }, []);
 
   const selectHandle = useCallback(
     (next: string) => {
@@ -717,10 +744,22 @@ export function UnmatchedShell({
         style={{ width: sidebarWidth }}
       >
         <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
-          <h2 className="text-[13px] font-medium text-text">
-            {mode === "trash" ? "Trash" : "Unmatched"}{" "}
-            <span className="text-muted">({handles.length})</span>
-          </h2>
+          <label className="flex min-w-0 items-center gap-2">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allHandlesSelected}
+              disabled={sortedHandles.length === 0}
+              aria-label={
+                mode === "trash" ? "Select all trash" : "Select all unmatched"
+              }
+              onChange={toggleSelectAll}
+              className="checkbox-people"
+            />
+            <span className="truncate text-[13px] text-muted">
+              {handles.length}
+            </span>
+          </label>
           <UnmatchedSortMenu
             sortBy={sortBy}
             order={sortOrder}
@@ -960,6 +999,7 @@ export function UnmatchedShell({
           </div>
         )}
 
+        <div id="browse-split" className="flex min-h-0 flex-1 flex-col">
         <section
           className="flex flex-col overflow-y-auto bg-panel px-5 py-4"
           style={{ height: `${threadsPct}%`, minHeight: 140 }}
@@ -1229,6 +1269,7 @@ export function UnmatchedShell({
             </>
           )}
         </section>
+        </div>
       </div>
 
       {ctxMenu && (

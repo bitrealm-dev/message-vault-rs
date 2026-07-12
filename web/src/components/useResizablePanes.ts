@@ -6,6 +6,9 @@ const SIDEBAR_MIN = 120;
 const SIDEBAR_MAX = 448;
 const SIDEBAR_DEFAULT = 272;
 
+/** Shared across All / Unused / Excluded / Unmatched / tag groups / group chats. */
+const SHARED_SIDEBAR_KEY = "browse:sidebarWidth";
+
 function readStored(key: string, fallback: number): number {
   if (typeof window === "undefined") return fallback;
   const raw = window.localStorage.getItem(key);
@@ -18,18 +21,33 @@ function clampSidebar(w: number): number {
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
 }
 
+function readSharedSidebarWidth(storagePrefix: string): number {
+  if (typeof window === "undefined") return SIDEBAR_DEFAULT;
+  const shared = window.localStorage.getItem(SHARED_SIDEBAR_KEY);
+  if (shared != null) {
+    const n = Number(shared);
+    if (Number.isFinite(n)) return clampSidebar(n);
+  }
+  // Migrate from older per-section keys.
+  return clampSidebar(
+    readStored(`${storagePrefix}:sidebarWidth`, SIDEBAR_DEFAULT),
+  );
+}
+
 export function useResizablePanes(storagePrefix: string) {
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
-  const [threadsPct, setThreadsPct] = useState(40);
-  const sidebarRef = useRef(SIDEBAR_DEFAULT);
-  const threadsRef = useRef(40);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    readSharedSidebarWidth(storagePrefix),
+  );
+  const [threadsPct, setThreadsPct] = useState(() =>
+    readStored(`${storagePrefix}:threadsPct`, 40),
+  );
+  const sidebarRef = useRef(sidebarWidth);
+  const threadsRef = useRef(threadsPct);
   const shellRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<"side" | "threads" | null>(null);
 
   useEffect(() => {
-    const w = clampSidebar(
-      readStored(`${storagePrefix}:sidebarWidth`, SIDEBAR_DEFAULT),
-    );
+    const w = readSharedSidebarWidth(storagePrefix);
     const t = readStored(`${storagePrefix}:threadsPct`, 40);
     sidebarRef.current = w;
     threadsRef.current = t;
@@ -59,7 +77,7 @@ export function useResizablePanes(storagePrefix: string) {
       if (!dragging.current) return;
       if (dragging.current === "side") {
         window.localStorage.setItem(
-          `${storagePrefix}:sidebarWidth`,
+          SHARED_SIDEBAR_KEY,
           String(sidebarRef.current),
         );
       } else if (dragging.current === "threads") {

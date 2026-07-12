@@ -51,9 +51,31 @@ export type GroupListItem = {
   titleFull: string;
   namedTitle: string | null;
   participantCount: number;
+  participantNames: string[];
+  participantHandles: string[];
   messageCount: number;
   dateStart: string | null;
   dateEnd: string | null;
+};
+
+/** One group conversation bucketed into a calendar year for the Groups page. */
+export type GroupYearRow = {
+  id: number;
+  year: number;
+  title: string;
+  titleFull: string;
+  namedTitle: string | null;
+  participantCount: number;
+  participantNames: string[];
+  participantHandles: string[];
+  /** Messages in this year only. */
+  messageCount: number;
+  dateStart: string;
+  dateEnd: string;
+  /** Full conversation range (all years). */
+  conversationDateStart: string;
+  conversationDateEnd: string;
+  spansMultipleYears: boolean;
 };
 
 export type AttachmentRow = {

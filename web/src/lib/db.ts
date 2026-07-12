@@ -7,6 +7,7 @@ import type {
   ContactSection,
   GroupListItem,
   GroupThread,
+  GroupYearRow,
   HomeStats,
   MessageRow,
   UnmatchedHandle,
@@ -594,18 +595,21 @@ function formatPeopleTitle(
   };
 }
 
+type GroupPeopleTitle = {
+  title: string;
+  titleFull: string;
+  namedTitle: string | null;
+  participantCount: number;
+  participantNames: string[];
+  participantHandles: string[];
+};
+
 /** Resolve people labels for group conversations, excluding owner (+ optional focus contact). */
 function groupPeopleTitles(
   conversationIds: number[],
   excludePhones: string[] = [],
-): Map<
-  number,
-  { title: string; titleFull: string; namedTitle: string | null; participantCount: number }
-> {
-  const out = new Map<
-    number,
-    { title: string; titleFull: string; namedTitle: string | null; participantCount: number }
-  >();
+): Map<number, GroupPeopleTitle> {
+  const out = new Map<number, GroupPeopleTitle>();
   if (!conversationIds.length) return out;
 
   const db = getDb();
@@ -644,22 +648,43 @@ function groupPeopleTitles(
     last_name: string | null;
   }>;
 
-  const byConv = new Map<number, Array<{ name: string; unknown: boolean }>>();
+  const byConv = new Map<
+    number,
+    Array<{ name: string; unknown: boolean; handle: string }>
+  >();
   for (const r of rows) {
-    if (exclude.has(r.handle.trim())) continue;
+    const handle = r.handle.trim();
+    if (exclude.has(handle)) continue;
     const list = byConv.get(r.conversation_id) ?? [];
-    list.push(participantLabel(r));
+    list.push({ ...participantLabel(r), handle });
     byConv.set(r.conversation_id, list);
   }
 
   for (const id of conversationIds) {
-    const people = formatPeopleTitle(byConv.get(id) ?? []);
+    const entries = byConv.get(id) ?? [];
+    const people = formatPeopleTitle(entries);
     const namedTitle = namedById.get(id) ?? null;
+    const nameSeen = new Set<string>();
+    const participantNames: string[] = [];
+    const handleSeen = new Set<string>();
+    const participantHandles: string[] = [];
+    for (const e of entries) {
+      if (e.name && !nameSeen.has(e.name)) {
+        nameSeen.add(e.name);
+        participantNames.push(e.name);
+      }
+      if (e.handle && !handleSeen.has(e.handle)) {
+        handleSeen.add(e.handle);
+        participantHandles.push(e.handle);
+      }
+    }
     out.set(id, {
       title: people.short,
       titleFull: namedTitle ? `${namedTitle}\n${people.full}` : people.full,
       namedTitle,
       participantCount: people.count,
+      participantNames,
+      participantHandles,
     });
   }
   return out;
@@ -718,6 +743,8 @@ function contactGroupThreadsForPhones(
       titleFull: "Group chat",
       namedTitle: null,
       participantCount: 0,
+      participantNames: [] as string[],
+      participantHandles: [] as string[],
     };
     return {
       conversationId: r.conversation_id,
@@ -881,6 +908,8 @@ export function listGroups(): GroupListItem[] {
       titleFull: "Group chat",
       namedTitle: null,
       participantCount: 0,
+      participantNames: [] as string[],
+      participantHandles: [] as string[],
     };
     return {
       id: r.id,
@@ -888,15 +917,121 @@ export function listGroups(): GroupListItem[] {
       titleFull: t.titleFull,
       namedTitle: t.namedTitle,
       participantCount: t.participantCount,
+      participantNames: t.participantNames,
+      participantHandles: t.participantHandles,
       messageCount: r.message_count,
       dateStart: r.date_start,
       dateEnd: r.date_end,
     };
   });
 
-  items.sort((a, b) =>
-    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-  );
+  items.sort((a, b) => {
+    const aEnd = a.dateEnd ?? a.dateStart ?? "";
+    const bEnd = b.dateEnd ?? b.dateStart ?? "";
+    const byEnd = bEnd.localeCompare(aEnd);
+    if (byEnd !== 0) return byEnd;
+    const aStart = a.dateStart ?? "";
+    const bStart = b.dateStart ?? "";
+    const byStart = bStart.localeCompare(aStart);
+    if (byStart !== 0) return byStart;
+    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+  });
+  return items;
+}
+
+/** Group chats split by calendar year for the Groups page list. */
+export function listGroupYearRows(): GroupYearRow[] {
+  const db = getDb();
+  const joinDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT c.id,
+              CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
+              COUNT(m.id) AS message_count,
+              MIN(substr(m.timestamp, 1, 10)) AS date_start,
+              MAX(substr(m.timestamp, 1, 10)) AS date_end
+       FROM conversations c
+       JOIN messages m ON m.conversation_id = c.id${joinDupes}
+       WHERE c.conv_type = 'group'
+       GROUP BY c.id, year
+       HAVING message_count > 0`,
+    )
+    .all() as Array<{
+    id: number;
+    year: number;
+    message_count: number;
+    date_start: string;
+    date_end: string;
+  }>;
+
+  if (!rows.length) return [];
+
+  const conversationIds = [...new Set(rows.map((r) => r.id))];
+  const titles = groupPeopleTitles(conversationIds);
+
+  const yearsByConv = new Map<number, Set<number>>();
+  const rangeByConv = new Map<
+    number,
+    { dateStart: string; dateEnd: string }
+  >();
+  for (const r of rows) {
+    const years = yearsByConv.get(r.id) ?? new Set<number>();
+    years.add(r.year);
+    yearsByConv.set(r.id, years);
+
+    const range = rangeByConv.get(r.id);
+    if (!range) {
+      rangeByConv.set(r.id, {
+        dateStart: r.date_start,
+        dateEnd: r.date_end,
+      });
+    } else {
+      if (r.date_start < range.dateStart) range.dateStart = r.date_start;
+      if (r.date_end > range.dateEnd) range.dateEnd = r.date_end;
+    }
+  }
+
+  const emptyTitle = {
+    title: "Group chat",
+    titleFull: "Group chat",
+    namedTitle: null as string | null,
+    participantCount: 0,
+    participantNames: [] as string[],
+    participantHandles: [] as string[],
+  };
+
+  const items: GroupYearRow[] = rows.map((r) => {
+    const t = titles.get(r.id) ?? emptyTitle;
+    const range = rangeByConv.get(r.id)!;
+    const yearCount = yearsByConv.get(r.id)?.size ?? 1;
+    return {
+      id: r.id,
+      year: r.year,
+      title: t.title,
+      titleFull: t.titleFull,
+      namedTitle: t.namedTitle,
+      participantCount: t.participantCount,
+      participantNames: t.participantNames,
+      participantHandles: t.participantHandles,
+      messageCount: r.message_count,
+      dateStart: r.date_start,
+      dateEnd: r.date_end,
+      conversationDateStart: range.dateStart,
+      conversationDateEnd: range.dateEnd,
+      spansMultipleYears: yearCount > 1,
+    };
+  });
+
+  items.sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    const byEnd = b.dateEnd.localeCompare(a.dateEnd);
+    if (byEnd !== 0) return byEnd;
+    const byStart = b.dateStart.localeCompare(a.dateStart);
+    if (byStart !== 0) return byStart;
+    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+  });
   return items;
 }
 
@@ -942,19 +1077,53 @@ export function messagesForConversationYear(
   year: number,
   source?: string | null,
 ): MessageRow[] {
-  const ids = (Array.isArray(conversationIds) ? conversationIds : [conversationIds]).filter(
-    (id) => Number.isFinite(id),
-  );
+  return loadConversationMessages(conversationIds, {
+    year,
+    source,
+    order: "asc",
+  });
+}
+
+/** All messages for conversation(s), newest first (no year filter). */
+export function messagesForConversations(
+  conversationIds: number | number[],
+  source?: string | null,
+): MessageRow[] {
+  return loadConversationMessages(conversationIds, {
+    source,
+    order: "desc",
+  });
+}
+
+function loadConversationMessages(
+  conversationIds: number | number[],
+  opts: {
+    year?: number;
+    source?: string | null;
+    order: "asc" | "desc";
+  },
+): MessageRow[] {
+  const ids = (
+    Array.isArray(conversationIds) ? conversationIds : [conversationIds]
+  ).filter((id) => Number.isFinite(id));
   if (!ids.length) return [];
   const db = getDb();
   const owner = loadOwner();
   const placeholders = ids.map(() => "?").join(",");
-  const sourceSql = source ? " AND m.source = ?" : "";
-  // Range on timestamp prefix uses (conversation_id, timestamp) better than CAST(substr…).
-  const yearStart = `${year}-`;
-  const yearEnd = `${year + 1}-`;
-  const params: Array<string | number> = [...ids, yearStart, yearEnd];
-  if (source) params.push(source);
+  const sourceSql = opts.source ? " AND m.source = ?" : "";
+  const yearSql =
+    opts.year != null ? " AND m.timestamp >= ? AND m.timestamp < ?" : "";
+  const orderSql =
+    opts.order === "desc"
+      ? "ORDER BY m.timestamp DESC, m.sort_order DESC"
+      : "ORDER BY m.timestamp, m.sort_order";
+
+  const params: Array<string | number> = [...ids];
+  if (opts.year != null) {
+    params.push(`${opts.year}-`, `${opts.year + 1}-`);
+  }
+  if (opts.source) params.push(opts.source);
+
   const rows = db
     .prepare(
       `SELECT m.id, m.source, m.timestamp, m.is_from_me, m.sender, m.body, m.is_announcement,
@@ -965,9 +1134,8 @@ export function messagesForConversationYear(
        LEFT JOIN contacts c ON c.id = cp.contact_id
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
-       WHERE m.conversation_id IN (${placeholders})
-         AND m.timestamp >= ? AND m.timestamp < ?${sourceSql}${combinedDedupeSql(source, "m")}
-       ORDER BY m.timestamp, m.sort_order`,
+       WHERE m.conversation_id IN (${placeholders})${yearSql}${sourceSql}${combinedDedupeSql(opts.source, "m")}
+       ${orderSql}`,
     )
     .all(...params) as Array<{
     id: number;

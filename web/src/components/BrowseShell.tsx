@@ -14,7 +14,7 @@ import {
   seedContactEditDraft,
   type ContactEditDraft,
 } from "./ContactEditPane";
-import { MessageAttachments } from "./MessageAttachments";
+import { MessageBubble } from "./MessageBubble";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
 
@@ -175,7 +175,7 @@ export function BrowseShell({
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { sidebarWidth, threadsPct, startSide, startThreads, shellRef } =
-    useResizablePanes(`browse-${section}`);
+    useResizablePanes("browse");
 
   const saveContactPatch = useCallback(
     async (patch: {
@@ -1361,7 +1361,7 @@ export function BrowseShell({
           </div>
         ) : (
           <div
-            id={`browse-${section}-split`}
+            id="browse-split"
             className="flex min-h-0 flex-1 flex-col"
           >
         <section
@@ -1798,40 +1798,6 @@ function formatSourceLabel(id: string): string {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-}
-
-function MessageBubble({ message }: { message: MessageRow }) {
-  const align = message.isFromMe ? "items-end" : "items-start";
-  const bubble = message.isFromMe
-    ? "bg-sent text-sent-text rounded-2xl rounded-br-md"
-    : "bg-received text-received-text rounded-2xl rounded-bl-md";
-
-  if (message.isAnnouncement) {
-    return (
-      <div className="my-2 text-center text-[11px] text-muted">
-        {message.body || "Announcement"}
-      </div>
-    );
-  }
-
-  return (
-    <div className={`flex flex-col ${align}`}>
-      {!message.isFromMe && (
-        <span className="mb-0.5 px-1 text-[10px] text-muted">{message.senderName}</span>
-      )}
-      <div className={`max-w-[75%] px-3 py-2 text-[14px] leading-snug ${bubble}`}>
-        {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-        <MessageAttachments
-          source={message.source}
-          attachments={message.attachments}
-          hasBody={Boolean(message.body)}
-        />
-      </div>
-      <span className="mt-0.5 px-1 text-[10px] text-muted">
-        {message.timestamp.replace("T", " ").slice(0, 19)}
-      </span>
-    </div>
-  );
 }
 
 function PencilIcon({ className }: { className?: string }) {
