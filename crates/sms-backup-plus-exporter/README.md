@@ -93,7 +93,8 @@ Defaults (when present):
 
 - Repo `config/contacts.csv` (or `../../config/contacts.csv` if you run from this crate directory)
 - [`config/name-mapping.example.csv`](config/name-mapping.example.csv) → copy to `config/name-mapping.csv`
-- [`config/owner.example.toml`](config/owner.example.toml) → copy to `config/owner.toml` for default `--owner-phone` / `--owner-email`
+- [`config/owner.example.toml`](config/owner.example.toml) → copy to `config/owner.toml` for default `--owner-phone` / `--owner-email` / `--input` (`source_dirs`)
+
 
 `name-mapping.csv` and `owner.toml` under this crate’s `config/` are gitignored. CLI flags still override defaults when provided.
 

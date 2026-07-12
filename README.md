@@ -62,14 +62,15 @@ One shared SQLite DB holds all sources. Each message row has a `source` column. 
 One command exports raw source data → NDJSON under `staging/<source>/` → imports that source → soft-dedupes across sources:
 
 ```bash
-# --from required unless that source has source_dir in config
+# --from required unless that source has source_dir / source_dirs in config
 cargo run --release -- ingest imessage --from /path/to/iphone_backup
 cargo run --release -- ingest go-sms-pro --from /path/to/gosms-export
 cargo run --release -- ingest sms-backup-plus --from /path/to/eml-tree
 cargo run --release -- ingest sms-backup-restore --from /path/to/sms-xml
 
-# with source_dir configured:
+# with source_dir / source_dirs configured:
 cargo run --release -- ingest go-sms-pro
+cargo run --release -- ingest sms-backup-plus
 
 # optional flags:
 #   --mode append | replace   (default replace)
@@ -79,7 +80,7 @@ cargo run --release -- ingest go-sms-pro
 #   --staging-dir staging/custom
 ```
 
-Helper (uses each source’s `source_dir` from config):
+Helper (uses each source’s `source_dir` / `source_dirs` from config):
 
 ```bash
 # one source

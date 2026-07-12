@@ -48,10 +48,14 @@ pub struct PathsConfig {
 pub struct SourceConfig {
     pub id: String,
     pub export_dir: PathBuf,
-    /// Optional path to raw source data for `ingest` (iPhone backup, XML, EML tree, …).
-    /// Not required; when set, `ingest <id>` can omit `--from`.
+    /// Optional single raw input path for `ingest` (iPhone backup, XML, EML tree, …).
+    /// Prefer [`Self::source_dirs`] when a source has multiple trees.
     #[serde(default)]
     pub source_dir: Option<PathBuf>,
+    /// Optional list of raw input paths (merged for exporters that support multi-input).
+    /// When non-empty, used instead of [`Self::source_dir`].
+    #[serde(default)]
+    pub source_dirs: Vec<PathBuf>,
     /// Optional full-path override for originals (else `data_dir/<id>/<assets_dir>`).
     #[serde(default)]
     pub assets_dir: Option<PathBuf>,
@@ -81,6 +85,17 @@ fn default_blacklist_csv() -> PathBuf {
 }
 
 impl SourceConfig {
+    /// Raw input paths for ingest/export: `source_dirs` if set, else singular `source_dir`.
+    pub fn input_dirs(&self) -> Vec<PathBuf> {
+        if !self.source_dirs.is_empty() {
+            self.source_dirs.clone()
+        } else if let Some(p) = &self.source_dir {
+            vec![p.clone()]
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn resolved_assets_dir(&self, paths: &PathsConfig) -> PathBuf {
         if let Some(p) = &self.assets_dir {
             p.clone()
@@ -147,6 +162,7 @@ impl Config {
                 id: "default".to_string(),
                 export_dir,
                 source_dir: None,
+                source_dirs: Vec::new(),
                 assets_dir: None,
                 assets_converted_dir: None,
             });
@@ -160,6 +176,11 @@ impl Config {
             if let Some(p) = source.source_dir.take() {
                 source.source_dir = Some(resolve_path(repo, &p));
             }
+            source.source_dirs = source
+                .source_dirs
+                .drain(..)
+                .map(|p| resolve_path(repo, &p))
+                .collect();
             if let Some(p) = source.assets_dir.take() {
                 source.assets_dir = Some(resolve_path(repo, &p));
             }

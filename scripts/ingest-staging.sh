@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ingest-staging.sh — one-shot export+import+dedupe using config source_dir
+# ingest-staging.sh — one-shot export+import+dedupe using config source_dir / source_dirs
 #
 # Usage:
 #   ./scripts/ingest-staging.sh                         # all known sources
@@ -9,13 +9,13 @@
 #   ./scripts/ingest-staging.sh --overwrite-contacts imessage
 #   ./scripts/ingest-staging.sh --skip-dedupe go-sms-pro
 #
-# Requires each SOURCE_ID to have source_dir set in config/config.toml, then runs:
+# Requires each SOURCE_ID to have source_dir or source_dirs set in config/config.toml, then runs:
 #   cargo run --release -- ingest <id> …
 #
 # When multiple sources run, cross-source dedupe runs once after the last ingest
 # (unless --skip-dedupe).
 #
-# Override the path for one run:
+# Override the path for one run (single tree):
 #   cargo run --release -- ingest go-sms-pro --from /path/to/export
 
 set -euo pipefail
@@ -36,7 +36,7 @@ usage() {
   cat <<'EOF'
 Usage: ingest-staging.sh [OPTIONS] [SOURCE_ID…]
 
-With no SOURCE_ID, ingests all known sources (each must have source_dir in config).
+With no SOURCE_ID, ingests all known sources (each must have source_dir or source_dirs in config).
 
 Options:
   --append               Import mode append (default: replace)

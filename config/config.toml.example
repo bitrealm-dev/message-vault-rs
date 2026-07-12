@@ -27,7 +27,10 @@ export_dir = "staging/imessage"
 [[sources]]
 id = "sms-backup-plus"
 export_dir = "staging/sms-backup-plus-eml"
+# One tree:
 # source_dir = "/path/to/eml-tree"
+# Or several trees (merged at export; sms-backup-plus only):
+# source_dirs = ["/path/to/eml-a", "/path/to/eml-b"]
 
 [[sources]]
 id = "go-sms-pro"

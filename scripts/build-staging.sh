@@ -5,7 +5,7 @@
 #   ./scripts/build-staging.sh              # all sources
 #   ./scripts/build-staging.sh imessage      # one source id
 #
-# Input:  each source's source_dir in config/config.toml (required)
+# Input:  each source's source_dir / source_dirs in config/config.toml (required)
 # Output: <repo>/staging/<staging-dir>/   (NDJSON + media)
 #
 # Exporters live under crates/ and are invoked with cargo -p from the repo root.
@@ -25,8 +25,8 @@ CONFIG="${REPO_ROOT}/config/config.toml"
 OWNER_PHONE="+15555550100"
 OWNER_EMAILS=()
 
-# Resolve [[sources]].source_dir for an id from config.toml; empty if unset.
-config_source_dir() {
+# Resolve [[sources]] input dirs for an id (source_dirs or source_dir); one path per line.
+config_source_dirs() {
   local id="$1"
   if [[ ! -f "${CONFIG}" ]] || ! command -v python3 >/dev/null 2>&1; then
     return 0
@@ -44,23 +44,29 @@ except ImportError:
 cfg = tomllib.loads(text)
 for src in cfg.get("sources") or []:
     if src.get("id") == want:
-        sd = src.get("source_dir")
-        if sd:
-            print(sd)
+        dirs = src.get("source_dirs") or []
+        if not dirs:
+            sd = src.get("source_dir")
+            if sd:
+                dirs = [sd]
+        for d in dirs:
+            if d:
+                print(d)
         break
 PY
 }
 
-# Require source_dir from config for this source id.
+# Require at least one input dir from config for this source id.
+# Prints paths one per line (caller may mapfile into an array).
 input_for_source() {
   local id="$1"
-  local from_cfg
-  from_cfg="$(config_source_dir "${id}" || true)"
-  if [[ -z "${from_cfg}" ]]; then
-    echo "error: set source_dir for '${id}' in ${CONFIG}" >&2
+  local lines
+  lines="$(config_source_dirs "${id}" || true)"
+  if [[ -z "${lines}" ]]; then
+    echo "error: set source_dir or source_dirs for '${id}' in ${CONFIG}" >&2
     exit 1
   fi
-  echo "${from_cfg}"
+  printf '%s\n' "${lines}"
 }
 
 load_owner_from_config() {
@@ -165,8 +171,13 @@ require_path() {
 }
 
 run_imessage() {
-  local input
-  input="$(input_for_source imessage)"
+  local -a inputs=()
+  mapfile -t inputs < <(input_for_source imessage)
+  if [[ ${#inputs[@]} -ne 1 ]]; then
+    echo "error: imessage needs exactly one source_dir (got ${#inputs[@]})" >&2
+    exit 1
+  fi
+  local input="${inputs[0]}"
   local out="${STAGING}/imessage"
   require_path "${input}" "imessage input"
 
@@ -182,8 +193,13 @@ run_imessage() {
 }
 
 run_go_sms_pro() {
-  local input
-  input="$(input_for_source go-sms-pro)"
+  local -a inputs=()
+  mapfile -t inputs < <(input_for_source go-sms-pro)
+  if [[ ${#inputs[@]} -ne 1 ]]; then
+    echo "error: go-sms-pro needs exactly one source_dir (got ${#inputs[@]})" >&2
+    exit 1
+  fi
+  local input="${inputs[0]}"
   local out="${STAGING}/go-sms-pro"
   require_path "${input}" "go-sms-pro input"
 
@@ -198,8 +214,13 @@ run_go_sms_pro() {
 }
 
 run_sms_backup_restore() {
-  local input
-  input="$(input_for_source sms-backup-restore)"
+  local -a inputs=()
+  mapfile -t inputs < <(input_for_source sms-backup-restore)
+  if [[ ${#inputs[@]} -ne 1 ]]; then
+    echo "error: sms-backup-restore needs exactly one source_dir (got ${#inputs[@]})" >&2
+    exit 1
+  fi
+  local input="${inputs[0]}"
   local out="${STAGING}/sms-backup-restore"
   require_path "${input}" "sms-backup-restore input"
 
@@ -214,10 +235,19 @@ run_sms_backup_restore() {
 }
 
 run_sms_backup_plus() {
-  local input
-  input="$(input_for_source sms-backup-plus)"
+  local -a inputs=()
+  mapfile -t inputs < <(input_for_source sms-backup-plus)
+  if [[ ${#inputs[@]} -eq 0 ]]; then
+    echo "error: set source_dir or source_dirs for sms-backup-plus in ${CONFIG}" >&2
+    exit 1
+  fi
   local out="${STAGING}/sms-backup-plus-eml"
-  require_path "${input}" "sms-backup-plus input"
+  local input_args=()
+  local inp
+  for inp in "${inputs[@]}"; do
+    require_path "${inp}" "sms-backup-plus input"
+    input_args+=(--input "${inp}")
+  done
 
   echo "==> sms-backup-plus"
   rotate_staging "${out}"
@@ -227,8 +257,9 @@ run_sms_backup_plus() {
   for e in "${OWNER_EMAILS[@]}"; do
     email_args+=(--owner-email "${e}")
   done
+  # Owner/contacts come from vault config.toml / config/contacts.csv — not exporter owner.toml.
   (cd "${REPO_ROOT}" && cargo run --release -p sms-backup-plus-exporter -- -v convert \
-    --input "${input}" \
+    "${input_args[@]}" \
     --output "${out}" \
     --owner-phone "${OWNER_PHONE}" \
     "${email_args[@]}")

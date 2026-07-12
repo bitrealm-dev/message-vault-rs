@@ -14,7 +14,8 @@ use crate::import::{self, ImportMode};
 #[derive(Debug)]
 pub struct IngestOptions {
     pub source_id: String,
-    pub from: PathBuf,
+    /// One or more raw input roots (merged for exporters that support multi-input).
+    pub from: Vec<PathBuf>,
     pub staging_dir: Option<PathBuf>,
     pub mode: ImportMode,
     pub overwrite_contacts: bool,
@@ -39,15 +40,22 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         .unwrap_or_else(|| src.export_dir.clone());
     let from = &opts.from;
 
-    if !from.exists() {
-        bail!("--from path does not exist: {}", from.display());
+    if from.is_empty() {
+        bail!("ingest needs at least one input path (--from or source_dirs/source_dir in config)");
+    }
+    for p in from {
+        if !p.exists() {
+            bail!("input path does not exist: {}", p.display());
+        }
     }
 
     fs::create_dir_all(&staging)
         .with_context(|| format!("failed to create staging dir {}", staging.display()))?;
 
     println!("Ingest source '{}'", src.id);
-    println!("  from:     {}", from.display());
+    for p in from {
+        println!("  from:     {}", p.display());
+    }
     println!("  staging:  {}", staging.display());
     println!("  mode:     {}", opts.mode.as_str());
 
@@ -96,9 +104,10 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
     })
 }
 
-fn export_source(cfg: &Config, source_id: &str, from: &Path, staging: &Path) -> Result<()> {
+fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path) -> Result<()> {
     match source_id {
         "go-sms-pro" => {
+            let from = require_single_input(source_id, from)?;
             let report =
                 go_sms_pro_exporter::convert_export(from, staging, &cfg.owner.phone_e164)?;
             println!(
@@ -110,6 +119,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &Path, staging: &Path) -> 
             );
         }
         "sms-backup-restore" => {
+            let from = require_single_input(source_id, from)?;
             let report = sms_backup_restore_exporter::convert_export(
                 from,
                 staging,
@@ -133,7 +143,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &Path, staging: &Path) -> 
             let name_mapping = optional_file("config/name-mapping.csv")
                 .or_else(|| optional_file("crates/sms-backup-plus-exporter/config/name-mapping.csv"));
             let report = sms_backup_plus_exporter::convert_export(
-                &[from],
+                from,
                 staging,
                 &cfg.owner.phone_e164,
                 &emails,
@@ -146,7 +156,10 @@ fn export_source(cfg: &Config, source_id: &str, from: &Path, staging: &Path) -> 
                 report.conversations, report.messages, report.attachments_saved
             );
         }
-        "imessage" => export_imessage(from, staging)?,
+        "imessage" => {
+            let from = require_single_input(source_id, from)?;
+            export_imessage(from, staging)?;
+        }
         other => {
             bail!(
                 "ingest does not know how to export source '{other}' \
@@ -155,6 +168,18 @@ fn export_source(cfg: &Config, source_id: &str, from: &Path, staging: &Path) -> 
         }
     }
     Ok(())
+}
+
+fn require_single_input<'a>(source_id: &str, from: &'a [PathBuf]) -> Result<&'a Path> {
+    match from {
+        [one] => Ok(one.as_path()),
+        [] => bail!("ingest '{source_id}' needs an input path"),
+        _ => bail!(
+            "ingest '{source_id}' accepts only one input path; got {} \
+             (use source_dir, not multiple source_dirs)",
+            from.len()
+        ),
+    }
 }
 
 fn optional_file(rel: &str) -> Option<PathBuf> {

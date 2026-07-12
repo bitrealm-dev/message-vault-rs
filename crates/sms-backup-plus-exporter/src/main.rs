@@ -28,7 +28,8 @@ enum Commands {
     Convert {
         /// Path to a .eml file or directory tree of EMLs (Archive/, Sent/, …).
         /// Repeat for multiple roots; trees are merged and path-deduped.
-        #[arg(long = "input", required = true)]
+        /// Default: source_dirs from config/owner.toml when set.
+        #[arg(long = "input")]
         input: Vec<PathBuf>,
 
         /// Output directory for NDJSON + attachments/
@@ -58,7 +59,8 @@ enum Commands {
     DedupeEml {
         /// Path to a messy .eml file or directory tree.
         /// Repeat for multiple roots; trees are merged and path-deduped.
-        #[arg(long = "input", required = true)]
+        /// Default: source_dirs from config/owner.toml when set.
+        #[arg(long = "input")]
         input: Vec<PathBuf>,
 
         /// Output directory for unique flat .eml files
@@ -92,6 +94,9 @@ struct OwnerConfig {
     phone: Option<String>,
     #[serde(default)]
     emails: Vec<String>,
+    /// Default --input roots when the CLI omits --input.
+    #[serde(default)]
+    source_dirs: Vec<PathBuf>,
 }
 
 fn resolve_optional_config(explicit: Option<PathBuf>, candidates: &[&str]) -> Option<PathBuf> {
@@ -128,7 +133,7 @@ fn load_owner_config() -> Result<OwnerConfig> {
 fn resolve_owner(
     cli_phone: Option<String>,
     cli_emails: Vec<String>,
-) -> Result<(String, Vec<String>)> {
+) -> Result<(String, Vec<String>, Vec<PathBuf>)> {
     let defaults = load_owner_config()?;
     let phone = cli_phone
         .or(defaults.phone)
@@ -140,7 +145,22 @@ fn resolve_owner(
     } else {
         vec!["owner@example.com".to_string()]
     };
-    Ok((phone, emails))
+    Ok((phone, emails, defaults.source_dirs))
+}
+
+fn resolve_inputs(cli_inputs: Vec<PathBuf>, defaults: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    let inputs = if !cli_inputs.is_empty() {
+        cli_inputs
+    } else {
+        defaults
+    };
+    if inputs.is_empty() {
+        anyhow::bail!(
+            "no --input given and config/owner.toml has no source_dirs; \
+             pass --input PATH or set source_dirs in owner.toml"
+        );
+    }
+    Ok(inputs)
 }
 
 fn main() -> Result<()> {
@@ -154,7 +174,9 @@ fn main() -> Result<()> {
             contacts,
             name_mapping,
         } => {
-            let (owner_phone, emails) = resolve_owner(owner_phone, owner_emails)?;
+            let (owner_phone, emails, default_inputs) =
+                resolve_owner(owner_phone, owner_emails)?;
+            let input = resolve_inputs(input, default_inputs)?;
             let contacts = resolve_optional_config(
                 contacts,
                 &[
@@ -209,7 +231,9 @@ fn main() -> Result<()> {
             contacts,
             name_mapping,
         } => {
-            let (owner_phone, emails) = resolve_owner(owner_phone, owner_emails)?;
+            let (owner_phone, emails, default_inputs) =
+                resolve_owner(owner_phone, owner_emails)?;
+            let input = resolve_inputs(input, default_inputs)?;
             let contacts = resolve_optional_config(
                 contacts,
                 &[

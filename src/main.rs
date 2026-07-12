@@ -14,7 +14,7 @@ mod vcf_to_contacts;
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 
 use crate::config::Config;
@@ -35,7 +35,8 @@ enum Commands {
         source: String,
 
         /// Path to raw source data (iPhone backup, XML export, EML tree, …).
-        /// Optional when the source has `source_dir` set in config.
+        /// Optional when the source has `source_dir` / `source_dirs` set in config.
+        /// When omitted, all configured input dirs are used (sms-backup-plus can merge several).
         #[arg(long)]
         from: Option<PathBuf>,
 
@@ -205,13 +206,18 @@ fn main() -> Result<()> {
             let mode = import::ImportMode::parse(&mode)?;
             let src = cfg.source(&source)?;
             let from = match from {
-                Some(p) => p,
-                None => src.source_dir.clone().with_context(|| {
-                    format!(
-                        "ingest '{source}' needs --from, or set source_dir on that [[sources]] entry in {}",
-                        config.display()
-                    )
-                })?,
+                Some(p) => vec![p],
+                None => {
+                    let dirs = src.input_dirs();
+                    if dirs.is_empty() {
+                        bail!(
+                            "ingest '{source}' needs --from, or set source_dir / source_dirs \
+                             on that [[sources]] entry in {}",
+                            config.display()
+                        );
+                    }
+                    dirs
+                }
             };
 
             let stats = ingest::ingest(
