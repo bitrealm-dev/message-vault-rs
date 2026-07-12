@@ -46,4 +46,4 @@ target
 /config/contacts.csv
 /config/blacklist.csv
 /config/contacts.xlsx
-/config/eml_contacts.csv
+/config/eml-contacts.csv

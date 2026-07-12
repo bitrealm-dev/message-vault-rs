@@ -82,7 +82,7 @@ Some archive (and a few flat) messages only know a person’s name, not their ph
 
 | File | Columns | Role |
 | --- | --- | --- |
-| `config/eml_contacts.csv` | `phones,first_name,last_name` | Name → phone |
+| `config/eml-contacts.csv` | `phones,first_name,last_name` | Name → phone |
 | `config/name-mapping.csv` | `correct_name,incorrect_name` | Fix messy subject names, then look up contacts |
 
 Example: subject says `Casey Typo` → mapping rewrites to `Casey Proper` → contacts CSV supplies `+15555550888`.
@@ -91,18 +91,17 @@ Unresolved names stay under `junk/` and are listed in `junk/unresolved_names.txt
 
 Start from the example files:
 
-- [`config/eml_contacts.example.csv`](config/eml_contacts.example.csv)
+- [`config/eml-contacts.example.csv`](config/eml-contacts.example.csv)
 - [`config/name-mapping.example.csv`](config/name-mapping.example.csv)
+- [`config/owner.example.toml`](config/owner.example.toml) → copy to `config/owner.toml` for default `--owner-phone` / `--owner-email`
 
-Real CSVs under `config/` are gitignored.
+Real CSVs and `owner.toml` under `config/` are gitignored. CLI flags still override `owner.toml` when provided.
 
 ```bash
 cargo run --release -p sms-backup-plus-exporter -- -v dedupe-eml \
   --input /path/to/messy/exports \
   --output ./clean-eml \
-  --owner-phone +15555550100 \
-  --owner-email owner@example.com \
-  --contacts config/eml_contacts.csv \
+  --contacts config/eml-contacts.csv \
   --name-mapping config/name-mapping.csv
 ```
 
@@ -118,9 +117,7 @@ Global flags (before or after the subcommand):
 ```bash
 cargo run --release -p sms-backup-plus-exporter -- convert \
   --input ./clean-eml \
-  --output ./staging/sms-backup-plus-eml \
-  --owner-phone +15555550100 \
-  --owner-email owner@example.com
+  --output ./staging/sms-backup-plus-eml
 ```
 
 ## Import into the vault

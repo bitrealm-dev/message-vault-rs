@@ -47,40 +47,50 @@ function escapeCsvField(value: string): string {
   return value;
 }
 
-const CSV_TAG_COLUMNS = ["tag_1", "tag_2", "tag_3", "tag_4", "tag_5"] as const;
+const CSV_GROUP_COLUMNS = [
+  "group_1",
+  "group_2",
+  "group_3",
+  "group_4",
+  "group_5",
+] as const;
 
-function tagColumnIndexes(header: string[]): number[] {
-  return CSV_TAG_COLUMNS.map((name) => header.indexOf(name));
+function groupColumnIndexes(header: string[]): number[] {
+  return CSV_GROUP_COLUMNS.map((name) => header.indexOf(name));
 }
 
-function readCsvTags(cols: string[], tagIdx: number[]): string[] {
+function readCsvGroups(cols: string[], groupIdx: number[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const i of tagIdx) {
+  for (const i of groupIdx) {
     if (i < 0) continue;
-    const tag = (cols[i] ?? "").trim();
-    if (!tag) continue;
-    const key = tag.toLowerCase();
+    const group = (cols[i] ?? "").trim();
+    if (!group) continue;
+    const key = group.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(tag);
+    out.push(group);
   }
   return out;
 }
 
-function writeCsvTags(cols: string[], tagIdx: number[], tags: string[]): void {
+function writeCsvGroups(
+  cols: string[],
+  groupIdx: number[],
+  groups: string[],
+): void {
   const unique: string[] = [];
   const seen = new Set<string>();
-  for (const tag of tags) {
-    const trimmed = tag.trim();
+  for (const group of groups) {
+    const trimmed = group.trim();
     if (!trimmed) continue;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(trimmed);
   }
-  for (let i = 0; i < tagIdx.length; i++) {
-    const col = tagIdx[i]!;
+  for (let i = 0; i < groupIdx.length; i++) {
+    const col = groupIdx[i]!;
     if (col < 0) continue;
     cols[col] = unique[i] ?? "";
   }
@@ -91,7 +101,7 @@ export function updateContactsCsv(
   matchNames: { firstName: string | null; lastName: string | null },
   patch: {
     exclude: boolean;
-    tags: string[];
+    groups: string[];
     firstName?: string | null;
     lastName?: string | null;
     phones?: string[];
@@ -116,8 +126,8 @@ export function updateContactsCsv(
     lastName: header.indexOf("last_name"),
     exclude: header.indexOf("exclude"),
   };
-  const tagIdx = tagColumnIndexes(header);
-  if (idx.phones < 0 || idx.exclude < 0 || tagIdx.some((i) => i < 0)) {
+  const groupIdx = groupColumnIndexes(header);
+  if (idx.phones < 0 || idx.exclude < 0 || groupIdx.some((i) => i < 0)) {
     throw new Error("contacts CSV missing required columns");
   }
 
@@ -157,7 +167,7 @@ export function updateContactsCsv(
       cols[idx.lastName] = patch.lastName ?? "";
     }
     cols[idx.exclude] = patch.exclude ? "true" : "false";
-    writeCsvTags(cols, tagIdx, patch.tags);
+    writeCsvGroups(cols, groupIdx, patch.groups);
     return cols.map(escapeCsvField).join(",");
   });
 
@@ -176,7 +186,7 @@ export function appendContactsCsv(row: {
   firstName: string | null;
   lastName: string | null;
   exclude: boolean;
-  tags: string[];
+  groups: string[];
 }): void {
   const csvPath = contactsCsvPath();
   if (!fs.existsSync(csvPath)) {
@@ -196,8 +206,8 @@ export function appendContactsCsv(row: {
     lastName: header.indexOf("last_name"),
     exclude: header.indexOf("exclude"),
   };
-  const tagIdx = tagColumnIndexes(header);
-  if (idx.phones < 0 || idx.exclude < 0 || tagIdx.some((i) => i < 0)) {
+  const groupIdx = groupColumnIndexes(header);
+  if (idx.phones < 0 || idx.exclude < 0 || groupIdx.some((i) => i < 0)) {
     throw new Error("contacts CSV missing required columns");
   }
 
@@ -206,7 +216,7 @@ export function appendContactsCsv(row: {
   if (idx.firstName >= 0) cols[idx.firstName] = row.firstName ?? "";
   if (idx.lastName >= 0) cols[idx.lastName] = row.lastName ?? "";
   cols[idx.exclude] = row.exclude ? "true" : "false";
-  writeCsvTags(cols, tagIdx, row.tags);
+  writeCsvGroups(cols, groupIdx, row.groups);
 
   const line = cols.map(escapeCsvField).join(",");
   const needsNewline = raw.length > 0 && !/\r?\n$/.test(raw);
@@ -214,8 +224,10 @@ export function appendContactsCsv(row: {
 }
 
 
-/** Rewrite tag_1..tag_5 in contacts.csv by mapping old tag names. */
-export function rewriteCsvTags(mapTag: (tag: string) => string | null): void {
+/** Rewrite group_1..group_5 in contacts.csv by mapping old group names. */
+export function rewriteCsvGroups(
+  mapGroup: (group: string) => string | null,
+): void {
   const csvPath = contactsCsvPath();
   if (!fs.existsSync(csvPath)) {
     throw new Error(`contacts CSV not found: ${csvPath}`);
@@ -228,19 +240,19 @@ export function rewriteCsvTags(mapTag: (tag: string) => string | null): void {
   }
 
   const header = parseCsvLine(lines[0] ?? "");
-  const tagIdx = tagColumnIndexes(header);
-  if (tagIdx.some((i) => i < 0)) {
-    throw new Error("contacts CSV missing tag_1..tag_5 columns");
+  const groupIdx = groupColumnIndexes(header);
+  if (groupIdx.some((i) => i < 0)) {
+    throw new Error("contacts CSV missing group_1..group_5 columns");
   }
 
   const out = lines.map((line, lineNo) => {
     if (lineNo === 0 || !line.trim()) return line;
     const cols = parseCsvLine(line);
     while (cols.length < header.length) cols.push("");
-    const tags = readCsvTags(cols, tagIdx)
-      .map(mapTag)
-      .filter((t): t is string => Boolean(t));
-    writeCsvTags(cols, tagIdx, tags);
+    const groups = readCsvGroups(cols, groupIdx)
+      .map(mapGroup)
+      .filter((g): g is string => Boolean(g));
+    writeCsvGroups(cols, groupIdx, groups);
     return cols.map(escapeCsvField).join(",");
   });
 

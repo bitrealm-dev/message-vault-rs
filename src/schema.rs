@@ -347,15 +347,15 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS ix_contact_phones_contact_id
             ON contact_phones (contact_id);
 
-        CREATE TABLE IF NOT EXISTS tags (
+        CREATE TABLE IF NOT EXISTS contact_groups (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE
         );
 
-        CREATE TABLE IF NOT EXISTS contact_tags (
+        CREATE TABLE IF NOT EXISTS contact_group_members (
             contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-            PRIMARY KEY (contact_id, tag_id)
+            group_id INTEGER NOT NULL REFERENCES contact_groups(id) ON DELETE CASCADE,
+            PRIMARY KEY (contact_id, group_id)
         );
 
         CREATE TABLE IF NOT EXISTS trashed_handles (
@@ -378,9 +378,10 @@ pub fn recreate_contacts(conn: &Connection) -> Result<()> {
         r#"
         PRAGMA foreign_keys = ON;
 
+        DROP TABLE IF EXISTS contact_group_members;
+        DROP TABLE IF EXISTS contact_groups;
         DROP TABLE IF EXISTS contact_tags;
         DROP TABLE IF EXISTS tags;
-        DROP TABLE IF EXISTS contact_groups;
         DROP TABLE IF EXISTS groups;
         DROP TABLE IF EXISTS contact_phones;
         DROP TABLE IF EXISTS contacts;

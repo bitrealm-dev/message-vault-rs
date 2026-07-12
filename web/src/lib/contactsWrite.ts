@@ -4,7 +4,7 @@ import { getContact, resetDb } from "./db";
 import {
   appendContactsCsv,
   removeContactsCsv,
-  rewriteCsvTags,
+  rewriteCsvGroups,
   updateContactsCsv,
 } from "./contactsCsv";
 import { clearTrashedHandles } from "./handlesWrite";
@@ -80,12 +80,12 @@ export function createContact(input: ContactCreate): ContactDetail {
       clearTrashedHandles(writeDb, phones);
 
       if (groups.length > 0) {
-        const insertTag = writeDb.prepare(
-          `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
+        const insertMember = writeDb.prepare(
+          `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
         );
         for (const name of groups) {
-          const tagId = ensureTagId(writeDb, name);
-          insertTag.run(newId, tagId);
+          const groupId = ensureGroupId(writeDb, name);
+          insertMember.run(newId, groupId);
         }
       }
     });
@@ -100,7 +100,7 @@ export function createContact(input: ContactCreate): ContactDetail {
     firstName,
     lastName,
     exclude,
-    tags: groups,
+    groups,
   });
 
   const created = getContact(newId);
@@ -110,20 +110,20 @@ export function createContact(input: ContactCreate): ContactDetail {
   return created;
 }
 
-function ensureTagId(db: Database.Database, name: string): number {
+function ensureGroupId(db: Database.Database, name: string): number {
   assertAllowedGroupName(name);
-  db.prepare(`INSERT OR IGNORE INTO tags (name) VALUES (?)`).run(name);
-  const row = db.prepare(`SELECT id FROM tags WHERE name = ?`).get(name) as
-    | { id: number }
-    | undefined;
-  if (!row) throw new Error(`failed to ensure tag ${name}`);
+  db.prepare(`INSERT OR IGNORE INTO contact_groups (name) VALUES (?)`).run(name);
+  const row = db
+    .prepare(`SELECT id FROM contact_groups WHERE name = ?`)
+    .get(name) as { id: number } | undefined;
+  if (!row) throw new Error(`failed to ensure group ${name}`);
   return row.id;
 }
 
-function findTagId(db: Database.Database, name: string): number | null {
-  const row = db.prepare(`SELECT id FROM tags WHERE name = ?`).get(name) as
-    | { id: number }
-    | undefined;
+function findGroupId(db: Database.Database, name: string): number | null {
+  const row = db
+    .prepare(`SELECT id FROM contact_groups WHERE name = ?`)
+    .get(name) as { id: number } | undefined;
   return row?.id ?? null;
 }
 
@@ -136,12 +136,12 @@ export function createGroup(name: string): string {
   const writeDb = new Database(dbPath());
   try {
     const existing = writeDb
-      .prepare(`SELECT name FROM tags WHERE name = ? COLLATE NOCASE`)
+      .prepare(`SELECT name FROM contact_groups WHERE name = ? COLLATE NOCASE`)
       .get(trimmed) as { name: string } | undefined;
     if (existing) {
       throw new Error("group already exists");
     }
-    writeDb.prepare(`INSERT INTO tags (name) VALUES (?)`).run(trimmed);
+    writeDb.prepare(`INSERT INTO contact_groups (name) VALUES (?)`).run(trimmed);
   } finally {
     writeDb.close();
   }
@@ -162,24 +162,26 @@ export function renameGroup(from: string, to: string): string {
 
   const writeDb = new Database(dbPath());
   try {
-    const id = findTagId(writeDb, oldName);
+    const id = findGroupId(writeDb, oldName);
     if (id == null) throw new Error("group not found");
 
     const clash = writeDb
       .prepare(
-        `SELECT id FROM tags WHERE name = ? COLLATE NOCASE AND id != ?`,
+        `SELECT id FROM contact_groups WHERE name = ? COLLATE NOCASE AND id != ?`,
       )
       .get(newName, id) as { id: number } | undefined;
     if (clash) throw new Error("group already exists");
 
-    writeDb.prepare(`UPDATE tags SET name = ? WHERE id = ?`).run(newName, id);
+    writeDb
+      .prepare(`UPDATE contact_groups SET name = ? WHERE id = ?`)
+      .run(newName, id);
   } finally {
     writeDb.close();
   }
 
   resetDb();
-  rewriteCsvTags((tag) =>
-    tag.toLowerCase() === oldName.toLowerCase() ? newName : tag,
+  rewriteCsvGroups((group) =>
+    group.toLowerCase() === oldName.toLowerCase() ? newName : group,
   );
   return newName;
 }
@@ -190,17 +192,19 @@ export function deleteGroup(name: string): void {
 
   const writeDb = new Database(dbPath());
   try {
-    const id = findTagId(writeDb, trimmed);
+    const id = findGroupId(writeDb, trimmed);
     if (id == null) throw new Error("group not found");
-    writeDb.prepare(`DELETE FROM contact_tags WHERE tag_id = ?`).run(id);
-    writeDb.prepare(`DELETE FROM tags WHERE id = ?`).run(id);
+    writeDb
+      .prepare(`DELETE FROM contact_group_members WHERE group_id = ?`)
+      .run(id);
+    writeDb.prepare(`DELETE FROM contact_groups WHERE id = ?`).run(id);
   } finally {
     writeDb.close();
   }
 
   resetDb();
-  rewriteCsvTags((tag) =>
-    tag.toLowerCase() === trimmed.toLowerCase() ? null : tag,
+  rewriteCsvGroups((group) =>
+    group.toLowerCase() === trimmed.toLowerCase() ? null : group,
   );
 }
 
@@ -328,13 +332,15 @@ export function patchContact(
         .run(firstName, lastName, exclude ? 1 : 0, preferredPhone, id);
 
       if (patch.groups) {
-        writeDb.prepare(`DELETE FROM contact_tags WHERE contact_id = ?`).run(id);
+        writeDb
+          .prepare(`DELETE FROM contact_group_members WHERE contact_id = ?`)
+          .run(id);
         const insert = writeDb.prepare(
-          `INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)`,
+          `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
         );
         for (const name of groups) {
-          const tagId = ensureTagId(writeDb, name);
-          insert.run(id, tagId);
+          const groupId = ensureGroupId(writeDb, name);
+          insert.run(id, groupId);
         }
       }
     });
@@ -349,7 +355,7 @@ export function patchContact(
     { firstName: existing.firstName, lastName: existing.lastName },
     {
       exclude,
-      tags: groups,
+      groups,
       firstName: patch.firstName !== undefined ? firstName : undefined,
       lastName: patch.lastName !== undefined ? lastName : undefined,
       phones: patch.phones !== undefined ? phones : undefined,

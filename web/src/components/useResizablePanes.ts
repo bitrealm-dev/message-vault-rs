@@ -7,7 +7,7 @@ const SIDEBAR_MAX = 720;
 const SIDEBAR_DEFAULT = 272;
 const THREADS_PCT_DEFAULT = 40;
 
-/** Shared across All / No Messages / Excluded / Unassigned / tag groups / group chats. */
+/** Shared across All / No Messages / Excluded / Unassigned / contact groups / group chats. */
 const SHARED_SIDEBAR_KEY = "browse:sidebarWidth";
 
 /** Last client-known widths so remounts (nav / refresh) don't snap to defaults. */

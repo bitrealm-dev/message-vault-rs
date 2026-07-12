@@ -304,11 +304,11 @@ fn write_csv(path: &Path, contacts: &[ContactOut]) -> Result<()> {
         "first_name",
         "last_name",
         "exclude",
-        "tag_1",
-        "tag_2",
-        "tag_3",
-        "tag_4",
-        "tag_5",
+        "group_1",
+        "group_2",
+        "group_3",
+        "group_4",
+        "group_5",
     ])?;
 
     let mut truncated = 0u64;
@@ -318,27 +318,27 @@ fn write_csv(path: &Path, contacts: &[ContactOut]) -> Result<()> {
         }
         let phones = c.phones.join(";");
         let exclude = if c.exclude { "true" } else { "false" };
-        let mut tag_cols = [String::new(), String::new(), String::new(), String::new(), String::new()];
+        let mut group_cols = [String::new(), String::new(), String::new(), String::new(), String::new()];
         for (i, tag) in c.tags.iter().take(5).enumerate() {
-            tag_cols[i] = tag.clone();
+            group_cols[i] = tag.clone();
         }
         writer.write_record([
             phones,
             c.first_name.clone(),
             c.last_name.clone(),
             exclude.to_string(),
-            tag_cols[0].clone(),
-            tag_cols[1].clone(),
-            tag_cols[2].clone(),
-            tag_cols[3].clone(),
-            tag_cols[4].clone(),
+            group_cols[0].clone(),
+            group_cols[1].clone(),
+            group_cols[2].clone(),
+            group_cols[3].clone(),
+            group_cols[4].clone(),
         ])?;
     }
 
     writer.flush()?;
     if truncated > 0 {
         eprintln!(
-            "warning: truncated tags to tag_1..tag_5 for {truncated} contact(s) in CSV export"
+            "warning: truncated groups to group_1..group_5 for {truncated} contact(s) in CSV export"
         );
     }
     Ok(())

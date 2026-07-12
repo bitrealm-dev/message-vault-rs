@@ -10,7 +10,7 @@ use serde::Deserialize;
 pub struct ContactLoadStats {
     pub contacts: u64,
     pub phones: u64,
-    pub tags: u64,
+    pub groups: u64,
     pub skipped: bool,
 }
 
@@ -24,15 +24,15 @@ struct ContactCsvRow {
     #[serde(default)]
     exclude: String,
     #[serde(default)]
-    tag_1: String,
+    group_1: String,
     #[serde(default)]
-    tag_2: String,
+    group_2: String,
     #[serde(default)]
-    tag_3: String,
+    group_3: String,
     #[serde(default)]
-    tag_4: String,
+    group_4: String,
     #[serde(default)]
-    tag_5: String,
+    group_5: String,
 }
 
 #[derive(Debug, Clone)]
@@ -154,13 +154,13 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
             stats.phones += 1;
         }
 
-        for tag_name in row_tags(&row) {
-            let tag_id = ensure_tag(&tx, &tag_name)?;
+        for group_name in row_groups(&row) {
+            let group_id = ensure_group(&tx, &group_name)?;
             tx.execute(
-                "INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?1, ?2)",
-                params![contact_id, tag_id],
+                "INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?1, ?2)",
+                params![contact_id, group_id],
             )?;
-            stats.tags += 1;
+            stats.groups += 1;
         }
     }
 
@@ -168,13 +168,13 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
     Ok(stats)
 }
 
-fn ensure_tag(conn: &Connection, name: &str) -> Result<i64> {
+fn ensure_group(conn: &Connection, name: &str) -> Result<i64> {
     conn.execute(
-        "INSERT OR IGNORE INTO tags (name) VALUES (?1)",
+        "INSERT OR IGNORE INTO contact_groups (name) VALUES (?1)",
         params![name],
     )?;
     let id: i64 = conn.query_row(
-        "SELECT id FROM tags WHERE name = ?1",
+        "SELECT id FROM contact_groups WHERE name = ?1",
         params![name],
         |row| row.get(0),
     )?;
@@ -206,20 +206,26 @@ pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Con
     Ok(contact)
 }
 
-fn row_tags(row: &ContactCsvRow) -> Vec<String> {
+fn row_groups(row: &ContactCsvRow) -> Vec<String> {
     // Import is capped at five CSV columns; SQLite may hold more after edits.
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for raw in [&row.tag_1, &row.tag_2, &row.tag_3, &row.tag_4, &row.tag_5] {
-        let tag = raw.trim();
-        if tag.is_empty() {
+    for raw in [
+        &row.group_1,
+        &row.group_2,
+        &row.group_3,
+        &row.group_4,
+        &row.group_5,
+    ] {
+        let group = raw.trim();
+        if group.is_empty() {
             continue;
         }
-        let key = tag.to_ascii_lowercase();
+        let key = group.to_ascii_lowercase();
         if !seen.insert(key) {
             continue;
         }
-        out.push(tag.to_string());
+        out.push(group.to_string());
     }
     out
 }

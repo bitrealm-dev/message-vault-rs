@@ -1,0 +1,5 @@
+# Default owner identity for convert / dedupe-eml.
+# Copy to owner.toml and edit. CLI flags override these when provided.
+
+phone = "+15555550100"
+emails = ["you@example.com"]

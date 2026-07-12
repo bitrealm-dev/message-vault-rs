@@ -16,12 +16,12 @@ import type {
   YearThread,
 } from "./types";
 
-/** Contact groups (GUI "Groups"). Stored in SQLite `tags` / `contact_tags`. */
+/** Contact groups (GUI "Groups"). Stored in SQLite `contact_groups` / `contact_group_members`. */
 export function listGroups(): string[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT name FROM tags
+      `SELECT name FROM contact_groups
        ORDER BY name COLLATE NOCASE`,
     )
     .all() as Array<{ name: string }>;
@@ -71,8 +71,8 @@ function sectionQueryBody(
     return {
       fromWhere: `
         FROM contacts c
-        JOIN contact_tags ct ON ct.contact_id = c.id
-        JOIN tags t ON t.id = ct.tag_id AND t.name = ?
+        JOIN contact_group_members cgm ON cgm.contact_id = c.id
+        JOIN contact_groups cg ON cg.id = cgm.group_id AND cg.name = ?
         WHERE c.exclude = 0
           AND ${CONTACT_HAS_MESSAGES_SQL}
       `,
@@ -113,7 +113,7 @@ function sectionQueryBody(
           FROM contacts c
           WHERE c.exclude = 0
             AND NOT EXISTS (
-              SELECT 1 FROM contact_tags ct WHERE ct.contact_id = c.id
+              SELECT 1 FROM contact_group_members cgm WHERE cgm.contact_id = c.id
             )
             AND ${CONTACT_HAS_MESSAGES_SQL}
         `,
@@ -142,19 +142,19 @@ export function listContacts(section: ContactSection): ContactListItem[] {
     exclude: number;
   }>;
 
-  const tagRows = db
+  const groupRows = db
     .prepare(
-      `SELECT ct.contact_id AS contact_id, t.name AS name
-       FROM contact_tags ct
-       JOIN tags t ON t.id = ct.tag_id
-       ORDER BY t.name COLLATE NOCASE`,
+      `SELECT cgm.contact_id AS contact_id, cg.name AS name
+       FROM contact_group_members cgm
+       JOIN contact_groups cg ON cg.id = cgm.group_id
+       ORDER BY cg.name COLLATE NOCASE`,
     )
     .all() as Array<{ contact_id: number; name: string }>;
-  const tagsByContact = new Map<number, string[]>();
-  for (const row of tagRows) {
-    const list = tagsByContact.get(row.contact_id);
+  const groupsByContact = new Map<number, string[]>();
+  for (const row of groupRows) {
+    const list = groupsByContact.get(row.contact_id);
     if (list) list.push(row.name);
-    else tagsByContact.set(row.contact_id, [row.name]);
+    else groupsByContact.set(row.contact_id, [row.name]);
   }
 
   const messageCounts = contactMessageCountsById(rows.map((r) => r.id));
@@ -169,7 +169,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         preferredPhone: row.preferred_phone,
         firstName: row.first_name,
         lastName: row.last_name,
-        groups: tagsByContact.get(row.id) ?? [],
+        groups: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: messageCounts.get(row.id) ?? 0,
         ...sorts,
@@ -206,10 +206,10 @@ export function getContact(id: number): ContactDetail | null {
 
   const groups = db
     .prepare(
-      `SELECT t.name FROM contact_tags ct
-       JOIN tags t ON t.id = ct.tag_id
-       WHERE ct.contact_id = ?
-       ORDER BY t.name COLLATE NOCASE`,
+      `SELECT cg.name FROM contact_group_members cgm
+       JOIN contact_groups cg ON cg.id = cgm.group_id
+       WHERE cgm.contact_id = ?
+       ORDER BY cg.name COLLATE NOCASE`,
     )
     .all(id) as Array<{ name: string }>;
 
@@ -471,19 +471,19 @@ export function listContactsForPicker(): ContactListItem[] {
     exclude: number;
   }>;
 
-  const tagRows = db
+  const groupRows = db
     .prepare(
-      `SELECT ct.contact_id AS contact_id, t.name AS name
-       FROM contact_tags ct
-       JOIN tags t ON t.id = ct.tag_id
-       ORDER BY t.name COLLATE NOCASE`,
+      `SELECT cgm.contact_id AS contact_id, cg.name AS name
+       FROM contact_group_members cgm
+       JOIN contact_groups cg ON cg.id = cgm.group_id
+       ORDER BY cg.name COLLATE NOCASE`,
     )
     .all() as Array<{ contact_id: number; name: string }>;
-  const tagsByContact = new Map<number, string[]>();
-  for (const row of tagRows) {
-    const list = tagsByContact.get(row.contact_id);
+  const groupsByContact = new Map<number, string[]>();
+  for (const row of groupRows) {
+    const list = groupsByContact.get(row.contact_id);
     if (list) list.push(row.name);
-    else tagsByContact.set(row.contact_id, [row.name]);
+    else groupsByContact.set(row.contact_id, [row.name]);
   }
 
   return rows
@@ -496,7 +496,7 @@ export function listContactsForPicker(): ContactListItem[] {
         preferredPhone: row.preferred_phone,
         firstName: row.first_name,
         lastName: row.last_name,
-        groups: tagsByContact.get(row.id) ?? [],
+        groups: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: 0,
         ...sorts,

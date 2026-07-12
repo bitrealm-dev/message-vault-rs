@@ -1,7 +1,9 @@
+use std::fs;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use serde::Deserialize;
 use sms_backup_plus_exporter::{convert_export, dedupe_eml};
 
 #[derive(Parser, Debug)]
@@ -32,16 +34,17 @@ enum Commands {
         #[arg(long)]
         output: PathBuf,
 
-        /// Owner phone (E.164 or digits)
-        #[arg(long, default_value = "+15555550100")]
-        owner_phone: String,
+        /// Owner phone (E.164 or digits). Default: config/owner.toml
+        #[arg(long)]
+        owner_phone: Option<String>,
 
-        /// Owner email addresses used to detect sent messages when X-smssync-type is missing
+        /// Owner email addresses used to detect sent messages when X-smssync-type is missing.
+        /// Default: config/owner.toml
         #[arg(long = "owner-email", value_name = "EMAIL")]
         owner_emails: Vec<String>,
 
         /// Contacts CSV (phones,first_name,last_name) for name→phone lookup.
-        /// Default: config/eml_contacts.csv when that file exists.
+        /// Default: config/eml-contacts.csv when that file exists.
         #[arg(long)]
         contacts: Option<PathBuf>,
 
@@ -60,16 +63,17 @@ enum Commands {
         #[arg(long)]
         output: PathBuf,
 
-        /// Owner phone (E.164 or digits)
-        #[arg(long, default_value = "+15555550100")]
-        owner_phone: String,
+        /// Owner phone (E.164 or digits). Default: config/owner.toml
+        #[arg(long)]
+        owner_phone: Option<String>,
 
-        /// Owner email addresses used to detect sent messages when X-smssync-type is missing
+        /// Owner email addresses used to detect sent messages when X-smssync-type is missing.
+        /// Default: config/owner.toml
         #[arg(long = "owner-email", value_name = "EMAIL")]
         owner_emails: Vec<String>,
 
         /// Contacts CSV (phones,first_name,last_name) for name→phone lookup.
-        /// Default: config/eml_contacts.csv when that file exists.
+        /// Default: config/eml-contacts.csv when that file exists.
         #[arg(long)]
         contacts: Option<PathBuf>,
 
@@ -78,6 +82,14 @@ enum Commands {
         #[arg(long = "name-mapping")]
         name_mapping: Option<PathBuf>,
     },
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct OwnerConfig {
+    #[serde(default)]
+    phone: Option<String>,
+    #[serde(default)]
+    emails: Vec<String>,
 }
 
 fn resolve_optional_config(explicit: Option<PathBuf>, default_rel: &str) -> Option<PathBuf> {
@@ -94,12 +106,43 @@ fn resolve_optional_config(explicit: Option<PathBuf>, default_rel: &str) -> Opti
     }
 }
 
-fn default_emails(emails: Vec<String>) -> Vec<String> {
-    if emails.is_empty() {
-        vec!["owner@example.com".to_string()]
+fn find_owner_config_path() -> Option<PathBuf> {
+    const CANDIDATES: &[&str] = &[
+        "config/owner.toml",
+        "crates/sms-backup-plus-exporter/config/owner.toml",
+    ];
+    CANDIDATES
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| p.is_file())
+}
+
+fn load_owner_config() -> Result<OwnerConfig> {
+    let Some(path) = find_owner_config_path() else {
+        return Ok(OwnerConfig::default());
+    };
+    let text = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read owner config {}", path.display()))?;
+    toml::from_str(&text)
+        .with_context(|| format!("failed to parse owner config {}", path.display()))
+}
+
+fn resolve_owner(
+    cli_phone: Option<String>,
+    cli_emails: Vec<String>,
+) -> Result<(String, Vec<String>)> {
+    let defaults = load_owner_config()?;
+    let phone = cli_phone
+        .or(defaults.phone)
+        .unwrap_or_else(|| "+15555550100".to_string());
+    let emails = if !cli_emails.is_empty() {
+        cli_emails
+    } else if !defaults.emails.is_empty() {
+        defaults.emails
     } else {
-        emails
-    }
+        vec!["owner@example.com".to_string()]
+    };
+    Ok((phone, emails))
 }
 
 fn main() -> Result<()> {
@@ -113,8 +156,8 @@ fn main() -> Result<()> {
             contacts,
             name_mapping,
         } => {
-            let emails = default_emails(owner_emails);
-            let contacts = resolve_optional_config(contacts, "config/eml_contacts.csv");
+            let (owner_phone, emails) = resolve_owner(owner_phone, owner_emails)?;
+            let contacts = resolve_optional_config(contacts, "config/eml-contacts.csv");
             let name_mapping = resolve_optional_config(name_mapping, "config/name-mapping.csv");
             let report = convert_export(
                 &input,
@@ -156,8 +199,8 @@ fn main() -> Result<()> {
             contacts,
             name_mapping,
         } => {
-            let emails = default_emails(owner_emails);
-            let contacts = resolve_optional_config(contacts, "config/eml_contacts.csv");
+            let (owner_phone, emails) = resolve_owner(owner_phone, owner_emails)?;
+            let contacts = resolve_optional_config(contacts, "config/eml-contacts.csv");
             let name_mapping = resolve_optional_config(name_mapping, "config/name-mapping.csv");
             let report = dedupe_eml(
                 &input,

@@ -174,7 +174,7 @@ enum Commands {
         #[arg(long)]
         blacklist: Option<PathBuf>,
 
-        /// Optional message-vault filter-people.csv (sets Historical tag / exclude / tags)
+        /// Optional message-vault filter-people.csv (sets Historical group / exclude / groups)
         #[arg(long)]
         filter_people: Option<PathBuf>,
 
@@ -338,7 +338,7 @@ fn main() -> Result<()> {
                 } else {
                     println!("  contacts:      {}", stats.contacts);
                     println!("  contact phones:{}", stats.contact_phones);
-                    println!("  contact tags:  {}", stats.contact_tag_links);
+                    println!("  contact groups:{}", stats.contact_group_links);
                 }
                 println!("  files:         {}", stats.files);
                 println!("  conversations: {}", stats.conversations);
@@ -407,7 +407,7 @@ fn main() -> Result<()> {
             println!("  contacts csv: {}", contacts_csv.display());
             println!("  contacts:     {}", stats.contacts);
             println!("  phones:       {}", stats.phones);
-            println!("  tag links:    {}", stats.tags);
+            println!("  group links:  {}", stats.groups);
         }
 
         Commands::ExportMarkdown {
