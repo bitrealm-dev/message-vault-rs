@@ -5,12 +5,10 @@
 #   ./scripts/build-staging.sh              # all sources
 #   ./scripts/build-staging.sh imessage      # one source id
 #
-# Input:  each source's optional source_dir in config/config.toml
-#         (falls back to /pool/archive/.../source-data/… if unset)
+# Input:  each source's source_dir in config/config.toml (required)
 # Output: <repo>/staging/<staging-dir>/   (NDJSON + media)
 #
 # Exporters live under crates/ and are invoked with cargo -p from the repo root.
-# (No sibling checkouts or scripts/ symlinks required.)
 #
 # Rotate: if staging/<id>/ already has current files (not .gitkeep / not prior
 # YYYYMMDDTHHMMSSZ archives), move them into a new UTC timestamp sibling dir
@@ -20,11 +18,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SOURCE_DATA="/pool/archive/projects/message-vault-rs/source-data"
 STAGING="${REPO_ROOT}/staging"
 CONFIG="${REPO_ROOT}/config/config.toml"
 
-OWNER_PHONE="+19412660605"
+# Placeholders only; overwritten from config/config.toml when present.
+OWNER_PHONE="+15555550100"
 OWNER_EMAILS=()
 
 # Resolve [[sources]].source_dir for an id from config.toml; empty if unset.
@@ -53,17 +51,16 @@ for src in cfg.get("sources") or []:
 PY
 }
 
-# Prefer config source_dir; else fallback path under SOURCE_DATA.
+# Require source_dir from config for this source id.
 input_for_source() {
   local id="$1"
-  local fallback="$2"
   local from_cfg
   from_cfg="$(config_source_dir "${id}" || true)"
-  if [[ -n "${from_cfg}" ]]; then
-    echo "${from_cfg}"
-  else
-    echo "${fallback}"
+  if [[ -z "${from_cfg}" ]]; then
+    echo "error: set source_dir for '${id}' in ${CONFIG}" >&2
+    exit 1
   fi
+  echo "${from_cfg}"
 }
 
 load_owner_from_config() {
@@ -106,7 +103,7 @@ PY
     done <<<"${parsed}"
   fi
   if [[ ${#OWNER_EMAILS[@]} -eq 0 ]]; then
-    OWNER_EMAILS=("mjbeisser@gmail.com")
+    OWNER_EMAILS=("owner@example.com")
   fi
 }
 
@@ -169,7 +166,7 @@ require_path() {
 
 run_imessage() {
   local input
-  input="$(input_for_source imessage "${SOURCE_DATA}/imessage/iphone_backup")"
+  input="$(input_for_source imessage)"
   local out="${STAGING}/imessage"
   require_path "${input}" "imessage input"
 
@@ -186,7 +183,7 @@ run_imessage() {
 
 run_go_sms_pro() {
   local input
-  input="$(input_for_source go-sms-pro "${SOURCE_DATA}/go-sms-pro/2015-12-01_232753-export-go-sms-pro")"
+  input="$(input_for_source go-sms-pro)"
   local out="${STAGING}/go-sms-pro"
   require_path "${input}" "go-sms-pro input"
 
@@ -202,7 +199,7 @@ run_go_sms_pro() {
 
 run_sms_backup_restore() {
   local input
-  input="$(input_for_source sms-backup-restore "${SOURCE_DATA}/sms-backup-restore")"
+  input="$(input_for_source sms-backup-restore)"
   local out="${STAGING}/sms-backup-restore"
   require_path "${input}" "sms-backup-restore input"
 
@@ -218,7 +215,7 @@ run_sms_backup_restore() {
 
 run_sms_backup_plus() {
   local input
-  input="$(input_for_source sms-backup-plus "${SOURCE_DATA}/sms-backup-plus-eml/2026-06-28 Master SMS EML Archive - sanitized")"
+  input="$(input_for_source sms-backup-plus)"
   local out="${STAGING}/sms-backup-plus-eml"
   require_path "${input}" "sms-backup-plus input"
 

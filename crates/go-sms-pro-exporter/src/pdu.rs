@@ -363,19 +363,19 @@ mod tests {
 
     #[test]
     fn invalid_filename_returns_none() {
-        let r = parse_pdu_file(&fixture("bad_name.pdu"), "9412660605").unwrap();
+        let r = parse_pdu_file(&fixture("bad_name.pdu"), "5555550100").unwrap();
         assert!(r.is_none());
     }
 
     #[test]
     fn received_one_to_one() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_recv.pdu"), "9412660605")
+        let parsed = parse_pdu_file(&fixture("I_1609459200_recv.pdu"), "5555550100")
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.body, "Hello one to one");
         assert_eq!(
             parsed.participants,
-            vec!["4075551234".to_string(), "9412660605".to_string()]
+            vec!["4075551234".to_string(), "5555550100".to_string()]
         );
         assert!(!parsed.is_sent);
         assert!(!parsed.is_group);
@@ -385,18 +385,18 @@ mod tests {
 
     #[test]
     fn sent_one_to_one() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_sent.pdu"), "9412660605")
+        let parsed = parse_pdu_file(&fixture("I_1609459200_sent.pdu"), "5555550100")
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.body, "Sent MMS");
         assert!(parsed.is_sent);
         assert!(!parsed.is_group);
-        assert_eq!(parsed.sender_number, "9412660605");
+        assert_eq!(parsed.sender_number, "5555550100");
     }
 
     #[test]
     fn group_pdu() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_group.pdu"), "9412660605")
+        let parsed = parse_pdu_file(&fixture("I_1609459200_group.pdu"), "5555550100")
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.body, "Group MMS body");
@@ -407,7 +407,7 @@ mod tests {
                 "5551112222".to_string(),
                 "5552223333".to_string(),
                 "5553334444".to_string(),
-                "9412660605".to_string()
+                "5555550100".to_string()
             ]
         );
         assert!(!parsed.is_sent);
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn jpeg_attachment() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_att.pdu"), "9412660605")
+        let parsed = parse_pdu_file(&fixture("I_1609459200_att.pdu"), "5555550100")
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.attachments.len(), 1);

@@ -161,7 +161,7 @@ mod tests {
     <body>hi back</body>
   </SMS>
 </GoSms>"#;
-        let (msgs, stats) = parse_xml_str(xml, "9412660605").unwrap();
+        let (msgs, stats) = parse_xml_str(xml, "5555550100").unwrap();
         assert_eq!(stats.messages, 2);
         assert_eq!(stats.received, 1);
         assert_eq!(stats.sent, 1);

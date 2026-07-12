@@ -64,12 +64,12 @@ mod tests {
 
     #[test]
     fn sanitize_strips_plus_one() {
-        assert_eq!(sanitize_number("+19412660605"), "9412660605");
+        assert_eq!(sanitize_number("+15555550100"), "5555550100");
         assert_eq!(sanitize_number("(407) 555-1234"), "4075551234");
     }
 
     #[test]
     fn e164_us() {
-        assert_eq!(to_e164("9412660605"), "+19412660605");
+        assert_eq!(to_e164("5555550100"), "+15555550100");
     }
 }

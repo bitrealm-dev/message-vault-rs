@@ -17,7 +17,7 @@ struct Cli {
     output: PathBuf,
 
     /// Owner phone (E.164 or digits)
-    #[arg(long, default_value = "+19412660605")]
+    #[arg(long, default_value = "+15555550100")]
     owner_phone: String,
 }
 
