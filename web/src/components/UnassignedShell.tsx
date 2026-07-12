@@ -7,6 +7,7 @@ import type {
   YearThread,
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
+import { isEmailHandle, phoneHandlesOnly } from "@/lib/handleKind";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -222,10 +223,11 @@ export function UnassignedShell({
     createHandleRef.current = handle;
     const row = handles.find((h) => h.handle === handle);
     setExtraGroups([]);
+    // Email handles stay DB-only: draft phones start empty; email is attached on save.
     setCreateDraft({
       ...emptyContactEditDraft(),
       firstName: row?.nameHint?.trim() ?? "",
-      phones: [handle, ""],
+      phones: isEmailHandle(handle) ? ["", ""] : [handle, ""],
     });
   }, [handle, mode, multiSelected, handles]);
 
@@ -469,16 +471,35 @@ export function UnassignedShell({
     onDismissMenus: () => setCtxMenu(null),
   });
 
+  const canSaveCreate =
+    !!createDraft &&
+    draftHasName(createDraft) &&
+    (isEmailHandle(handle ?? "")
+      ? phoneHandlesOnly(phonesForSave(createDraft.phones)).length > 0
+      : phonesForSave(createDraft.phones).length > 0 || !!handle);
+
   const saving = assignSaving || trashSaving;
 
   const saveCreate = async () => {
     if (!createDraft || !handle || !draftHasName(createDraft)) return;
+    const fromDraft = phonesForSave(createDraft.phones);
+    const csvPhones = phoneHandlesOnly(fromDraft);
+    if (csvPhones.length === 0) {
+      setStatus(
+        isEmailHandle(handle)
+          ? "Add a phone number — emails alone cannot create a contact"
+          : "At least one phone number is required",
+      );
+      return;
+    }
     setSaving(true);
     try {
-      const fromDraft = phonesForSave(createDraft.phones);
+      // Keep the unassigned handle on the contact (phone or email); emails stay DB-only.
       const phones = fromDraft.includes(handle)
         ? fromDraft
-        : [handle, ...fromDraft];
+        : isEmailHandle(handle)
+          ? [...fromDraft, handle]
+          : [handle, ...fromDraft];
       const res = await fetch("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -492,7 +513,7 @@ export function UnassignedShell({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "create failed");
-      router.push(`/all?c=${data.contact.id}`);
+      router.push(`/contacts?c=${data.contact.id}`);
       router.refresh();
     } catch (err) {
       console.error(err);
@@ -737,7 +758,7 @@ export function UnassignedShell({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                disabled={saving || !draftHasName(createDraft)}
+                disabled={saving || !canSaveCreate}
                 onClick={() => void saveCreate()}
                 className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18 disabled:opacity-50"
               >

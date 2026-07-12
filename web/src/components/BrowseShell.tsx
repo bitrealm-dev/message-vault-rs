@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
+import { phoneHandlesOnly } from "@/lib/handleKind";
 import {
   isGroupThreadKey,
   yearThreadKey,
@@ -580,7 +581,10 @@ export function BrowseShell({
   }, [editDraft, selectContact, router]);
 
   const formOpen = (contactEditing || contactCreating) && !!editDraft;
-  const canSaveForm = !!editDraft && draftHasName(editDraft);
+  const canSaveForm =
+    !!editDraft &&
+    draftHasName(editDraft) &&
+    phoneHandlesOnly(phonesForSave(editDraft.phones)).length > 0;
   const canDelete = !contactCreating && (hasSelection || contactId != null);
 
   const deleteSelectedContacts = useCallback(async () => {

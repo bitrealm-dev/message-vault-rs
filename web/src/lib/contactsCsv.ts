@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "smol-toml";
+import { phoneHandlesOnly } from "./handleKind";
 import { configTomlPath, repoRoot } from "./paths";
 
 function contactsCsvPath(): string {
@@ -158,7 +159,7 @@ export function updateContactsCsv(
     }
     matched = true;
     if (patch.phones) {
-      cols[idx.phones] = patch.phones.join(";");
+      cols[idx.phones] = phoneHandlesOnly(patch.phones).join(";");
     }
     if (patch.firstName !== undefined && idx.firstName >= 0) {
       cols[idx.firstName] = patch.firstName ?? "";
@@ -212,7 +213,7 @@ export function appendContactsCsv(row: {
   }
 
   const cols = header.map(() => "");
-  cols[idx.phones] = row.phones.join(";");
+  cols[idx.phones] = phoneHandlesOnly(row.phones).join(";");
   if (idx.firstName >= 0) cols[idx.firstName] = row.firstName ?? "";
   if (idx.lastName >= 0) cols[idx.lastName] = row.lastName ?? "";
   cols[idx.exclude] = row.exclude ? "true" : "false";
@@ -294,7 +295,7 @@ export function removeContactsCsv(
   }
 
   const matchers = targets.map((t) => ({
-    phones: new Set(t.phones),
+    phones: new Set(phoneHandlesOnly(t.phones)),
     first: (t.firstName ?? "").trim().toLowerCase(),
     last: (t.lastName ?? "").trim().toLowerCase(),
   }));

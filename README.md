@@ -165,3 +165,5 @@ Contact browsing:
 - **Contacts** — everyone with messages who is not excluded (`exclude=false` in `config/contacts.csv`). Derived as All − Excluded; you only manage the `exclude` column.
 - **All** — every contact with messages, including excluded.
 - **Excluded** — `exclude=true`. Still browsable; hidden from Contacts and from groups.
+
+`contacts.csv` maps **phone numbers** only. iMessage email handles can be assigned to a contact in the UI and are stored in SQLite only (so threads link); they are not written back to the CSV. Email-only peers you do not want to map stay under Unassigned.

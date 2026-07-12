@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::Path;
 
@@ -11,6 +11,7 @@ pub struct ContactLoadStats {
     pub contacts: u64,
     pub phones: u64,
     pub groups: u64,
+    pub emails_restored: u64,
     pub skipped: bool,
 }
 
@@ -57,7 +58,108 @@ impl Contact {
     }
 }
 
+/// iMessage-style: any handle containing `@` is treated as email.
+fn is_email_handle(handle: &str) -> bool {
+    handle.contains('@')
+}
+
+fn phone_handles_only(handles: &[String]) -> Vec<String> {
+    handles
+        .iter()
+        .filter(|h| !is_email_handle(h))
+        .cloned()
+        .collect()
+}
+
+/// Emails attached to a contact, keyed for restore by that contact's phone set.
+#[derive(Debug, Default)]
+struct EmailSnapshot {
+    /// One entry per contact that had emails: (phones on that contact, emails).
+    entries: Vec<(HashSet<String>, Vec<String>)>,
+}
+
+fn snapshot_email_handles(conn: &Connection) -> Result<EmailSnapshot> {
+    let mut by_contact: HashMap<i64, (HashSet<String>, Vec<String>)> = HashMap::new();
+    let mut stmt = conn.prepare(
+        "SELECT contact_id, phone_e164 FROM contact_phones ORDER BY contact_id, phone_e164",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (contact_id, handle) = row?;
+        let entry = by_contact.entry(contact_id).or_default();
+        if is_email_handle(&handle) {
+            entry.1.push(handle);
+        } else {
+            entry.0.insert(handle);
+        }
+    }
+    Ok(EmailSnapshot {
+        entries: by_contact
+            .into_values()
+            .filter(|(_, emails)| !emails.is_empty())
+            .collect(),
+    })
+}
+
+fn restore_email_handles(
+    conn: &Connection,
+    snapshot: &EmailSnapshot,
+) -> Result<u64> {
+    if snapshot.entries.is_empty() {
+        return Ok(0);
+    }
+
+    let mut restored = 0u64;
+    for (phones, emails) in &snapshot.entries {
+        let mut contact_id: Option<i64> = None;
+        for phone in phones {
+            let found: Option<i64> = conn
+                .query_row(
+                    "SELECT contact_id FROM contact_phones WHERE phone_e164 = ?1",
+                    params![phone],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(id) = found {
+                contact_id = Some(id);
+                break;
+            }
+        }
+        let Some(id) = contact_id else {
+            continue;
+        };
+        for email in emails {
+            let owner: Option<i64> = conn
+                .query_row(
+                    "SELECT contact_id FROM contact_phones WHERE phone_e164 = ?1",
+                    params![email],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(existing) = owner {
+                if existing != id {
+                    eprintln!(
+                        "warning: email handle {email} already belongs to contact {existing}; not restoring onto {id}"
+                    );
+                }
+                continue;
+            }
+            conn.execute(
+                "INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?1, ?2)",
+                params![email, id],
+            )?;
+            restored += 1;
+        }
+    }
+    Ok(restored)
+}
+
 /// Load contacts from CSV when the table is empty, or when `overwrite` is true.
+///
+/// On overwrite, email handles already in SQLite are snapshotted by phone set and
+/// reattached after CSV reload (contacts.csv is phone-only).
 pub fn load_contacts_if_needed(
     conn: &mut Connection,
     csv_path: &Path,
@@ -82,6 +184,12 @@ pub fn load_contacts_if_needed(
         });
     }
 
+    let email_snapshot = if count > 0 && overwrite {
+        snapshot_email_handles(conn)?
+    } else {
+        EmailSnapshot::default()
+    };
+
     crate::schema::recreate_contacts(conn)?;
 
     if !csv_path.exists() {
@@ -92,7 +200,15 @@ pub fn load_contacts_if_needed(
         return Ok(ContactLoadStats::default());
     }
 
-    load_from_csv(conn, csv_path)
+    let mut stats = load_from_csv(conn, csv_path)?;
+    stats.emails_restored = restore_email_handles(conn, &email_snapshot)?;
+    if stats.emails_restored > 0 {
+        eprintln!(
+            "contacts: restored {} email handle(s) from previous DB (CSV is phone-only)",
+            stats.emails_restored
+        );
+    }
+    Ok(stats)
 }
 
 fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadStats> {
@@ -113,7 +229,16 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
             )
         })?;
 
-        let phones = split_list(&row.phones);
+        let raw_handles = split_list(&row.phones);
+        for h in &raw_handles {
+            if is_email_handle(h) {
+                eprintln!(
+                    "warning: contacts CSV row {row_no}: skipping email handle {h} (emails are DB-only)"
+                );
+            }
+        }
+        let phones = phone_handles_only(&raw_handles);
+
         if phones.is_empty() {
             bail!(
                 "contacts CSV row {row_no}: phones is required ({})",
@@ -252,4 +377,23 @@ fn parse_bool(raw: &str) -> bool {
         raw.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "y"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn email_detection() {
+        assert!(is_email_handle("a@b.com"));
+        assert!(!is_email_handle("+15551234567"));
+        assert_eq!(
+            phone_handles_only(&[
+                "+15551234567".into(),
+                "a@b.com".into(),
+                "+15559876543".into()
+            ]),
+            vec!["+15551234567", "+15559876543"]
+        );
+    }
 }

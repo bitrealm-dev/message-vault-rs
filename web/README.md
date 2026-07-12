@@ -45,6 +45,8 @@ Manage visibility with the `exclude` column in `config/contacts.csv` only:
 
 Groups and No group list only non-excluded contacts.
 
+`contacts.csv` is **phone-only**. Assigning an iMessage email to a contact stores it in the DB for thread linking; it is not written to the CSV. Leave unmapped email peers in Unassigned.
+
 ## Notes
 
 - Paths and DB location are read from the repo-root `config/config.toml`.

@@ -1,6 +1,7 @@
 "use client";
 
 import type { UnassignedHandle, YearThread } from "@/lib/types";
+import { isEmailHandle } from "@/lib/handleKind";
 import { ContactDetailsCard } from "./ContactDetailsCard";
 import type { ContactEditDraft } from "./contactEdit";
 import { MessageSourcePicker } from "./MessageSourcePicker";
@@ -99,6 +100,14 @@ export function UnassignedDetailPane({
         </p>
       ) : (
         <>
+          {creating && isEmailHandle(selected.handle) && (
+            <p className="mb-3 text-[12px] text-muted">
+              Add a phone number to save.{" "}
+              <span className="text-text">{selected.handle}</span> will be
+              linked on the contact in the database only (not written to
+              contacts.csv).
+            </p>
+          )}
           <ContactDetailsCard
             formOpen={creating}
             draft={createDraft}

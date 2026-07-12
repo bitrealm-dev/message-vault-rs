@@ -7,6 +7,11 @@ import {
   rewriteCsvGroups,
   updateContactsCsv,
 } from "./contactsCsv";
+import {
+  isEmailHandle,
+  phoneHandlesOnly,
+  preferredPhoneHandle,
+} from "./handleKind";
 import { clearTrashedHandles } from "./handlesWrite";
 import type { ContactDetail } from "./types";
 import {
@@ -45,8 +50,14 @@ export function createContact(input: ContactCreate): ContactDetail {
     throw new Error("first or last name required");
   }
   const phones = (input.phones ?? []).map((p) => p.trim()).filter(Boolean);
+  const csvPhones = phoneHandlesOnly(phones);
+  if (csvPhones.length === 0) {
+    throw new Error(
+      "at least one phone number required (emails alone cannot create a contact)",
+    );
+  }
   const exclude = input.exclude ?? false;
-  const preferredPhone = phones[0] ?? null;
+  const preferredPhone = preferredPhoneHandle(phones);
   const groups = (input.groups ?? [])
     .map((t) => t.trim())
     .filter(Boolean)
@@ -96,7 +107,7 @@ export function createContact(input: ContactCreate): ContactDetail {
 
   resetDb();
   appendContactsCsv({
-    phones,
+    phones: csvPhones,
     firstName,
     lastName,
     exclude,
@@ -313,7 +324,19 @@ export function patchContact(
     patch.phones !== undefined
       ? patch.phones.map((p) => p.trim()).filter(Boolean)
       : existing.phones;
-  const preferredPhone = phones[0] ?? null;
+  const preferredPhone = preferredPhoneHandle(phones);
+  const csvPhones = phoneHandlesOnly(phones);
+  const existingCsvPhones = phoneHandlesOnly(existing.phones);
+  const csvPhonesChanged =
+    patch.phones !== undefined &&
+    (csvPhones.length !== existingCsvPhones.length ||
+      csvPhones.some((p, i) => p !== existingCsvPhones[i]));
+
+  if (patch.phones !== undefined && csvPhones.length === 0) {
+    throw new Error(
+      "at least one phone number required (emails alone cannot be a contact)",
+    );
+  }
 
   const writeDb = new Database(dbPath());
   try {
@@ -351,14 +374,14 @@ export function patchContact(
 
   resetDb();
   updateContactsCsv(
-    existing.phones,
+    existingCsvPhones,
     { firstName: existing.firstName, lastName: existing.lastName },
     {
       exclude,
       groups,
       firstName: patch.firstName !== undefined ? firstName : undefined,
       lastName: patch.lastName !== undefined ? lastName : undefined,
-      phones: patch.phones !== undefined ? phones : undefined,
+      phones: csvPhonesChanged ? csvPhones : undefined,
     },
   );
 
@@ -376,6 +399,32 @@ export function addPhoneToContact(id: number, phone: string): ContactDetail {
   const trimmed = phone.trim();
   if (!trimmed) throw new Error("phone required");
   if (existing.phones.includes(trimmed)) return existing;
+
+  // Emails live in SQLite only — never rewrite contacts.csv phones.
+  if (isEmailHandle(trimmed)) {
+    const writeDb = new Database(dbPath());
+    try {
+      const owner = phoneOwner(writeDb, trimmed);
+      if (owner != null && owner !== id) {
+        throw new Error(`phone ${trimmed} already belongs to another contact`);
+      }
+      if (owner == null) {
+        writeDb
+          .prepare(
+            `INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?, ?)`,
+          )
+          .run(trimmed, id);
+        clearTrashedHandles(writeDb, [trimmed]);
+      }
+    } finally {
+      writeDb.close();
+    }
+    resetDb();
+    const updated = getContact(id);
+    if (!updated) throw new Error("contact missing after update");
+    return updated;
+  }
+
   return patchContact(id, { phones: [...existing.phones, trimmed] });
 }
 
@@ -394,7 +443,7 @@ export function deleteContacts(ids: number[]): number {
     const existing = getContact(id);
     if (!existing) continue;
     snapshots.push({
-      phones: existing.phones,
+      phones: phoneHandlesOnly(existing.phones),
       firstName: existing.firstName,
       lastName: existing.lastName,
     });
