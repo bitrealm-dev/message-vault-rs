@@ -15,8 +15,16 @@ import {
   type ContactEditDraft,
 } from "./ContactEditPane";
 import { MessageAttachments } from "./MessageAttachments";
+import {
+  UnmatchedSortMenu,
+  type SortOrder,
+  type UnmatchedSortBy,
+} from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
+
+const UNMATCHED_SORT_ORDER_KEY = "mv-unmatched-sort-order";
+const UNMATCHED_SORT_BY_KEY = "mv-unmatched-sort-by";
 
 function formatSourceLabel(id: string): string {
   const known: Record<string, string> = {
@@ -47,6 +55,25 @@ export function UnmatchedShell({
   const searchParams = useSearchParams();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [handles, setHandles] = useState(initialHandles);
+  const [sortBy, setSortByState] = useState<UnmatchedSortBy>(() => {
+    if (typeof window === "undefined") return "phone";
+    const v = localStorage.getItem(UNMATCHED_SORT_BY_KEY);
+    return v === "phone" || v === "date" ? v : "phone";
+  });
+  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => {
+    if (typeof window === "undefined") return "asc";
+    const v = localStorage.getItem(UNMATCHED_SORT_ORDER_KEY);
+    return v === "asc" || v === "desc" ? v : "asc";
+  });
+  const setUnmatchedSort = useCallback(
+    (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => {
+      setSortByState(next.sortBy);
+      setSortOrderState(next.order);
+      localStorage.setItem(UNMATCHED_SORT_BY_KEY, next.sortBy);
+      localStorage.setItem(UNMATCHED_SORT_ORDER_KEY, next.order);
+    },
+    [],
+  );
   const [handle, setHandle] = useState<string | null>(initialHandle);
   const [yearly, setYearly] = useState<YearThread[]>([]);
   const [messageSources, setMessageSources] = useState<string[]>([]);
@@ -69,6 +96,29 @@ export function UnmatchedShell({
     useResizablePanes("browse-unmatched");
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
+
+  const sortedHandles = useMemo(() => {
+    const copy = [...handles];
+    copy.sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "date") {
+        const aDate = a.dateEnd ?? a.dateStart ?? "";
+        const bDate = b.dateEnd ?? b.dateStart ?? "";
+        cmp = aDate.localeCompare(bDate);
+        if (cmp === 0) {
+          cmp = a.handle.localeCompare(b.handle, undefined, {
+            sensitivity: "base",
+          });
+        }
+      } else {
+        cmp = a.handle.localeCompare(b.handle, undefined, {
+          sensitivity: "base",
+        });
+      }
+      return sortOrder === "desc" ? -cmp : cmp;
+    });
+    return copy;
+  }, [handles, sortBy, sortOrder]);
 
   const selectHandle = useCallback(
     (next: string) => {
@@ -279,19 +329,24 @@ export function UnmatchedShell({
         className="flex shrink-0 flex-col bg-sidebar"
         style={{ width: sidebarWidth }}
       >
-        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
+        <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
           <h2 className="text-[13px] font-medium text-text">
             Unmatched{" "}
             <span className="text-muted">({handles.length})</span>
           </h2>
+          <UnmatchedSortMenu
+            sortBy={sortBy}
+            order={sortOrder}
+            onChange={setUnmatchedSort}
+          />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {handles.length === 0 && (
+          {sortedHandles.length === 0 && (
             <p className="px-3 py-4 text-[12px] text-muted">
               No unmatched 1:1 threads
             </p>
           )}
-          {handles.map((h) => {
+          {sortedHandles.map((h) => {
             const active = h.handle === handle;
             return (
               <button
@@ -647,6 +702,9 @@ export function UnmatchedShell({
                       hasBody={Boolean(m.body)}
                     />
                   </div>
+                  <span className="mt-0.5 px-1 text-[10px] text-muted">
+                    {m.timestamp.replace("T", " ").slice(0, 19)}
+                  </span>
                 </div>
               ))}
             </div>

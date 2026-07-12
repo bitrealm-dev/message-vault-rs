@@ -528,6 +528,19 @@ function looksLikePhone(value: string): boolean {
   return digits.length >= 7 && digits.length === t.replace(/[\s().+-]/g, "").length;
 }
 
+/** Prefer a real display hint; ignore phones and placeholder "(Unknown)" labels. */
+function usefulNameHint(
+  hint: string | null | undefined,
+  handle: string | null | undefined,
+): string | null {
+  const t = hint?.trim() || null;
+  if (!t) return null;
+  if (looksLikePhone(t)) return null;
+  if (handle && t.toLowerCase() === handle.toLowerCase()) return null;
+  if (/^\(?unknown\)?$/i.test(t)) return null;
+  return t;
+}
+
 function participantLabel(row: {
   first_name: string | null;
   last_name: string | null;
@@ -538,9 +551,9 @@ function participantLabel(row: {
   const last = row.last_name?.trim() ?? "";
   const full = `${first} ${last}`.trim();
   if (full) return { name: full, unknown: false };
-  const hint = row.name_hint?.trim();
-  if (hint && !looksLikePhone(hint)) return { name: hint, unknown: false };
-  return { name: hint || row.handle, unknown: true };
+  const hint = usefulNameHint(row.name_hint, row.handle);
+  if (hint) return { name: hint, unknown: false };
+  return { name: row.handle, unknown: true };
 }
 
 function formatPeopleTitle(
@@ -1035,8 +1048,9 @@ export function messagesForConversationYear(
         last_name: r.last_name,
         preferred_phone: r.preferred_phone ?? r.sender,
       });
-      if (senderName === (r.preferred_phone ?? r.sender) && r.name_hint) {
-        senderName = r.name_hint;
+      if (senderName === (r.preferred_phone ?? r.sender)) {
+        const hint = usefulNameHint(r.name_hint, r.sender);
+        if (hint) senderName = hint;
       }
     }
 
@@ -1103,14 +1117,7 @@ export function listUnmatchedHandles(): UnmatchedHandle[] {
 
   return rows
     .map((r) => {
-      const hint = r.name_hint?.trim() || null;
-      const hintUseful =
-        hint &&
-        !looksLikePhone(hint) &&
-        hint.toLowerCase() !== r.handle.toLowerCase() &&
-        !/^\(?unknown\)?$/i.test(hint)
-          ? hint
-          : null;
+      const hintUseful = usefulNameHint(r.name_hint, r.handle);
       const displayName = hintUseful ?? r.handle;
       const sortKey = hintUseful ? `${hintUseful}\0${r.handle}` : r.handle;
       const ch = (hintUseful ?? r.handle).charAt(0).toUpperCase();

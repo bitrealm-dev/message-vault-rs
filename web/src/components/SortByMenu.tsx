@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 export type SortMode = "first" | "last";
+export type UnmatchedSortBy = "phone" | "date";
+export type SortOrder = "asc" | "desc";
 
 export function SortByMenu({
   sort,
@@ -59,6 +61,93 @@ export function SortByMenu({
             selected={sort === "last"}
             onSelect={() => {
               onChange("last");
+              setOpen(false);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Phone/date + ascending/descending for Unmatched (same icon placement as SortByMenu). */
+export function UnmatchedSortMenu({
+  sortBy,
+  order,
+  onChange,
+}: {
+  sortBy: UnmatchedSortBy;
+  order: SortOrder;
+  onChange: (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        aria-label="Sort unmatched"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+      >
+        <SortIcon />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-2 shadow-xl">
+          <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
+            Sort By
+          </div>
+          <SortOption
+            label="Phone number"
+            selected={sortBy === "phone"}
+            onSelect={() => {
+              onChange({ sortBy: "phone", order });
+              setOpen(false);
+            }}
+          />
+          <SortOption
+            label="Date"
+            selected={sortBy === "date"}
+            onSelect={() => {
+              onChange({ sortBy: "date", order });
+              setOpen(false);
+            }}
+          />
+          <div className="my-1.5 border-t border-border" />
+          <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
+            Order
+          </div>
+          <SortOption
+            label="Ascending"
+            selected={order === "asc"}
+            onSelect={() => {
+              onChange({ sortBy, order: "asc" });
+              setOpen(false);
+            }}
+          />
+          <SortOption
+            label="Descending"
+            selected={order === "desc"}
+            onSelect={() => {
+              onChange({ sortBy, order: "desc" });
               setOpen(false);
             }}
           />
