@@ -168,14 +168,12 @@ run_go_sms_pro() {
 run_sms_backup_restore() {
   local input="${SOURCE_DATA}/sms-backup-restore"
   local out="${STAGING}/sms-backup-restore"
-  local crate="${EXPORTERS}/sms-backup-restore-exporter"
   require_path "${input}" "sms-backup-restore input"
-  require_path "${crate}" "sms-backup-restore-exporter"
 
   echo "==> sms-backup-restore"
   rotate_staging "${out}"
   echo "  exporting → ${out}"
-  (cd "${crate}" && cargo run --release -- \
+  (cd "${REPO_ROOT}" && cargo run --release -p sms-backup-restore-exporter -- \
     --input "${input}" \
     --output "${out}" \
     --owner-phone "${OWNER_PHONE}")
