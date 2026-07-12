@@ -135,15 +135,13 @@ require_path() {
 run_imessage() {
   local input="${SOURCE_DATA}/imessage/iphone_backup"
   local out="${STAGING}/imessage"
-  local workspace="${EXPORTERS}/imessage-exporter-json"
   require_path "${input}" "imessage input"
-  require_path "${workspace}" "imessage-exporter-json workspace"
 
   echo "==> imessage"
   rotate_staging "${out}"
   echo "  building imessage-exporter-json…"
-  (cd "${workspace}" && cargo build --release -p imessage-exporter)
-  local bin="${workspace}/target/release/imessage-exporter-json"
+  (cd "${REPO_ROOT}" && cargo build --release -p imessage-exporter)
+  local bin="${REPO_ROOT}/target/release/imessage-exporter-json"
   require_path "${bin}" "imessage-exporter-json binary"
   echo "  exporting → ${out}"
   "${bin}" -f json -c clone -a iOS -p "${input}" -o "${out}"

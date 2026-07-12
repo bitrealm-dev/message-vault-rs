@@ -7,6 +7,7 @@ members = [
   "crates/sms-backup-restore-exporter",
   "crates/sms-backup-plus-exporter",
   "crates/imessage-database",
+  "crates/imessage-exporter",
 ]
 [workspace.dependencies]
 message_json = { path = "crates/message-json" }
