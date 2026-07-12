@@ -22,9 +22,9 @@ export function ContactBrowsePage({
   return (
     <BrowsePageLayout active={nav} groups={groups}>
       <BrowseShell
-        section={paneKey}
+        paneStorageKey={paneKey}
         sectionLabel={label}
-        browseSection={section}
+        contactSection={section}
         contacts={contacts}
         allGroups={groups}
         initialContactId={contactId}

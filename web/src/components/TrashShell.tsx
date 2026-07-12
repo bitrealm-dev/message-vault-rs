@@ -13,7 +13,7 @@ export function TrashShell({
   groups,
   assignContacts,
   initialHandle,
-  initialGroupId,
+  initialConversationId,
   initialYear,
   initialTab,
 }: {
@@ -21,7 +21,7 @@ export function TrashShell({
   groups: GroupYearRow[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
-  initialGroupId: number | null;
+  initialConversationId: number | null;
   initialYear: number | null;
   initialTab: TrashTab;
 }) {
@@ -97,7 +97,7 @@ export function TrashShell({
           <GroupChatsShell
             mode="trash"
             groups={groups}
-            initialGroupId={initialGroupId}
+            initialConversationId={initialConversationId}
             initialYear={initialYear}
           />
         )}

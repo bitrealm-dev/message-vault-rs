@@ -1,6 +1,6 @@
 "use client";
 
-import type { GroupYearRow, MessageRow } from "@/lib/types";
+import type { GroupYearRow } from "@/lib/types";
 import { searchGroups } from "@/lib/groupSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import {
@@ -19,16 +19,18 @@ import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
+import { useThreadMessages } from "./useThreadMessages";
+import { useTrashActions } from "./useTrashActions";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 export function GroupChatsShell({
   groups: initialGroups,
-  initialGroupId,
+  initialConversationId,
   initialYear,
   mode = "group-chats",
 }: {
   groups: GroupYearRow[];
-  initialGroupId: number | null;
+  initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
 }) {
@@ -38,11 +40,10 @@ export function GroupChatsShell({
   const searchParams = useSearchParams();
   const { sourceQuery } = useSourceFilter();
   const [groups, setGroups] = useState(initialGroups);
-  const [groupId, setGroupId] = useState<number | null>(initialGroupId);
+  const [conversationId, setConversationId] = useState<number | null>(
+    initialConversationId,
+  );
   const [focusYear, setFocusYear] = useState<number | null>(initialYear);
-  const [messages, setMessages] = useState<MessageRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [listYear, setListYear] = useState<number | null>(null);
@@ -96,7 +97,7 @@ export function GroupChatsShell({
     rangeMode: "anchor",
     rangeUpdatesAnchor: true,
     multiThreshold: "any",
-    focusedId: groupId,
+    focusedId: conversationId,
     ctrlSeedSkipsTarget: false,
     rowClickMode: "openWhenEmptyElseToggleIfSelected",
     checkboxEvents: "stopOnly",
@@ -134,32 +135,44 @@ export function GroupChatsShell({
   }, [filtered]);
 
   const selectedRow = useMemo(() => {
-    if (groupId == null) return null;
+    if (conversationId == null) return null;
     if (focusYear != null) {
       const match = groups.find(
-        (g) => g.id === groupId && g.year === focusYear,
+        (g) => g.id === conversationId && g.year === focusYear,
       );
       if (match) return match;
     }
-    return groups.find((g) => g.id === groupId) ?? null;
-  }, [groups, groupId, focusYear]);
+    return groups.find((g) => g.id === conversationId) ?? null;
+  }, [groups, conversationId, focusYear]);
 
   const actionTargets = useMemo(() => {
     if (multiSelected) return [...selectedIds];
-    if (groupId != null) return [groupId];
+    if (conversationId != null) return [conversationId];
     return [];
-  }, [multiSelected, selectedIds, groupId]);
+  }, [multiSelected, selectedIds, conversationId]);
 
-  const canAct = actionTargets.length > 0 && !saving;
+  const {
+    messages,
+    loading,
+    setMessages,
+  } = useThreadMessages({
+    conversationIds: conversationId != null ? [conversationId] : null,
+    year: focusYear,
+    sourceQuery,
+    enabled: !multiSelected,
+  });
 
   useEffect(() => {
     setGroups(initialGroups);
-    if (groupId != null && !initialGroups.some((g) => g.id === groupId)) {
-      setGroupId(null);
+    if (
+      conversationId != null &&
+      !initialGroups.some((g) => g.id === conversationId)
+    ) {
+      setConversationId(null);
       setFocusYear(null);
       setMessages([]);
     }
-  }, [initialGroups, groupId]);
+  }, [initialGroups, conversationId, setMessages]);
 
   useDismissible({
     open: ctxMenu != null,
@@ -188,8 +201,8 @@ export function GroupChatsShell({
         for (const id of removed) next.delete(id);
         return next;
       });
-      if (groupId != null && removed.has(groupId)) {
-        setGroupId(null);
+      if (conversationId != null && removed.has(conversationId)) {
+        setConversationId(null);
         setFocusYear(null);
         setMessages([]);
         const params = new URLSearchParams(searchParams.toString());
@@ -199,17 +212,16 @@ export function GroupChatsShell({
         router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
       }
     },
-    [groupId, pathname, router, searchParams],
+    [conversationId, pathname, router, searchParams, setMessages],
   );
 
   const conversationSpansMultipleYears = useCallback(
-    (conversationId: number) =>
-      groups.some((g) => g.id === conversationId && g.spansMultipleYears),
+    (id: number) =>
+      groups.some((g) => g.id === id && g.spansMultipleYears),
     [groups],
   );
 
-  /** Resolve delete/restore targets to unique conversation ids. */
-  const resolveConversationTargets = useCallback(
+  const getTrashTargets = useCallback(
     (forId?: number) => {
       const raw =
         forId != null && !multiSelected ? [forId] : actionTargets;
@@ -218,15 +230,64 @@ export function GroupChatsShell({
     [actionTargets, multiSelected],
   );
 
+  const {
+    saving,
+    moveToTrash,
+    restoreFromTrash,
+    permanentlyDeleteFromTrash,
+  } = useTrashActions<number>({
+    endpoint: "/api/group-chats/trash",
+    idField: "conversationId",
+    getTargets: getTrashTargets,
+    canTrash: mode === "group-chats",
+    canRestoreOrDelete: mode === "trash",
+    confirmTrash: (targets) => {
+      const multiYear =
+        targets.length === 1 &&
+        conversationSpansMultipleYears(targets[0]!);
+      if (targets.length === 1) {
+        return multiYear
+          ? "Move this group chat to Trash? It appears under multiple years and will be removed from all of them."
+          : "Move this group chat to Trash?";
+      }
+      return `Move ${targets.length} group chats to Trash? Each chat will be removed from every year it appears under.`;
+    },
+    confirmPermanent: (targets) => {
+      const multiYear =
+        targets.length === 1 &&
+        conversationSpansMultipleYears(targets[0]!);
+      if (targets.length === 1) {
+        return multiYear
+          ? "Permanently delete this group chat? It appears under multiple years and will be removed from all of them. This cannot be undone."
+          : "Permanently delete this group chat? This cannot be undone.";
+      }
+      return `Permanently delete ${targets.length} group chats? Each chat will be removed from every year it appears under. This cannot be undone.`;
+    },
+    status: {
+      trashedOne: "Moved to Trash",
+      trashedMany: (n) => `Moved ${n} to Trash`,
+      restoredOne: "Undeleted — back in Group Chats",
+      restoredMany: (n) => `Undeleted ${n} group chats`,
+      deletedOne: "Permanently deleted",
+      deletedMany: (n) => `Permanently deleted ${n} group chats`,
+    },
+    setStatus,
+    onRemoved: clearFocusAfterRemoval,
+    onDismissMenus: () => setCtxMenu(null),
+    afterTrash: () => router.push("/trash?tab=group-chats"),
+  });
+
+  const canAct = actionTargets.length > 0 && !saving;
+
   const selectGroup = useCallback(
     (row: GroupYearRow) => {
-      if (groupId === row.id && focusYear === row.year) {
+      if (conversationId === row.id && focusYear === row.year) {
         setSelectedIds(new Set());
         return;
       }
       setSelectedIds(new Set());
       selectionAnchorRef.current = row.id;
-      setGroupId(row.id);
+      setConversationId(row.id);
       setFocusYear(row.year);
       setMessages([]);
       pendingScrollYearRef.current = row.year;
@@ -237,10 +298,11 @@ export function GroupChatsShell({
     },
     [
       focusYear,
-      groupId,
+      conversationId,
       pathname,
       router,
       searchParams,
+      setMessages,
       setSelectedIds,
       selectionAnchorRef,
     ],
@@ -268,153 +330,15 @@ export function GroupChatsShell({
   });
 
   const openCtxMenu = useCallback(
-    (conversationId: number, clientX: number, clientY: number) => {
-      if (!selectedIds.has(conversationId) && selectedIds.size > 0) {
-        setSelectedIds(new Set([conversationId]));
+    (id: number, clientX: number, clientY: number) => {
+      if (!selectedIds.has(id) && selectedIds.size > 0) {
+        setSelectedIds(new Set([id]));
       }
       const pos = clampMenu(clientX, clientY, 200, 120);
-      setCtxMenu({ x: pos.x, y: pos.y, conversationId });
+      setCtxMenu({ x: pos.x, y: pos.y, conversationId: id });
     },
     [selectedIds, setSelectedIds],
   );
-
-  const moveToTrash = async (forId?: number) => {
-    if (mode !== "group-chats") return;
-    const targets = resolveConversationTargets(forId);
-    if (targets.length === 0) return;
-    const multiYear =
-      targets.length === 1 &&
-      conversationSpansMultipleYears(targets[0]!);
-    const label =
-      targets.length === 1
-        ? multiYear
-          ? "Move this group chat to Trash? It appears under multiple years and will be removed from all of them."
-          : "Move this group chat to Trash?"
-        : `Move ${targets.length} group chats to Trash? Each chat will be removed from every year it appears under.`;
-    if (!window.confirm(label)) return;
-    setSaving(true);
-    setCtxMenu(null);
-    try {
-      for (const conversationId of targets) {
-        const res = await fetch("/api/group-chats/trash", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "delete failed");
-      }
-      setStatus(
-        targets.length === 1
-          ? "Moved to Trash"
-          : `Moved ${targets.length} to Trash`,
-      );
-      clearFocusAfterRemoval(targets);
-      router.push("/trash?tab=group-chats");
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Delete failed");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const restoreFromTrash = async (forId?: number) => {
-    if (mode !== "trash") return;
-    const targets = resolveConversationTargets(forId);
-    if (targets.length === 0) return;
-    setSaving(true);
-    setCtxMenu(null);
-    try {
-      for (const conversationId of targets) {
-        const res = await fetch("/api/group-chats/trash", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "undelete failed");
-      }
-      setStatus(
-        targets.length === 1
-          ? "Undeleted — back in Group Chats"
-          : `Undeleted ${targets.length} group chats`,
-      );
-      clearFocusAfterRemoval(targets);
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Undelete failed");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const permanentlyDeleteFromTrash = async (forId?: number) => {
-    if (mode !== "trash") return;
-    const targets = resolveConversationTargets(forId);
-    if (targets.length === 0) return;
-    const multiYear =
-      targets.length === 1 &&
-      conversationSpansMultipleYears(targets[0]!);
-    const label =
-      targets.length === 1
-        ? multiYear
-          ? "Permanently delete this group chat? It appears under multiple years and will be removed from all of them. This cannot be undone."
-          : "Permanently delete this group chat? This cannot be undone."
-        : `Permanently delete ${targets.length} group chats? Each chat will be removed from every year it appears under. This cannot be undone.`;
-    if (!window.confirm(label)) return;
-    setSaving(true);
-    setCtxMenu(null);
-    try {
-      for (const conversationId of targets) {
-        const res = await fetch("/api/group-chats/trash", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId, permanent: true }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "permanent delete failed");
-      }
-      setStatus(
-        targets.length === 1
-          ? "Permanently deleted"
-          : `Permanently deleted ${targets.length} group chats`,
-      );
-      clearFocusAfterRemoval(targets);
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Permanent delete failed");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  useEffect(() => {
-    if (multiSelected || !groupId || focusYear == null) {
-      setMessages([]);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    fetch(
-      `/api/messages?conversationIds=${groupId}&year=${focusYear}${sourceQuery}`,
-    )
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setMessages(data.messages ?? []);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [groupId, focusYear, sourceQuery, multiSelected]);
 
   useEffect(() => {
     const year = pendingScrollYearRef.current;
@@ -439,8 +363,8 @@ export function GroupChatsShell({
   }, [loading, messages, focusYear, multiSelected]);
 
   const activeKey =
-    groupId != null && focusYear != null && !multiSelected
-      ? `${groupId}-${focusYear}`
+    conversationId != null && focusYear != null && !multiSelected
+      ? `${conversationId}-${focusYear}`
       : null;
 
   return (

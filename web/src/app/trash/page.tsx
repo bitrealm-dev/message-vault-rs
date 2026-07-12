@@ -17,7 +17,7 @@ export default async function TrashPage({
   const sp = await searchParams;
   const initialHandle = sp.h?.trim() || null;
   const rawG = sp.g ? Number(sp.g) : null;
-  const initialGroupId = Number.isFinite(rawG) ? rawG : null;
+  const initialConversationId = Number.isFinite(rawG) ? rawG : null;
   const rawY = sp.y ? Number(sp.y) : null;
   const initialYear = Number.isFinite(rawY) ? rawY : null;
   const initialTab = sp.tab === "group-chats" ? "group-chats" : "unassigned";
@@ -33,7 +33,7 @@ export default async function TrashPage({
         groups={groups}
         assignContacts={assignContacts}
         initialHandle={initialHandle}
-        initialGroupId={initialGroupId}
+        initialConversationId={initialConversationId}
         initialYear={initialYear}
         initialTab={initialTab}
       />

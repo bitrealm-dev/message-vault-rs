@@ -29,6 +29,8 @@ import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
+import { fetchThreadMessages } from "./useThreadMessages";
+import { useTrashActions } from "./useTrashActions";
 
 const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
 const UNASSIGNED_SORT_BY_KEY = "mv-unassigned-sort-by";
@@ -84,7 +86,7 @@ export function UnassignedShell({
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState<ContactEditDraft | null>(null);
   const [extraGroups, setExtraGroups] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [assignSaving, setSaving] = useState(false);
   const [assignMode, setAssignMode] = useState<
     null | "header" | { x: number; y: number }
   >(null);
@@ -406,10 +408,8 @@ export function UnassignedShell({
   const loadYear = (year: number, conversationIds: number[]) => {
     setActiveYear(year);
     setLoadingMessages(true);
-    const ids = conversationIds.join(",");
-    fetch(`/api/messages?conversationIds=${ids}&year=${year}${sourceQuery}`)
-      .then((r) => r.json())
-      .then((data) => setMessages(data.messages ?? []))
+    fetchThreadMessages(conversationIds, year, sourceQuery)
+      .then(setMessages)
       .finally(() => setLoadingMessages(false));
   };
 
@@ -428,6 +428,40 @@ export function UnassignedShell({
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }
   };
+
+  const getTrashTargets = useCallback(
+    (forHandle?: string) => {
+      if (forHandle && !multiSelected) return [forHandle];
+      return actionTargets;
+    },
+    [actionTargets, multiSelected],
+  );
+
+  const {
+    saving: trashSaving,
+    moveToTrash,
+    restoreFromTrash,
+    permanentlyDeleteFromTrash,
+  } = useTrashActions<string>({
+    endpoint: "/api/unassigned/trash",
+    idField: "handle",
+    getTargets: getTrashTargets,
+    canTrash: mode === "unassigned",
+    canRestoreOrDelete: mode === "trash",
+    status: {
+      trashedOne: "Moved to Trash",
+      trashedMany: (n) => `Moved ${n} to Trash`,
+      restoredOne: "Undeleted — back in Unassigned",
+      restoredMany: (n) => `Undeleted ${n} handles`,
+      deletedOne: "Permanently deleted",
+      deletedMany: (n) => `Permanently deleted ${n} handles`,
+    },
+    setStatus,
+    onRemoved: clearFocusAfterRemoval,
+    onDismissMenus: () => setCtxMenu(null),
+  });
+
+  const saving = assignSaving || trashSaving;
 
   const saveCreate = async () => {
     if (!createDraft || !handle || !draftHasName(createDraft)) return;
@@ -513,104 +547,6 @@ export function UnassignedShell({
     } catch (err) {
       console.error(err);
       setStatus(err instanceof Error ? err.message : "Assign failed");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const moveToTrash = async () => {
-    if (mode !== "unassigned") return;
-    const targets = actionTargets;
-    if (targets.length === 0) return;
-    setSaving(true);
-    setCtxMenu(null);
-    try {
-      for (const phone of targets) {
-        const res = await fetch("/api/unassigned/trash", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ handle: phone }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "delete failed");
-      }
-      setStatus(
-        targets.length === 1
-          ? "Moved to Trash"
-          : `Moved ${targets.length} to Trash`,
-      );
-      clearFocusAfterRemoval(targets);
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Delete failed");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const restoreFromTrash = async (forHandle?: string) => {
-    if (mode !== "trash") return;
-    const targets =
-      forHandle && !multiSelected ? [forHandle] : actionTargets;
-    if (targets.length === 0) return;
-    setSaving(true);
-    setCtxMenu(null);
-    try {
-      for (const phone of targets) {
-        const res = await fetch("/api/unassigned/trash", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ handle: phone }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "undelete failed");
-      }
-      setStatus(
-        targets.length === 1
-          ? "Undeleted — back in Unassigned"
-          : `Undeleted ${targets.length} handles`,
-      );
-      clearFocusAfterRemoval(targets);
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Undelete failed");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const permanentlyDeleteFromTrash = async (forHandle?: string) => {
-    if (mode !== "trash") return;
-    const targets =
-      forHandle && !multiSelected ? [forHandle] : actionTargets;
-    if (targets.length === 0) return;
-    setSaving(true);
-    setCtxMenu(null);
-    try {
-      for (const phone of targets) {
-        const res = await fetch("/api/unassigned/trash", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ handle: phone, permanent: true }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "permanent delete failed");
-      }
-      setStatus(
-        targets.length === 1
-          ? "Permanently deleted"
-          : `Permanently deleted ${targets.length} handles`,
-      );
-      clearFocusAfterRemoval(targets);
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Permanent delete failed");
       router.refresh();
     } finally {
       setSaving(false);

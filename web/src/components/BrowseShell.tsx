@@ -39,16 +39,16 @@ const SORT_MODE_ALLOWED = ["first", "last", "messages"] as const;
 const SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 export function BrowseShell({
-  section,
+  paneStorageKey,
   sectionLabel,
-  browseSection,
+  contactSection,
   contacts,
   allGroups = [],
   initialContactId,
 }: {
-  section: string;
+  paneStorageKey: string;
   sectionLabel: string;
-  browseSection: ContactSection;
+  contactSection: ContactSection;
   contacts: ContactListItem[];
   allGroups?: string[];
   initialContactId: number | null;
@@ -155,14 +155,14 @@ export function BrowseShell({
 
   /** Excluded contacts stay out of All / groups; No messages may include them. */
   const visibleContacts = useMemo(() => {
-    if (browseSection === "excluded") {
+    if (contactSection === "excluded") {
       return contacts.filter((c) => isContactExcluded(c));
     }
-    if (browseSection === "no-messages") {
+    if (contactSection === "no-messages") {
       return contacts;
     }
     return contacts.filter((c) => !isContactExcluded(c));
-  }, [contacts, browseSection, isContactExcluded]);
+  }, [contacts, contactSection, isContactExcluded]);
 
   const sorted = useMemo(() => {
     const q = query.trim();
@@ -287,7 +287,7 @@ export function BrowseShell({
     setContactEditing(false);
     setContactCreating(false);
     setEditDraft(null);
-  }, [section, query, setSelectedIds]);
+  }, [paneStorageKey, query, setSelectedIds]);
 
   useEffect(() => {
     return () => {
@@ -496,15 +496,15 @@ export function BrowseShell({
   }, [detail, hasSelection, contactCreating]);
 
   const createDefaults = useMemo(() => {
-    if (typeof browseSection === "object") {
-      return { groups: [browseSection.group], exclude: false };
+    if (typeof contactSection === "object") {
+      return { groups: [contactSection.group], exclude: false };
     }
-    if (browseSection === "excluded") {
+    if (contactSection === "excluded") {
       return { groups: [] as string[], exclude: true };
     }
     // all, no-group
     return { groups: [] as string[], exclude: false };
-  }, [browseSection]);
+  }, [contactSection]);
 
   const beginCreateContact = useCallback(() => {
     setSelectedIds(new Set());
@@ -939,7 +939,7 @@ export function BrowseShell({
       />
 
       <div
-        id={`browse-${section}-right`}
+        id={`browse-${paneStorageKey}-right`}
         className="flex min-w-0 flex-1 flex-col"
       >
         <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border px-5">
