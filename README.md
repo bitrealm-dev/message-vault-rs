@@ -10,8 +10,8 @@ crates/
   go-sms-pro-exporter/
   sms-backup-restore-exporter/
   sms-backup-plus-exporter/
-  imessage-database/            # iMessage SQLite parsers
-  imessage-exporter/            # bin: imessage-exporter-json
+  imessage-exporter/            # bin: imessage-exporter-json (JSON fork)
+                                # depends on crates.io imessage-database
 scripts/
   ingest-staging.sh             # archive-path wrapper around `ingest`
   build-staging.sh              # export only (debug)

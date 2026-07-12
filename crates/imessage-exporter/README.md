@@ -4,7 +4,7 @@ The `imessage-exporter-json` binary exports iMessage data to `txt`, `html`, or `
 
 > This is a fork of [`imessage-exporter`](https://github.com/ReagentX/imessage-exporter) that adds the `json` export format. The installed command is `imessage-exporter-json`. The upstream project (without `json`) is what is published to crates.io and Homebrew as `imessage-exporter`.
 
-Vendored in the [message-vault-rs](../..) workspace under `crates/imessage-exporter`. For vault imports, prefer:
+Vendored in the [message-vault-rs](../..) workspace under `crates/imessage-exporter`. The SQLite parsers come from crates.io [`imessage-database`](https://crates.io/crates/imessage-database) (not vendored). For vault imports, prefer:
 
 ```bash
 cargo run --release -- ingest imessage --from /path/to/iphone_backup
