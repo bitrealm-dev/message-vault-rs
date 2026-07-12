@@ -11,6 +11,40 @@ cargo run --release -- ingest imessage --from /path/to/iphone_backup
 # or: ./scripts/ingest-staging.sh imessage
 ```
 
+## Fork delta
+
+This crate keeps the **upstream directory layout** (including `html/` and `txt/`) so merges stay path-compatible. The vault only needs JSON. Do **not** delete `html/` or `txt/` just to “trim” — that makes upstream sync harder.
+
+| Keep as upstream baseline | Own as the JSON overlay |
+|---------------------------|-------------------------|
+| `src/app/` (CLI, runtime, backup/DB) | `src/exporters/json/` |
+| `src/exporters/shared/` | `ExportType::Json` and `-f json` wiring |
+| `src/exporters/html/`, `txt/` (paths stay on disk) | Binary name `imessage-exporter-json` |
+| Most upstream CLI, docs, and deps | Default export format `json` |
+| | `serde` / `serde_json` in `Cargo.toml` |
+
+NDJSON conversation headers use `"conversation_type"` (`individual` / `group`) and iMessage `schema_version` **4**. Shared wire types live in [`message-json`](../message-json).
+
+iOS DB / backup format fixes often land in crates.io `imessage-database` first — bump that dependency before rewriting this tree.
+
+### Syncing from upstream
+
+**A — Merge (preferred when paths still match)**
+
+1. Once: `git remote add upstream https://github.com/ReagentX/imessage-exporter.git`
+2. `git fetch upstream --tags`
+3. Merge the desired tag into a branch that contains `crates/imessage-exporter`
+4. Resolve conflicts; re-check the overlay table above
+5. Smoke: `cargo build --release -p imessage-exporter`, then run `-f json` against a backup
+
+**B — Vendor refresh (when a merge is too noisy)**
+
+1. Snapshot `src/exporters/json/` and note Cargo.toml / bin name / default format / `ExportType` diffs
+2. Replace this crate tree from the upstream release (same paths)
+3. Restore the JSON overlay
+4. Diff against the overlay table; smoke a JSON export
+5. Bump `imessage-database` if that release requires it
+
 ## Installation
 
 This fork is installed from source.
@@ -210,7 +244,7 @@ The `json` format (`-f json`) is unique to this fork. It writes **newline-delimi
 - The **first line** of each file is a `conversation` record with conversation-level metadata.
 - Every **subsequent line** is a `message` record.
 
-Unlike the `html`/`txt` formats, the `json` format emits **raw handles** (phone numbers / emails) and an explicit `is_from_me` flag instead of resolved display names, so downstream tools can resolve names from their own contact source rather than parsing rendered output. Schema **v3** adds structured archival fields that HTML already had access to via `imessage-database`: read/delivered times, per-message service, deletion flag, expressive effects, edit history, multipart `parts`, best-effort balloon/app payloads, shared-location markers, attachment transcriptions, and sticker extras. Presentation-only HTML/CSS is not emitted.
+Unlike the `html`/`txt` formats, the `json` format emits **raw handles** (phone numbers / emails) and an explicit `is_from_me` flag instead of resolved display names, so downstream tools can resolve names from their own contact source rather than parsing rendered output. Schema **v4** uses `"conversation_type"` and adds structured archival fields that HTML already had access to via `imessage-database`: read/delivered times, per-message service, deletion flag, expressive effects, edit history, multipart `parts`, best-effort balloon/app payloads, shared-location markers, attachment transcriptions, and sticker extras. Presentation-only HTML/CSS is not emitted.
 
 Tapbacks (reactions) are attached inline to the message they react to. Reply threading is emitted as flat metadata (`thread_originator_guid` / `thread_originator_part` plus `num_replies`) so consumers can reconstruct threads themselves — each reply is also written as its own top-level `message` record, in chronological order, just like in the `html`/`txt` formats.
 

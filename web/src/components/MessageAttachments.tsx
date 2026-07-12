@@ -16,7 +16,7 @@ function mediaVariant(): "converted" | "original" {
   )
     .trim()
     .toLowerCase();
-  if (raw === "hq" || raw === "original" || raw === "assets") return "original";
+  if (raw === "original") return "original";
   return "converted";
 }
 

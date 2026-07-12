@@ -10,7 +10,8 @@ crates/
   go-sms-pro-exporter/
   sms-backup-restore-exporter/
   sms-backup-plus-exporter/
-  imessage-exporter/            # bin: imessage-exporter-json (JSON fork)
+  imessage-exporter/            # bin: imessage-exporter-json (JSON overlay fork)
+                                # keep html/txt paths for upstream merges; see crate README
                                 # depends on crates.io imessage-database
 config/                         # local machine config (examples committed)
 sources/                        # optional placeholder for raw backups (gitignored)
