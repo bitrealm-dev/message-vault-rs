@@ -13,7 +13,7 @@ mod vcf_to_contacts;
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 
 use crate::config::Config;
@@ -33,9 +33,10 @@ enum Commands {
         /// Configured source id (imessage, go-sms-pro, sms-backup-plus, sms-backup-restore)
         source: String,
 
-        /// Path to raw source data (iPhone backup, XML export, EML tree, …)
+        /// Path to raw source data (iPhone backup, XML export, EML tree, …).
+        /// Optional when the source has `source_dir` set in config.
         #[arg(long)]
-        from: PathBuf,
+        from: Option<PathBuf>,
 
         /// Path to config.toml
         #[arg(long, default_value = "config/config.toml")]
@@ -182,8 +183,16 @@ fn main() -> Result<()> {
                 bail!("--window-secs must be >= 0");
             }
             let mode = import::ImportMode::parse(&mode)?;
-            // Validate source early for a clearer error listing configured ids.
-            let _ = cfg.source(&source)?;
+            let src = cfg.source(&source)?;
+            let from = match from {
+                Some(p) => p,
+                None => src.source_dir.clone().with_context(|| {
+                    format!(
+                        "ingest '{source}' needs --from, or set source_dir on that [[sources]] entry in {}",
+                        config.display()
+                    )
+                })?,
+            };
 
             let stats = ingest::ingest(
                 &cfg,

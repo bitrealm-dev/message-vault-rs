@@ -40,3 +40,10 @@ target
 !/sources/.gitkeep
 /staging/*
 !/staging/.gitkeep
+
+# Local machine config (use config/config.toml.example)
+/config/config.toml
+/config/contacts.csv
+/config/blacklist.csv
+/config/contacts.xlsx
+/config/eml_contacts.csv

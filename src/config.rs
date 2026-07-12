@@ -48,6 +48,10 @@ pub struct PathsConfig {
 pub struct SourceConfig {
     pub id: String,
     pub export_dir: PathBuf,
+    /// Optional path to raw source data for `ingest` (iPhone backup, XML, EML tree, …).
+    /// Not required; when set, `ingest <id>` can omit `--from`.
+    #[serde(default)]
+    pub source_dir: Option<PathBuf>,
     /// Optional full-path override for originals (else `data_dir/<id>/<assets_dir>`).
     #[serde(default)]
     pub assets_dir: Option<PathBuf>,
@@ -142,6 +146,7 @@ impl Config {
             config.sources.push(SourceConfig {
                 id: "default".to_string(),
                 export_dir,
+                source_dir: None,
                 assets_dir: None,
                 assets_converted_dir: None,
             });
@@ -152,6 +157,9 @@ impl Config {
                 bail!("source id must not be empty");
             }
             source.export_dir = resolve_path(repo, &source.export_dir);
+            if let Some(p) = source.source_dir.take() {
+                source.source_dir = Some(resolve_path(repo, &p));
+            }
             if let Some(p) = source.assets_dir.take() {
                 source.assets_dir = Some(resolve_path(repo, &p));
             }

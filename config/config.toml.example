@@ -1,0 +1,40 @@
+# Copy to config.toml and edit for your machine:
+#   cp config/config.toml.example config/config.toml
+#   cp config/contacts.csv.example config/contacts.csv
+#   cp config/blacklist.csv.example config/blacklist.csv
+#
+# Real config/contacts/blacklist files are gitignored.
+
+[owner]
+display_name = "Your Name"
+phone_e164 = "+15555550100"
+emails = ["you@example.com"]
+
+[paths]
+db = "data/vault.db"
+data_dir = "data"
+assets_dir = "assets"
+assets_converted_dir = "assets_converted"
+contacts_csv = "config/contacts.csv"
+blacklist_csv = "config/blacklist.csv"
+
+[[sources]]
+id = "imessage"
+export_dir = "staging/imessage"
+# Optional: raw input for `ingest` (omit --from when set)
+# source_dir = "/path/to/iphone_backup"
+
+[[sources]]
+id = "sms-backup-plus"
+export_dir = "staging/sms-backup-plus-eml"
+# source_dir = "/path/to/eml-tree"
+
+[[sources]]
+id = "go-sms-pro"
+export_dir = "staging/go-sms-pro"
+# source_dir = "/path/to/gosms-export"
+
+[[sources]]
+id = "sms-backup-restore"
+export_dir = "staging/sms-backup-restore"
+# source_dir = "/path/to/sms-xml-or-dir"

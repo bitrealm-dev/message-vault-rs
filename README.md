@@ -25,7 +25,7 @@ cargo build --workspace --release
 
 ## Multi-source layout
 
-Configure sources in [`config/config.toml`](config/config.toml):
+Configure sources in [`config/config.toml`](config/config.toml) (copy from [`config/config.toml.example`](config/config.toml.example)):
 
 ```toml
 [paths]
@@ -37,6 +37,8 @@ assets_converted_dir = "assets_converted"
 [[sources]]
 id = "imessage"
 export_dir = "staging/imessage"
+# Optional: raw input for `ingest` / scripts (omit --from when set)
+# source_dir = "/path/to/iphone_backup"
 
 [[sources]]
 id = "sms-backup-plus"
@@ -60,10 +62,14 @@ One shared SQLite DB holds all sources. Each message row has a `source` column. 
 One command exports raw source data → NDJSON under `staging/<source>/` → imports that source → soft-dedupes across sources:
 
 ```bash
+# --from required unless that source has source_dir in config
 cargo run --release -- ingest imessage --from /path/to/iphone_backup
 cargo run --release -- ingest go-sms-pro --from /path/to/gosms-export
 cargo run --release -- ingest sms-backup-plus --from /path/to/eml-tree
 cargo run --release -- ingest sms-backup-restore --from /path/to/sms-xml
+
+# with source_dir configured:
+cargo run --release -- ingest go-sms-pro
 
 # optional flags:
 #   --mode append | replace   (default replace)
@@ -73,7 +79,7 @@ cargo run --release -- ingest sms-backup-restore --from /path/to/sms-xml
 #   --staging-dir staging/custom
 ```
 
-Archive helper (fixed paths under `/pool/archive/.../source-data/`):
+Helper (uses each source’s `source_dir` from config):
 
 ```bash
 ./scripts/ingest-staging.sh go-sms-pro

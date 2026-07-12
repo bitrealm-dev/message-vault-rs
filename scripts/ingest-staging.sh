@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ingest-staging.sh — one-shot export+import+dedupe from archived SOURCE_DATA
+# ingest-staging.sh — one-shot export+import+dedupe using config source_dir
 #
 # Usage:
 #   ./scripts/ingest-staging.sh go-sms-pro
@@ -7,12 +7,10 @@
 #   ./scripts/ingest-staging.sh --overwrite-contacts imessage
 #   ./scripts/ingest-staging.sh --skip-dedupe go-sms-pro
 #
-# Maps each SOURCE_ID to a fixed path under
-#   /pool/archive/projects/message-vault-rs/source-data/
-# then runs:
-#   cargo run --release -- ingest <id> --from <path> …
+# Requires each SOURCE_ID to have source_dir set in config/config.toml, then runs:
+#   cargo run --release -- ingest <id> …
 #
-# For arbitrary paths, call ingest directly:
+# Override the path for one run:
 #   cargo run --release -- ingest go-sms-pro --from /path/to/export
 
 set -euo pipefail
@@ -20,7 +18,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG="${REPO_ROOT}/config/config.toml"
-SOURCE_DATA="/pool/archive/projects/message-vault-rs/source-data"
 
 MODE="replace"
 OVERWRITE_CONTACTS=0
@@ -37,34 +34,12 @@ Options:
   --skip-dedupe          Skip cross-source soft-dedupe after import
   -h, --help             Show this help
 
-SOURCE_ID:
+SOURCE_ID must exist in config/config.toml with source_dir set:
   imessage
   go-sms-pro
   sms-backup-restore
   sms-backup-plus
 EOF
-}
-
-input_for_source() {
-  case "$1" in
-    imessage)
-      echo "${SOURCE_DATA}/imessage/iphone_backup"
-      ;;
-    go-sms-pro)
-      echo "${SOURCE_DATA}/go-sms-pro/2015-12-01_232753-export-go-sms-pro"
-      ;;
-    sms-backup-restore)
-      echo "${SOURCE_DATA}/sms-backup-restore"
-      ;;
-    sms-backup-plus)
-      echo "${SOURCE_DATA}/sms-backup-plus-eml/2026-06-28 Master SMS EML Archive - sanitized"
-      ;;
-    *)
-      echo "error: unknown SOURCE_ID '$1'" >&2
-      usage >&2
-      exit 1
-      ;;
-  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -106,12 +81,6 @@ fi
 cd "${REPO_ROOT}"
 
 for id in "${SOURCES[@]}"; do
-  input="$(input_for_source "${id}")"
-  if [[ ! -e "${input}" ]]; then
-    echo "error: missing input for ${id}: ${input}" >&2
-    exit 1
-  fi
-
   # imessage needs the release binary for the shell-out exporter.
   if [[ "${id}" == "imessage" && ! -x target/release/imessage-exporter-json ]]; then
     echo "building imessage-exporter-json…"
@@ -120,7 +89,6 @@ for id in "${SOURCES[@]}"; do
 
   cmd=(
     cargo run --release -- ingest "${id}"
-    --from "${input}"
     --config "${CONFIG}"
     --mode "${MODE}"
   )
