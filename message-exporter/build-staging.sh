@@ -183,9 +183,7 @@ run_sms_backup_restore() {
 run_sms_backup_plus() {
   local input="${SOURCE_DATA}/sms-backup-plus-eml/2026-06-28 Master SMS EML Archive - sanitized"
   local out="${STAGING}/sms-backup-plus-eml"
-  local crate="${EXPORTERS}/sms-backup-plus-exporter"
   require_path "${input}" "sms-backup-plus input"
-  require_path "${crate}" "sms-backup-plus-exporter"
 
   echo "==> sms-backup-plus"
   rotate_staging "${out}"
@@ -195,7 +193,7 @@ run_sms_backup_plus() {
   for e in "${OWNER_EMAILS[@]}"; do
     email_args+=(--owner-email "${e}")
   done
-  (cd "${crate}" && cargo run --release -- -v convert \
+  (cd "${REPO_ROOT}" && cargo run --release -p sms-backup-plus-exporter -- -v convert \
     --input "${input}" \
     --output "${out}" \
     --owner-phone "${OWNER_PHONE}" \
