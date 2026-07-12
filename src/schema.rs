@@ -71,6 +71,7 @@ CREATE TABLE attachments (
 );
 
 CREATE INDEX ix_attachments_sha256 ON attachments (sha256);
+CREATE INDEX ix_attachments_message_id ON attachments (message_id);
 
 CREATE TABLE tapbacks (
     id INTEGER PRIMARY KEY,
@@ -81,6 +82,9 @@ CREATE TABLE tapbacks (
     is_from_me INTEGER NOT NULL,
     sender TEXT
 );
+
+CREATE INDEX ix_tapbacks_message_id ON tapbacks (message_id);
+CREATE INDEX ix_messages_source ON messages (source);
 "#;
 
 const STAGING_TABLES_DDL: &str = r#"
@@ -143,6 +147,7 @@ CREATE TABLE staging_attachments (
 );
 
 CREATE INDEX ix_staging_attachments_sha256 ON staging_attachments (sha256);
+CREATE INDEX ix_staging_attachments_message_id ON staging_attachments (message_id);
 
 CREATE TABLE staging_tapbacks (
     id INTEGER PRIMARY KEY,
@@ -153,6 +158,8 @@ CREATE TABLE staging_tapbacks (
     is_from_me INTEGER NOT NULL,
     sender TEXT
 );
+
+CREATE INDEX ix_staging_tapbacks_message_id ON staging_tapbacks (message_id);
 "#;
 
 /// Drop and recreate production message-related tables. Does not touch contacts or staging.
@@ -188,6 +195,7 @@ pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
     }
     migrate_messages_source(conn)?;
     migrate_messages_dedupe_columns(conn)?;
+    migrate_delete_performance_indexes(conn)?;
     Ok(())
 }
 
@@ -239,8 +247,47 @@ fn migrate_messages_dedupe_columns(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn migrate_delete_performance_indexes(conn: &Connection) -> Result<()> {
+    // CASCADE deletes on messages are O(n²) without message_id indexes on child tables.
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS ix_attachments_message_id ON attachments (message_id);
+        CREATE INDEX IF NOT EXISTS ix_tapbacks_message_id ON tapbacks (message_id);
+        CREATE INDEX IF NOT EXISTS ix_messages_source ON messages (source);
+        "#,
+    )?;
+    Ok(())
+}
+
 /// Delete all production messages (and cascaded rows) for one import source.
 pub fn delete_messages_for_source(conn: &Connection, source: &str) -> Result<u64> {
+    // Ensure indexes exist even if caller skipped ensure_messages_schema somehow.
+    migrate_delete_performance_indexes(conn)?;
+
+    // Delete children first with set-based IN queries so CASCADE work is minimal,
+    // then clear reverse FKs (duplicate_of), then delete the messages themselves.
+    conn.execute(
+        r#"
+        DELETE FROM attachments
+        WHERE message_id IN (SELECT id FROM messages WHERE source = ?1)
+        "#,
+        [source],
+    )?;
+    conn.execute(
+        r#"
+        DELETE FROM tapbacks
+        WHERE message_id IN (SELECT id FROM messages WHERE source = ?1)
+        "#,
+        [source],
+    )?;
+    conn.execute(
+        r#"
+        UPDATE messages
+        SET duplicate_of = NULL
+        WHERE duplicate_of IN (SELECT id FROM messages WHERE source = ?1)
+        "#,
+        [source],
+    )?;
     let n = conn.execute("DELETE FROM messages WHERE source = ?1", [source])?;
     Ok(n as u64)
 }

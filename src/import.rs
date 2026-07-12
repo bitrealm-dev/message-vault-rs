@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Statement, Transaction};
 
 
 use crate::assets::{self, AssetStats, StoredAsset};
@@ -171,10 +171,16 @@ pub fn import_export(
     } else {
         (total_files / 40).max(10)
     };
+    // Commit staging every N conversation files to cut transaction overhead vs per-file commits.
+    const STAGING_COMMIT_EVERY: usize = 50;
+
+    let mut tx = conn.transaction()?;
+    let mut stmts = StagingInserts::prepare(&tx)?;
 
     for (idx, path) in paths.into_iter().enumerate() {
         let file_stats = import_file_to_staging(
-            &mut conn,
+            &tx,
+            &mut stmts,
             export_dir,
             assets_dir,
             &path,
@@ -209,7 +215,16 @@ pub fn import_export(
             );
             let _ = io::stdout().flush();
         }
+
+        if n % STAGING_COMMIT_EVERY == 0 && n < total_files {
+            drop(stmts);
+            tx.commit()?;
+            tx = conn.transaction()?;
+            stmts = StagingInserts::prepare(&tx)?;
+        }
     }
+    drop(stmts);
+    tx.commit()?;
 
     // Always merge staging into production (replace already deleted this source's rows).
     println!(
@@ -217,7 +232,7 @@ pub fn import_export(
         started.elapsed().as_secs_f64()
     );
     let _ = io::stdout().flush();
-    let promote_stats = promote_append(&mut conn)?;
+    let promote_stats = promote_append(&mut conn, mode)?;
     stats.messages_deduped += promote_stats.messages_deduped;
     stats.messages_appended = promote_stats.messages_appended;
     if mode == ImportMode::Append {
@@ -273,8 +288,63 @@ fn prepare_attachments(
     Ok(prepared)
 }
 
+struct StagingInserts<'conn> {
+    conv: Statement<'conn>,
+    part: Statement<'conn>,
+    msg: Statement<'conn>,
+    att: Statement<'conn>,
+    tap: Statement<'conn>,
+}
+
+impl<'conn> StagingInserts<'conn> {
+    fn prepare(tx: &'conn Transaction<'_>) -> Result<Self> {
+        Ok(Self {
+            conv: tx.prepare(
+                r#"
+                INSERT INTO staging_conversations (
+                    chat_identifier, service, conv_type, group_title, exported_at, source_file
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+            )?,
+            part: tx.prepare(
+                r#"
+                INSERT INTO staging_participants (conversation_id, handle, name_hint)
+                VALUES (?1, ?2, ?3)
+                "#,
+            )?,
+            msg: tx.prepare(
+                r#"
+                INSERT OR IGNORE INTO staging_messages (
+                    conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
+                    subject, body, is_announcement, is_reply, thread_originator_guid,
+                    thread_originator_part, num_replies, sort_order
+                ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+                )
+                "#,
+            )?,
+            att: tx.prepare(
+                r#"
+                INSERT INTO staging_attachments (
+                    message_id, path, original_name, mime_type, is_sticker, transcription,
+                    sha256, assets_path
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+            )?,
+            tap: tx.prepare(
+                r#"
+                INSERT INTO staging_tapbacks (
+                    message_id, part_index, kind, emoji, is_from_me, sender
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+            )?,
+        })
+    }
+}
+
 fn import_file_to_staging(
-    conn: &mut Connection,
+    tx: &Transaction<'_>,
+    stmts: &mut StagingInserts<'_>,
     export_dir: &Path,
     assets_dir: &Path,
     path: &Path,
@@ -388,7 +458,7 @@ fn import_file_to_staging(
         })
         .collect();
 
-    // Hash/copy assets before opening the DB transaction.
+    // Hash/copy assets before DB writes (still outside any per-row SQL cost).
     let mut prepared_messages = Vec::with_capacity(kept_messages.len());
     for mut msg in kept_messages {
         let attachments = prepare_attachments(
@@ -400,34 +470,21 @@ fn import_file_to_staging(
         prepared_messages.push((msg, attachments));
     }
 
-    let tx = conn.transaction()?;
-
-    tx.execute(
-        r#"
-        INSERT INTO staging_conversations (
-            chat_identifier, service, conv_type, group_title, exported_at, source_file
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-        "#,
-        params![
-            chat_identifier,
-            service,
-            conv_type,
-            group_title,
-            exported_at,
-            source_file,
-        ],
-    )?;
+    stmts.conv.execute(params![
+        chat_identifier,
+        service,
+        conv_type,
+        group_title,
+        exported_at,
+        source_file,
+    ])?;
     let conversation_id = tx.last_insert_rowid();
     stats.conversations = 1;
 
     for (handle, name_hint) in kept_participants {
-        tx.execute(
-            r#"
-            INSERT INTO staging_participants (conversation_id, handle, name_hint)
-            VALUES (?1, ?2, ?3)
-            "#,
-            params![conversation_id, handle, name_hint],
-        )?;
+        stmts
+            .part
+            .execute(params![conversation_id, handle, name_hint])?;
         stats.participants += 1;
     }
 
@@ -439,34 +496,23 @@ fn import_file_to_staging(
             clean_body(msg.text.as_deref())
         };
 
-        let inserted = tx.execute(
-            r#"
-            INSERT OR IGNORE INTO staging_messages (
-                conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
-                subject, body, is_announcement, is_reply, thread_originator_guid,
-                thread_originator_part, num_replies, sort_order
-            ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
-            )
-            "#,
-            params![
-                conversation_id,
-                source,
-                msg.guid,
-                msg.timestamp,
-                msg.timestamp_utc,
-                msg.is_from_me as i64,
-                msg.sender,
-                msg.subject,
-                body,
-                msg.is_announcement as i64,
-                msg.is_reply as i64,
-                msg.thread_originator_guid,
-                msg.thread_originator_part,
-                msg.num_replies,
-                sort_order as i64,
-            ],
-        )?;
+        let inserted = stmts.msg.execute(params![
+            conversation_id,
+            source,
+            msg.guid,
+            msg.timestamp,
+            msg.timestamp_utc,
+            msg.is_from_me as i64,
+            msg.sender,
+            msg.subject,
+            body,
+            msg.is_announcement as i64,
+            msg.is_reply as i64,
+            msg.thread_originator_guid,
+            msg.thread_originator_part,
+            msg.num_replies,
+            sort_order as i64,
+        ])?;
 
         if inserted == 0 {
             stats.messages_deduped += 1;
@@ -487,48 +533,32 @@ fn import_file_to_staging(
                 None => (None, None, att.mime_type),
             };
 
-            tx.execute(
-                r#"
-                INSERT INTO staging_attachments (
-                    message_id, path, original_name, mime_type, is_sticker, transcription,
-                    sha256, assets_path
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                "#,
-                params![
-                    message_id,
-                    att.path,
-                    att.original_name,
-                    mime_type,
-                    att.is_sticker as i64,
-                    att.transcription,
-                    sha256,
-                    assets_path,
-                ],
-            )?;
+            stmts.att.execute(params![
+                message_id,
+                att.path,
+                att.original_name,
+                mime_type,
+                att.is_sticker as i64,
+                att.transcription,
+                sha256,
+                assets_path,
+            ])?;
             stats.attachments += 1;
         }
 
         for tap in msg.tapbacks {
-            tx.execute(
-                r#"
-                INSERT INTO staging_tapbacks (
-                    message_id, part_index, kind, emoji, is_from_me, sender
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                "#,
-                params![
-                    message_id,
-                    tap.part_index,
-                    tap.kind,
-                    tap.emoji,
-                    tap.is_from_me as i64,
-                    tap.sender,
-                ],
-            )?;
+            stmts.tap.execute(params![
+                message_id,
+                tap.part_index,
+                tap.kind,
+                tap.emoji,
+                tap.is_from_me as i64,
+                tap.sender,
+            ])?;
             stats.tapbacks += 1;
         }
     }
 
-    tx.commit()?;
     Ok(stats)
 }
 
@@ -543,9 +573,18 @@ struct PromoteStats {
     messages_appended: u64,
 }
 
-fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
+fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStats> {
     let mut stats = PromoteStats::default();
     let started = Instant::now();
+
+    // Bulk promote is much faster with a larger page cache and memory temp tables.
+    conn.execute_batch(
+        r#"
+        PRAGMA temp_store = MEMORY;
+        PRAGMA cache_size = -200000;
+        "#,
+    )?;
+
     let tx = conn.transaction()?;
 
     println!("  sql:      promote: reading staging conversations…");
@@ -587,53 +626,60 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
     let _ = io::stdout().flush();
 
     let mut conv_map: HashMap<i64, i64> = HashMap::new();
+    let mut find_conv = tx.prepare("SELECT id FROM conversations WHERE chat_identifier = ?1")?;
+    let mut update_conv = tx.prepare(
+        r#"
+        UPDATE conversations SET
+            service = COALESCE(?2, service),
+            conv_type = ?3,
+            group_title = COALESCE(?4, group_title),
+            exported_at = COALESCE(?5, exported_at),
+            source_file = ?6
+        WHERE id = ?1
+        "#,
+    )?;
+    let mut insert_conv = tx.prepare(
+        r#"
+        INSERT INTO conversations (
+            chat_identifier, service, conv_type, group_title, exported_at, source_file
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )?;
 
     for (staging_id, chat_identifier, service, conv_type, group_title, exported_at, source_file) in
         staging_conv_rows
     {
-        let existing: Option<i64> = tx
-            .query_row(
-                "SELECT id FROM conversations WHERE chat_identifier = ?1",
-                params![chat_identifier],
-                |row| row.get(0),
-            )
+        let existing: Option<i64> = find_conv
+            .query_row(params![chat_identifier], |row| row.get(0))
             .optional()?;
 
         let prod_id = if let Some(id) = existing {
-            tx.execute(
-                r#"
-                UPDATE conversations SET
-                    service = COALESCE(?2, service),
-                    conv_type = ?3,
-                    group_title = COALESCE(?4, group_title),
-                    exported_at = COALESCE(?5, exported_at),
-                    source_file = ?6
-                WHERE id = ?1
-                "#,
-                params![id, service, conv_type, group_title, exported_at, source_file],
-            )?;
+            update_conv.execute(params![
+                id,
+                service,
+                conv_type,
+                group_title,
+                exported_at,
+                source_file
+            ])?;
             id
         } else {
-            tx.execute(
-                r#"
-                INSERT INTO conversations (
-                    chat_identifier, service, conv_type, group_title, exported_at, source_file
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                "#,
-                params![
-                    chat_identifier,
-                    service,
-                    conv_type,
-                    group_title,
-                    exported_at,
-                    source_file,
-                ],
-            )?;
+            insert_conv.execute(params![
+                chat_identifier,
+                service,
+                conv_type,
+                group_title,
+                exported_at,
+                source_file,
+            ])?;
             stats.conversations += 1;
             tx.last_insert_rowid()
         };
         conv_map.insert(staging_id, prod_id);
     }
+    drop(find_conv);
+    drop(update_conv);
+    drop(insert_conv);
     println!(
         "  sql:      promote: conversations done (new={})  ({:.1}s)",
         stats.conversations,
@@ -655,173 +701,159 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
     );
     let _ = io::stdout().flush();
 
+    let mut insert_part = tx.prepare(
+        r#"
+        INSERT OR IGNORE INTO participants (conversation_id, handle, name_hint)
+        VALUES (?1, ?2, ?3)
+        "#,
+    )?;
     for (staging_conv_id, handle, name_hint) in staging_part_rows {
         let Some(&prod_conv_id) = conv_map.get(&staging_conv_id) else {
             continue;
         };
-        let inserted = tx.execute(
-            r#"
-            INSERT OR IGNORE INTO participants (conversation_id, handle, name_hint)
-            VALUES (?1, ?2, ?3)
-            "#,
-            params![prod_conv_id, handle, name_hint],
-        )?;
+        let inserted = insert_part.execute(params![prod_conv_id, handle, name_hint])?;
         if inserted > 0 {
             stats.participants += 1;
         }
     }
+    drop(insert_part);
     println!(
         "  sql:      promote: participants done (new={})  ({:.1}s)",
         stats.participants,
         started.elapsed().as_secs_f64()
     );
 
-    println!("  sql:      promote: reading staging messages…");
-    let _ = io::stdout().flush();
-    let mut staging_msgs = tx.prepare(
+    // Staging→prod conversation id map for set-based inserts.
+    tx.execute_batch(
         r#"
-        SELECT id, conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
-               subject, body, is_announcement, is_reply, thread_originator_guid,
-               thread_originator_part, num_replies, sort_order
-        FROM staging_messages
-        ORDER BY id
+        CREATE TEMP TABLE IF NOT EXISTS _promote_conv_map (
+            staging_id INTEGER PRIMARY KEY,
+            prod_id INTEGER NOT NULL
+        );
+        DELETE FROM _promote_conv_map;
         "#,
     )?;
+    {
+        let mut ins = tx.prepare(
+            "INSERT INTO _promote_conv_map (staging_id, prod_id) VALUES (?1, ?2)",
+        )?;
+        for (staging_id, prod_id) in &conv_map {
+            ins.execute(params![staging_id, prod_id])?;
+        }
+    }
 
-    let staging_msg_rows: Vec<(
-        i64,
-        i64,
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-        i64,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        i64,
-        i64,
-        Option<String>,
-        Option<i64>,
-        i64,
-        i64,
-    )> = staging_msgs
-        .query_map([], |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
-                row.get(11)?,
-                row.get(12)?,
-                row.get(13)?,
-                row.get(14)?,
-                row.get(15)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(staging_msgs);
-    let total_msgs = staging_msg_rows.len();
-    println!("  sql:      promote: {total_msgs} staging messages → production…");
+    let total_msgs: i64 = tx.query_row("SELECT COUNT(*) FROM staging_messages", [], |r| r.get(0))?;
+    println!(
+        "  sql:      promote: {total_msgs} staging messages → production ({})…",
+        mode.as_str()
+    );
     let _ = io::stdout().flush();
 
-    let mut msg_map: HashMap<i64, i64> = HashMap::new();
-    let msg_progress_every = if total_msgs <= 5_000 {
-        500usize
-    } else {
-        (total_msgs / 20).max(1_000)
-    };
-
-    for (
-        msg_idx,
-        (
-            staging_msg_id,
-            staging_conv_id,
-            source,
-            guid,
-            timestamp,
-            timestamp_utc,
-            is_from_me,
-            sender,
-            subject,
-            body,
-            is_announcement,
-            is_reply,
-            thread_originator_guid,
-            thread_originator_part,
-            num_replies,
-            sort_order,
-        ),
-    ) in staging_msg_rows.into_iter().enumerate()
-    {
-        let Some(&prod_conv_id) = conv_map.get(&staging_conv_id) else {
-            continue;
-        };
-
-        let guid_nonempty = guid.as_deref().is_some_and(|g| !g.is_empty());
-        if guid_nonempty {
-            let exists: bool = tx.query_row(
-                "SELECT COUNT(*) > 0 FROM messages WHERE source = ?1 AND guid = ?2",
-                params![source, guid],
-                |row| row.get(0),
-            )?;
-            if exists {
-                stats.messages_deduped += 1;
-                continue;
-            }
-        }
-
-        tx.execute(
+    let msg_map = if mode == ImportMode::Replace {
+        // Source rows were wiped already: one set-based INSERT, then zip new ids in order.
+        let max_before: i64 =
+            tx.query_row("SELECT IFNULL(MAX(id), 0) FROM messages", [], |r| r.get(0))?;
+        let inserted = tx.execute(
             r#"
             INSERT INTO messages (
                 conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
                 subject, body, is_announcement, is_reply, thread_originator_guid,
                 thread_originator_part, num_replies, sort_order
-            ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
             )
+            SELECT
+                cm.prod_id, sm.source, sm.guid, sm.timestamp, sm.timestamp_utc, sm.is_from_me,
+                sm.sender, sm.subject, sm.body, sm.is_announcement, sm.is_reply,
+                sm.thread_originator_guid, sm.thread_originator_part, sm.num_replies, sm.sort_order
+            FROM staging_messages sm
+            JOIN _promote_conv_map cm ON cm.staging_id = sm.conversation_id
+            ORDER BY sm.id
             "#,
-            params![
-                prod_conv_id,
-                source,
-                guid,
-                timestamp,
-                timestamp_utc,
-                is_from_me,
-                sender,
-                subject,
-                body,
-                is_announcement,
-                is_reply,
-                thread_originator_guid,
-                thread_originator_part,
-                num_replies,
-                sort_order,
-            ],
+            [],
         )?;
-        let prod_msg_id = tx.last_insert_rowid();
-        msg_map.insert(staging_msg_id, prod_msg_id);
-        stats.messages += 1;
-        stats.messages_appended += 1;
+        stats.messages = inserted as u64;
+        stats.messages_appended = inserted as u64;
 
-        let n = msg_idx + 1;
-        if n == 1 || n == total_msgs || n % msg_progress_every == 0 {
-            println!(
-                "  sql:      promote: messages [{n}/{total_msgs}] inserted={} skipped={}  ({:.1}s)",
-                stats.messages,
-                stats.messages_deduped,
-                started.elapsed().as_secs_f64()
+        let staging_ids: Vec<i64> = tx
+            .prepare("SELECT id FROM staging_messages ORDER BY id")?
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let prod_ids: Vec<i64> = tx
+            .prepare("SELECT id FROM messages WHERE id > ?1 ORDER BY id")?
+            .query_map(params![max_before], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        if staging_ids.len() != prod_ids.len() {
+            bail!(
+                "promote replace message id map mismatch: staging={} new_prod={}",
+                staging_ids.len(),
+                prod_ids.len()
             );
-            let _ = io::stdout().flush();
         }
-    }
+        staging_ids.into_iter().zip(prod_ids).collect::<HashMap<_, _>>()
+    } else {
+        // Append: insert only staging rows whose (source, guid) is not already in production,
+        // then zip new ids in order (same mapping trick as replace).
+        let max_before: i64 =
+            tx.query_row("SELECT IFNULL(MAX(id), 0) FROM messages", [], |r| r.get(0))?;
+
+        let new_filter = r#"
+            (sm.guid IS NULL OR sm.guid = '')
+            OR NOT EXISTS (
+                SELECT 1 FROM messages m
+                WHERE m.source = sm.source AND m.guid = sm.guid
+            )
+        "#;
+
+        let staging_ids: Vec<i64> = tx
+            .prepare(&format!(
+                r#"
+                SELECT sm.id
+                FROM staging_messages sm
+                JOIN _promote_conv_map cm ON cm.staging_id = sm.conversation_id
+                WHERE {new_filter}
+                ORDER BY sm.id
+                "#
+            ))?
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let inserted = tx.execute(
+            &format!(
+                r#"
+                INSERT INTO messages (
+                    conversation_id, source, guid, timestamp, timestamp_utc, is_from_me, sender,
+                    subject, body, is_announcement, is_reply, thread_originator_guid,
+                    thread_originator_part, num_replies, sort_order
+                )
+                SELECT
+                    cm.prod_id, sm.source, sm.guid, sm.timestamp, sm.timestamp_utc, sm.is_from_me,
+                    sm.sender, sm.subject, sm.body, sm.is_announcement, sm.is_reply,
+                    sm.thread_originator_guid, sm.thread_originator_part, sm.num_replies, sm.sort_order
+                FROM staging_messages sm
+                JOIN _promote_conv_map cm ON cm.staging_id = sm.conversation_id
+                WHERE {new_filter}
+                ORDER BY sm.id
+                "#
+            ),
+            [],
+        )?;
+        stats.messages = inserted as u64;
+        stats.messages_appended = inserted as u64;
+        stats.messages_deduped = (total_msgs as u64).saturating_sub(inserted as u64);
+
+        let prod_ids: Vec<i64> = tx
+            .prepare("SELECT id FROM messages WHERE id > ?1 ORDER BY id")?
+            .query_map(params![max_before], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        if staging_ids.len() != prod_ids.len() {
+            bail!(
+                "promote append message id map mismatch: staging_new={} new_prod={}",
+                staging_ids.len(),
+                prod_ids.len()
+            );
+        }
+        staging_ids.into_iter().zip(prod_ids).collect::<HashMap<_, _>>()
+    };
+
     println!(
         "  sql:      promote: messages done (inserted={} skipped={})  ({:.1}s)",
         stats.messages,
@@ -829,145 +861,61 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
         started.elapsed().as_secs_f64()
     );
 
-    println!("  sql:      promote: reading staging attachments…");
-    let _ = io::stdout().flush();
-    let mut staging_atts = tx.prepare(
+    tx.execute_batch(
         r#"
-        SELECT message_id, path, original_name, mime_type, is_sticker, transcription,
-               sha256, assets_path
-        FROM staging_attachments
-        ORDER BY id
+        CREATE TEMP TABLE IF NOT EXISTS _promote_msg_map (
+            staging_id INTEGER PRIMARY KEY,
+            prod_id INTEGER NOT NULL
+        );
+        DELETE FROM _promote_msg_map;
         "#,
     )?;
-    let staging_att_rows: Vec<(
-        i64,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        i64,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = staging_atts
-        .query_map([], |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(staging_atts);
-    let total_atts = staging_att_rows.len();
-    println!("  sql:      promote: {total_atts} staging attachments → production…");
-    let _ = io::stdout().flush();
-    let att_progress_every = if total_atts <= 2_000 {
-        250usize
-    } else {
-        (total_atts / 20).max(500)
-    };
-
-    for (
-        att_idx,
-        (
-            staging_msg_id,
-            path,
-            original_name,
-            mime_type,
-            is_sticker,
-            transcription,
-            sha256,
-            assets_path,
-        ),
-    ) in staging_att_rows.into_iter().enumerate()
     {
-        let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
-            continue;
-        };
-        tx.execute(
-            r#"
-            INSERT INTO attachments (
-                message_id, path, original_name, mime_type, is_sticker, transcription,
-                sha256, assets_path
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-            "#,
-            params![
-                prod_msg_id,
-                path,
-                original_name,
-                mime_type,
-                is_sticker,
-                transcription,
-                sha256,
-                assets_path,
-            ],
-        )?;
-        stats.attachments += 1;
-
-        let n = att_idx + 1;
-        if total_atts > 0 && (n == 1 || n == total_atts || n % att_progress_every == 0) {
-            println!(
-                "  sql:      promote: attachments [{n}/{total_atts}] inserted={}  ({:.1}s)",
-                stats.attachments,
-                started.elapsed().as_secs_f64()
-            );
-            let _ = io::stdout().flush();
+        let mut ins =
+            tx.prepare("INSERT INTO _promote_msg_map (staging_id, prod_id) VALUES (?1, ?2)")?;
+        for (staging_id, prod_id) in &msg_map {
+            ins.execute(params![staging_id, prod_id])?;
         }
     }
+
+    println!("  sql:      promote: bulk-inserting attachments…");
+    let _ = io::stdout().flush();
+    let att_inserted = tx.execute(
+        r#"
+        INSERT INTO attachments (
+            message_id, path, original_name, mime_type, is_sticker, transcription,
+            sha256, assets_path
+        )
+        SELECT
+            mm.prod_id, sa.path, sa.original_name, sa.mime_type, sa.is_sticker, sa.transcription,
+            sa.sha256, sa.assets_path
+        FROM staging_attachments sa
+        JOIN _promote_msg_map mm ON mm.staging_id = sa.message_id
+        "#,
+        [],
+    )?;
+    stats.attachments = att_inserted as u64;
     println!(
         "  sql:      promote: attachments done (inserted={})  ({:.1}s)",
         stats.attachments,
         started.elapsed().as_secs_f64()
     );
 
-    println!("  sql:      promote: reading staging tapbacks…");
+    println!("  sql:      promote: bulk-inserting tapbacks…");
     let _ = io::stdout().flush();
-    let mut staging_taps = tx.prepare(
+    let tap_inserted = tx.execute(
         r#"
-        SELECT message_id, part_index, kind, emoji, is_from_me, sender
-        FROM staging_tapbacks
-        ORDER BY id
+        INSERT INTO tapbacks (
+            message_id, part_index, kind, emoji, is_from_me, sender
+        )
+        SELECT
+            mm.prod_id, st.part_index, st.kind, st.emoji, st.is_from_me, st.sender
+        FROM staging_tapbacks st
+        JOIN _promote_msg_map mm ON mm.staging_id = st.message_id
         "#,
+        [],
     )?;
-    let staging_tap_rows: Vec<(i64, i64, String, Option<String>, i64, Option<String>)> =
-        staging_taps
-            .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-    drop(staging_taps);
-    println!(
-        "  sql:      promote: {} staging tapbacks → production…",
-        staging_tap_rows.len()
-    );
-    let _ = io::stdout().flush();
-
-    for (staging_msg_id, part_index, kind, emoji, is_from_me, sender) in staging_tap_rows {
-        let Some(&prod_msg_id) = msg_map.get(&staging_msg_id) else {
-            continue;
-        };
-        tx.execute(
-            r#"
-            INSERT INTO tapbacks (
-                message_id, part_index, kind, emoji, is_from_me, sender
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-            params![prod_msg_id, part_index, kind, emoji, is_from_me, sender],
-        )?;
-        stats.tapbacks += 1;
-    }
+    stats.tapbacks = tap_inserted as u64;
     println!(
         "  sql:      promote: tapbacks done (inserted={})  ({:.1}s)",
         stats.tapbacks,
@@ -976,7 +924,6 @@ fn promote_append(conn: &mut Connection) -> Result<PromoteStats> {
 
     println!("  sql:      promote: filling content keys…");
     let _ = io::stdout().flush();
-    // Content keys need attachment sha256 rows; fill any missing before commit.
     let keys = crate::dedupe::fill_missing_content_keys(&tx)?;
     println!(
         "  sql:      promote: content keys filled={keys}  ({:.1}s)",

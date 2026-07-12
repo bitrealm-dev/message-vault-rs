@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 
 /// Collapse whitespace so minor text differences do not split the same SMS.
@@ -164,6 +164,7 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         {filter}
+        ORDER BY m.id
         "#
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -181,27 +182,76 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
         .collect::<Result<Vec<_>, _>>()?;
     drop(stmt);
 
-    let mut att_stmt = conn.prepare(
-        "SELECT sha256 FROM attachments WHERE message_id = ?1 AND sha256 IS NOT NULL AND sha256 != ''",
-    )?;
-    let mut update = conn.prepare("UPDATE messages SET content_key = ?2 WHERE id = ?1")?;
-    let mut filled = 0u64;
+    if rows.is_empty() {
+        return Ok(0);
+    }
 
+    // One scan for all attachment hashes instead of per-message queries.
+    let min_id = rows.first().map(|r| r.0).unwrap_or(0);
+    let max_id = rows.last().map(|r| r.0).unwrap_or(0);
+    let mut shas_by_msg: HashMap<i64, Vec<String>> = HashMap::new();
+    {
+        let mut att_stmt = conn.prepare(
+            r#"
+            SELECT message_id, sha256
+            FROM attachments
+            WHERE message_id BETWEEN ?1 AND ?2
+              AND sha256 IS NOT NULL AND sha256 != ''
+            ORDER BY message_id
+            "#,
+        )?;
+        let att_rows = att_stmt.query_map(params![min_id, max_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in att_rows {
+            let (message_id, sha) = row?;
+            shas_by_msg.entry(message_id).or_default().push(sha);
+        }
+    }
+
+    let empty: Vec<String> = Vec::new();
+    let mut keys: Vec<(i64, String)> = Vec::with_capacity(rows.len());
     for (id, chat_id, is_from_me, ts_utc, ts, body) in rows {
-        let shas: Vec<String> = att_stmt
-            .query_map(params![id], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let shas = shas_by_msg.get(&id).unwrap_or(&empty);
         let key = compute_content_key(
             &chat_id,
             is_from_me != 0,
             ts_utc.as_deref(),
             &ts,
             body.as_deref(),
-            &shas,
+            shas,
         );
-        update.execute(params![id, key])?;
-        filled += 1;
+        keys.push((id, key));
     }
+
+    let filled = keys.len() as u64;
+    conn.execute_batch(
+        r#"
+        CREATE TEMP TABLE IF NOT EXISTS _content_keys (
+            id INTEGER PRIMARY KEY,
+            content_key TEXT NOT NULL
+        );
+        DELETE FROM _content_keys;
+        "#,
+    )?;
+    {
+        let mut ins =
+            conn.prepare("INSERT INTO _content_keys (id, content_key) VALUES (?1, ?2)")?;
+        for (id, key) in &keys {
+            ins.execute(params![id, key])?;
+        }
+    }
+    conn.execute(
+        r#"
+        UPDATE messages AS m
+        SET content_key = k.content_key
+        FROM _content_keys AS k
+        WHERE m.id = k.id
+        "#,
+        [],
+    )?;
+    conn.execute_batch("DROP TABLE IF EXISTS _content_keys;")?;
+
     Ok(filled)
 }
 
@@ -216,61 +266,91 @@ fn flag_exact_content_key_dupes(
     conn: &Connection,
     prio: &HashMap<&str, usize>,
 ) -> Result<(u64, u64)> {
-    let mut key_stmt = conn.prepare(
+    // One scan of messages + one aggregated attachment pass, then group in Rust.
+    // Avoids N round-trips (one SELECT + several UPDATEs per duplicate key).
+    let mut stmt = conn.prepare(
         r#"
-        SELECT content_key
-        FROM messages
-        WHERE content_key IS NOT NULL AND content_key != ''
-        GROUP BY content_key
-        HAVING COUNT(DISTINCT source) > 1
-        "#,
-    )?;
-    let keys: Vec<String> = key_stmt
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(key_stmt);
-
-    let mut cand_stmt = conn.prepare(
-        r#"
-        SELECT m.id, m.source,
-               (SELECT COUNT(*) FROM attachments a
-                WHERE a.message_id = m.id AND a.sha256 IS NOT NULL AND a.sha256 != '') AS att_count
+        SELECT m.id, m.source, m.content_key, IFNULL(ac.n, 0)
         FROM messages m
-        WHERE m.content_key = ?1
+        LEFT JOIN (
+            SELECT message_id, COUNT(*) AS n
+            FROM attachments
+            WHERE sha256 IS NOT NULL AND sha256 != ''
+            GROUP BY message_id
+        ) ac ON ac.message_id = m.id
+        WHERE m.content_key IS NOT NULL AND m.content_key != ''
         "#,
     )?;
-    let mut flag = conn.prepare(
-        "UPDATE messages SET duplicate_of = ?2 WHERE id = ?1 AND (duplicate_of IS NULL OR duplicate_of != ?2)",
-    )?;
 
+    let mut by_key: HashMap<String, Vec<Cand>> = HashMap::new();
+    {
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })?;
+        for row in rows {
+            let (id, source, content_key, att_count) = row?;
+            by_key.entry(content_key).or_default().push(Cand {
+                id,
+                source,
+                att_count,
+            });
+        }
+    }
+    drop(stmt);
+
+    let mut flags: Vec<(i64, i64)> = Vec::new(); // (loser_id, winner_id)
     let mut groups = 0u64;
-    let mut flagged = 0u64;
-
-    for key in keys {
-        let cands: Vec<Cand> = cand_stmt
-            .query_map(params![key], |row| {
-                Ok(Cand {
-                    id: row.get(0)?,
-                    source: row.get(1)?,
-                    att_count: row.get(2)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
+    for cands in by_key.values() {
         let sources: HashSet<&str> = cands.iter().map(|c| c.source.as_str()).collect();
         if sources.len() < 2 {
             continue;
         }
         groups += 1;
-        let winner = pick_winner(&cands, prio);
-        for c in &cands {
-            if c.id == winner {
-                continue;
+        let winner = pick_winner(cands, prio);
+        for c in cands {
+            if c.id != winner {
+                flags.push((c.id, winner));
             }
-            flag.execute(params![c.id, winner])?;
-            flagged += 1;
         }
     }
+    let flagged = flags.len() as u64;
+
+    if flags.is_empty() {
+        return Ok((groups, 0));
+    }
+
+    conn.execute_batch(
+        r#"
+        CREATE TEMP TABLE IF NOT EXISTS _pass_a_flags (
+            id INTEGER PRIMARY KEY,
+            winner INTEGER NOT NULL
+        );
+        DELETE FROM _pass_a_flags;
+        "#,
+    )?;
+    {
+        let mut ins =
+            conn.prepare("INSERT INTO _pass_a_flags (id, winner) VALUES (?1, ?2)")?;
+        for (id, winner) in &flags {
+            ins.execute(params![id, winner])?;
+        }
+    }
+    conn.execute(
+        r#"
+        UPDATE messages AS m
+        SET duplicate_of = f.winner
+        FROM _pass_a_flags AS f
+        WHERE m.id = f.id
+        "#,
+        [],
+    )?;
+    conn.execute_batch("DROP TABLE IF EXISTS _pass_a_flags;")?;
+
     Ok((groups, flagged))
 }
 
@@ -379,74 +459,85 @@ fn flag_near_time_dupes(
     prio: &HashMap<&str, usize>,
     window_secs: i64,
 ) -> Result<u64> {
-    let conv_ids: Vec<i64> = conn
-        .prepare("SELECT DISTINCT conversation_id FROM messages")?
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-
+    // Preload unflagged messages + attachment fingerprints once, then cluster in Rust.
+    // Avoids per-message attachment queries and per-candidate duplicate_of SELECTs.
     let mut msg_stmt = conn.prepare(
         r#"
-        SELECT m.id, m.source, m.is_from_me, m.timestamp_utc, m.timestamp, m.body
+        SELECT m.id, m.conversation_id, m.source, m.is_from_me, m.timestamp_utc, m.timestamp, m.body
         FROM messages m
-        WHERE m.conversation_id = ?1
-          AND m.duplicate_of IS NULL
+        WHERE m.duplicate_of IS NULL
         "#,
     )?;
-    let mut att_stmt = conn.prepare(
-        "SELECT sha256 FROM attachments WHERE message_id = ?1 AND sha256 IS NOT NULL AND sha256 != ''",
-    )?;
-    let mut flag = conn.prepare("UPDATE messages SET duplicate_of = ?2 WHERE id = ?1")?;
+    let msg_rows: Vec<(
+        i64,
+        i64,
+        String,
+        i64,
+        Option<String>,
+        String,
+        Option<String>,
+    )> = msg_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(msg_stmt);
 
-    let mut flagged = 0u64;
-
-    for conv_id in conv_ids {
-        let msg_rows: Vec<(i64, String, i64, Option<String>, String, Option<String>)> = msg_stmt
-            .query_map(params![conv_id], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let mut rows: Vec<NearRow> = Vec::new();
-        for (id, source, is_from_me, ts_utc, ts, body) in msg_rows {
-            let Some(secs) = resolve_utc_secs(ts_utc.as_deref(), &ts) else {
-                continue;
-            };
-            let mut shas: Vec<String> = att_stmt
-                .query_map(params![id], |row| row.get(0))?
-                .collect::<Result<Vec<_>, _>>()?;
-            shas.sort();
-            let att_count = shas.len() as i64;
-            let att_fp = shas.join(",");
-            rows.push(NearRow {
-                id,
-                source,
-                is_from_me,
-                secs,
-                body_norm: normalize_body(body.as_deref()),
-                att_fp,
-                att_count,
-            });
+    let mut shas_by_msg: HashMap<i64, Vec<String>> = HashMap::new();
+    {
+        let mut att_stmt = conn.prepare(
+            r#"
+            SELECT message_id, sha256
+            FROM attachments
+            WHERE sha256 IS NOT NULL AND sha256 != ''
+            ORDER BY message_id, sha256
+            "#,
+        )?;
+        let att_rows = att_stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in att_rows {
+            let (message_id, sha) = row?;
+            shas_by_msg.entry(message_id).or_default().push(sha);
         }
+    }
 
+    let empty: Vec<String> = Vec::new();
+    let mut by_conv: HashMap<i64, Vec<NearRow>> = HashMap::new();
+    for (id, conversation_id, source, is_from_me, ts_utc, ts, body) in msg_rows {
+        let Some(secs) = resolve_utc_secs(ts_utc.as_deref(), &ts) else {
+            continue;
+        };
+        let shas = shas_by_msg.get(&id).unwrap_or(&empty);
+        let att_count = shas.len() as i64;
+        let att_fp = shas.join(",");
+        by_conv.entry(conversation_id).or_default().push(NearRow {
+            id,
+            source,
+            is_from_me,
+            secs,
+            body_norm: normalize_body(body.as_deref()),
+            att_fp,
+            att_count,
+        });
+    }
+
+    let mut flagged_ids: HashSet<i64> = HashSet::new();
+    let mut flags: Vec<(i64, i64)> = Vec::new(); // (loser_id, winner_id)
+
+    for mut rows in by_conv.into_values() {
         rows.sort_by(|a, b| a.secs.cmp(&b.secs).then(a.id.cmp(&b.id)));
 
         for i in 0..rows.len() {
-            let already: bool = conn
-                .query_row(
-                    "SELECT duplicate_of IS NOT NULL FROM messages WHERE id = ?1",
-                    params![rows[i].id],
-                    |row| row.get(0),
-                )
-                .optional()?
-                .unwrap_or(false);
-            if already {
+            if flagged_ids.contains(&rows[i].id) {
                 continue;
             }
 
@@ -466,22 +557,14 @@ fn flag_near_time_dupes(
                 if rows[j].source == rows[i].source {
                     continue;
                 }
-                let body_match = !rows[i].body_norm.is_empty()
-                    && rows[j].body_norm == rows[i].body_norm;
+                let body_match =
+                    !rows[i].body_norm.is_empty() && rows[j].body_norm == rows[i].body_norm;
                 let att_match =
                     !rows[i].att_fp.is_empty() && rows[j].att_fp == rows[i].att_fp;
                 if !body_match && !att_match {
                     continue;
                 }
-                let j_flagged: bool = conn
-                    .query_row(
-                        "SELECT duplicate_of IS NOT NULL FROM messages WHERE id = ?1",
-                        params![rows[j].id],
-                        |row| row.get(0),
-                    )
-                    .optional()?
-                    .unwrap_or(false);
-                if j_flagged {
+                if flagged_ids.contains(&rows[j].id) {
                     continue;
                 }
                 cluster.push(Cand {
@@ -500,11 +583,43 @@ fn flag_near_time_dupes(
                 if c.id == winner {
                     continue;
                 }
-                flag.execute(params![c.id, winner])?;
-                flagged += 1;
+                flagged_ids.insert(c.id);
+                flags.push((c.id, winner));
             }
         }
     }
+
+    let flagged = flags.len() as u64;
+    if flags.is_empty() {
+        return Ok(0);
+    }
+
+    conn.execute_batch(
+        r#"
+        CREATE TEMP TABLE IF NOT EXISTS _pass_b_flags (
+            id INTEGER PRIMARY KEY,
+            winner INTEGER NOT NULL
+        );
+        DELETE FROM _pass_b_flags;
+        "#,
+    )?;
+    {
+        let mut ins =
+            conn.prepare("INSERT INTO _pass_b_flags (id, winner) VALUES (?1, ?2)")?;
+        for (id, winner) in &flags {
+            ins.execute(params![id, winner])?;
+        }
+    }
+    conn.execute(
+        r#"
+        UPDATE messages AS m
+        SET duplicate_of = f.winner
+        FROM _pass_b_flags AS f
+        WHERE m.id = f.id
+        "#,
+        [],
+    )?;
+    conn.execute_batch("DROP TABLE IF EXISTS _pass_b_flags;")?;
 
     Ok(flagged)
 }
