@@ -5,9 +5,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const SIDEBAR_MIN = 160;
 const SIDEBAR_MAX = 720;
 const SIDEBAR_DEFAULT = 272;
+const THREADS_PCT_DEFAULT = 40;
 
 /** Shared across All / No Messages / Excluded / Unassigned / tag groups / group chats. */
 const SHARED_SIDEBAR_KEY = "browse:sidebarWidth";
+
+/** Last client-known widths so remounts (nav / refresh) don't snap to defaults. */
+let cachedSidebarWidth: number | null = null;
+const cachedThreadsPct = new Map<string, number>();
 
 function readStored(key: string, fallback: number): number {
   if (typeof window === "undefined") return fallback;
@@ -34,16 +39,24 @@ function readSharedSidebarWidth(storagePrefix: string): number {
   );
 }
 
+function initialSidebarWidth(): number {
+  return cachedSidebarWidth ?? SIDEBAR_DEFAULT;
+}
+
+function initialThreadsPct(storagePrefix: string): number {
+  return cachedThreadsPct.get(storagePrefix) ?? THREADS_PCT_DEFAULT;
+}
+
 export function useResizablePanes(
   storagePrefix: string,
   options?: { splitId?: string },
 ) {
   const splitId = options?.splitId ?? `${storagePrefix}-split`;
-  const [sidebarWidth, setSidebarWidth] = useState(() =>
-    readSharedSidebarWidth(storagePrefix),
-  );
+  // Prefer in-memory cache after first client read; SSR/first paint still use defaults
+  // so hydration matches. Avoids remount jitter when switching groups.
+  const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
   const [threadsPct, setThreadsPct] = useState(() =>
-    readStored(`${storagePrefix}:threadsPct`, 40),
+    initialThreadsPct(storagePrefix),
   );
   const sidebarRef = useRef(sidebarWidth);
   const threadsRef = useRef(threadsPct);
@@ -52,11 +65,13 @@ export function useResizablePanes(
 
   useEffect(() => {
     const w = readSharedSidebarWidth(storagePrefix);
-    const t = readStored(`${storagePrefix}:threadsPct`, 40);
+    const t = readStored(`${storagePrefix}:threadsPct`, THREADS_PCT_DEFAULT);
+    cachedSidebarWidth = w;
+    cachedThreadsPct.set(storagePrefix, t);
     sidebarRef.current = w;
     threadsRef.current = t;
-    setSidebarWidth(w);
-    setThreadsPct(t);
+    setSidebarWidth((prev) => (prev === w ? prev : w));
+    setThreadsPct((prev) => (prev === t ? prev : t));
   }, [storagePrefix]);
 
   useEffect(() => {
@@ -65,6 +80,7 @@ export function useResizablePanes(
         const left = shellRef.current?.getBoundingClientRect().left ?? 0;
         const next = clampSidebar(e.clientX - left);
         sidebarRef.current = next;
+        cachedSidebarWidth = next;
         setSidebarWidth(next);
       } else if (dragging.current === "threads") {
         const el = document.getElementById(splitId);
@@ -74,17 +90,20 @@ export function useResizablePanes(
         const pct = ((e.clientY - rect.top) / rect.height) * 100;
         const next = Math.min(75, Math.max(25, pct));
         threadsRef.current = next;
+        cachedThreadsPct.set(storagePrefix, next);
         setThreadsPct(next);
       }
     };
     const onUp = () => {
       if (!dragging.current) return;
       if (dragging.current === "side") {
+        cachedSidebarWidth = sidebarRef.current;
         window.localStorage.setItem(
           SHARED_SIDEBAR_KEY,
           String(sidebarRef.current),
         );
       } else if (dragging.current === "threads") {
+        cachedThreadsPct.set(storagePrefix, threadsRef.current);
         window.localStorage.setItem(
           `${storagePrefix}:threadsPct`,
           String(threadsRef.current),

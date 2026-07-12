@@ -10,15 +10,12 @@ import type {
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
 import {
-  groupDateMeta,
   readStoredGroupDateFormat,
   writeStoredGroupDateFormat,
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
-import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import {
   draftHasName,
   emptyContactEditDraft,
@@ -26,12 +23,13 @@ import {
   seedContactEditDraft,
   type ContactEditDraft,
 } from "./ContactEditPane";
-import { ContactDetailsCard } from "./ContactDetailsCard";
-import { MessageBubble } from "./MessageBubble";
-import { MessageSourcePicker } from "./MessageSourcePicker";
+import { BrowseContactList } from "./BrowseContactList";
+import { BrowseDetailPane } from "./BrowseDetailPane";
+import { BrowseMessagesPane } from "./BrowseMessagesPane";
+import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import { type SortMode, type SortOrder } from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
-import { YearThreadPicker } from "./YearThreadPicker";
 
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
@@ -257,6 +255,20 @@ export function BrowseShell({
     setContactCreating(false);
     setEditDraft(null);
   }, [section, query]);
+
+  // Drop selection ids that disappeared after a server refresh (e.g. left this tag).
+  useEffect(() => {
+    const valid = new Set(contacts.map((c) => c.id));
+    setSelectedIds((prev) => {
+      let changed = false;
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (valid.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [contacts]);
 
   useEffect(() => {
     return () => {
@@ -539,13 +551,48 @@ export function BrowseShell({
     return [...map.entries()].sort(([a], [b]) => b - a);
   }, [groups]);
 
-  const selectedContacts = useMemo(
-    () => sorted.filter((c) => selectedIds.has(c.id)),
-    [sorted, selectedIds],
-  );
-  const hasSelection = selectedContacts.length > 0;
+  const selectedContacts = useMemo(() => {
+    const selected = new Set(selectedIds);
+    const fromSorted = sorted.filter((c) => selected.has(c.id));
+    if (fromSorted.length === selectedIds.size) return fromSorted;
+    // Keep contacts that left the visible list (e.g. Excluded while on All).
+    const have = new Set(fromSorted.map((c) => c.id));
+    const byId = new Map(contacts.map((c) => [c.id, c]));
+    const extras: ContactListItem[] = [];
+    for (const id of selectedIds) {
+      if (have.has(id)) continue;
+      const c = byId.get(id);
+      if (c) extras.push(c);
+    }
+    return [...fromSorted, ...extras];
+  }, [sorted, selectedIds, contacts]);
+  const hasSelection = selectedIds.size > 0;
   const canEditGroups =
     !contactEditing && !contactCreating && (hasSelection || !!detail);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    if (selectionDirtyRef.current) {
+      selectionDirtyRef.current = false;
+      setTagOverrides(new Map());
+      setExcludeOverrides(new Map());
+      router.refresh();
+    } else {
+      setTagOverrides(new Map());
+      setExcludeOverrides(new Map());
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (!hasSelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      clearSelection();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hasSelection, clearSelection]);
 
   useEffect(() => {
     if (!hasSelection) return;
@@ -1003,171 +1050,26 @@ export function BrowseShell({
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
-      <aside
-        className="flex shrink-0 flex-col bg-sidebar"
-        style={{ width: sidebarWidth }}
-      >
-        <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
-          <label className="flex min-w-0 items-center gap-2">
-            <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={allGroupSelected}
-              disabled={visibleContacts.length === 0}
-              aria-label={`Select all ${sectionLabel}`}
-              onChange={toggleSelectAllInGroup}
-              className="checkbox-people"
-            />
-            <span className="truncate text-[13px] text-muted">
-              {query.trim() ? `${sorted.length}/` : ""}
-              {visibleContacts.length}
-            </span>
-          </label>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="New contact"
-              title="New contact"
-              onClick={beginCreateContact}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
-            >
-              <NewContactIcon className="size-4" />
-            </button>
-            <SortByMenu sort={sort} order={sortOrder} onChange={setSort} />
-          </div>
-        </div>
-        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or phone…"
-            className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {sorted.length === 0 && (
-            <p className="px-3 py-4 text-[12px] text-muted">No matches</p>
-          )}
-          {grouped.map(([letter, items]) => (
-            <div key={letter || "all"}>
-              {!query.trim() && letter && (
-                <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
-                  {letter}
-                </div>
-              )}
-              {items.map((c, i) => {
-                const active = c.id === contactId;
-                const checked = selectedIds.has(c.id);
-                const showInsetDivider = i < items.length - 1;
-                const selectionActive = selectedIds.size >= 1;
-                return (
-                  <div
-                    key={c.id}
-                    role={selectionActive ? "button" : undefined}
-                    tabIndex={selectionActive ? 0 : undefined}
-                    onClick={
-                      selectionActive
-                        ? (e) => onNamePhoneClick(c.id, e)
-                        : undefined
-                    }
-                    onKeyDown={
-                      selectionActive
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onNamePhoneClick(c.id, {
-                                shiftKey: e.shiftKey,
-                                metaKey: e.metaKey,
-                                ctrlKey: e.ctrlKey,
-                              });
-                            }
-                          }
-                        : undefined
-                    }
-                    onMouseDown={(e) => {
-                      if (e.shiftKey) e.preventDefault();
-                    }}
-                    className={`relative flex w-full items-start gap-1.5 py-2 pr-3 pl-0 select-none ${
-                      selectionActive ? "cursor-pointer" : ""
-                    } ${
-                      checked
-                        ? "bg-accent/20 hover:bg-accent/25"
-                        : active
-                          ? "bg-elevated hover:bg-white/18"
-                          : "hover:bg-white/20"
-                    }`}
-                  >
-                    {active && !selectionActive && (
-                      <span
-                        aria-hidden
-                        className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
-                      />
-                    )}
-                    {checked && (
-                      <span
-                        aria-hidden
-                        className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-accent"
-                      />
-                    )}
-                    <button
-                      type="button"
-                      aria-pressed={checked}
-                      aria-label={`Select ${c.displayName}`}
-                      onClick={(e) => onSelectColumnClick(c.id, e)}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        if (e.shiftKey) e.preventDefault();
-                      }}
-                      className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        readOnly
-                        tabIndex={-1}
-                        aria-hidden
-                        className="checkbox-people pointer-events-none"
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNamePhoneClick(c.id, e);
-                      }}
-                      onMouseDown={(e) => {
-                        if (e.shiftKey) e.preventDefault();
-                      }}
-                      className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-semibold text-text">
-                          {c.displayName}
-                        </span>
-                        {c.preferredPhone && (
-                          <span className="block truncate text-[11px] text-muted">
-                            {c.preferredPhone}
-                          </span>
-                        )}
-                      </span>
-                      <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted">
-                        {c.messageCount.toLocaleString()}
-                      </span>
-                    </button>
-                    {showInsetDivider && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute right-3 bottom-0 left-3 h-px bg-border/60"
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </aside>
+      <BrowseContactList
+        sidebarWidth={sidebarWidth}
+        sectionLabel={sectionLabel}
+        selectAllRef={selectAllRef}
+        allGroupSelected={allGroupSelected}
+        visibleCount={visibleContacts.length}
+        sortedCount={sorted.length}
+        query={query}
+        onQueryChange={setQuery}
+        onToggleSelectAll={toggleSelectAllInGroup}
+        onNewContact={beginCreateContact}
+        sort={sort}
+        sortOrder={sortOrder}
+        onSortChange={setSort}
+        grouped={grouped}
+        contactId={contactId}
+        selectedIds={selectedIds}
+        onSelectColumnClick={onSelectColumnClick}
+        onNamePhoneClick={onNamePhoneClick}
+      />
 
       <div
         role="separator"
@@ -1243,6 +1145,7 @@ export function BrowseShell({
                   Delete
                 </button>
               )}
+              <span className="min-w-0 flex-1" aria-hidden />
               {statusMsg && (
                 <span className="truncate text-[12px] text-muted">{statusMsg}</span>
               )}
@@ -1288,18 +1191,7 @@ export function BrowseShell({
                 </h2>
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedIds(new Set());
-                    if (selectionDirtyRef.current) {
-                      selectionDirtyRef.current = false;
-                      setTagOverrides(new Map());
-                      setExcludeOverrides(new Map());
-                      router.refresh();
-                    } else {
-                      setTagOverrides(new Map());
-                      setExcludeOverrides(new Map());
-                    }
-                  }}
+                  onClick={clearSelection}
                   className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
                 >
                   Clear selection
@@ -1331,184 +1223,46 @@ export function BrowseShell({
             </div>
           </div>
         ) : (
-          <div
-            id={splitId}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-        <section
-          className="min-h-0 flex flex-col overflow-y-auto bg-bg px-5 py-4"
-          style={{ height: `${threadsPct}%` }}
-        >
-          {((detail && contactId) || (contactCreating && editDraft)) && (
-            <>
-              <ContactDetailsCard
-                formOpen={formOpen}
-                draft={editDraft}
-                onDraftChange={setEditDraft}
-                tags={
-                  contactCreating && editDraft
-                    ? editDraft.tags
-                    : detail
-                      ? tagsFor(detail.id, detail.tags)
-                      : []
-                }
-                excluded={
-                  contactCreating && editDraft
-                    ? editDraft.exclude
-                    : detail
-                      ? (excludeOverrides.get(detail.id) ?? detail.exclude)
-                      : false
-                }
-                phonesView={detail?.phones ?? []}
-                dateStart={detail?.dateStart ?? null}
-                dateEnd={detail?.dateEnd ?? null}
-              />
+          <div id={splitId} className="flex min-h-0 flex-1 flex-col">
+            <BrowseDetailPane
+              threadsPct={threadsPct}
+              detail={detail}
+              contactId={contactId}
+              contactCreating={contactCreating}
+              formOpen={formOpen}
+              editDraft={editDraft}
+              onDraftChange={setEditDraft}
+              tagsFor={tagsFor}
+              excludeOverrides={excludeOverrides}
+              sources={sources}
+              messageSources={messageSources}
+              sourceCounts={sourceCounts}
+              source={source}
+              onSourceChange={setSource}
+              yearly={yearly}
+              activeThread={activeThread}
+              onLoadYear={(y) =>
+                loadMessages(y.conversationIds, y.year, `y-${y.year}`)
+              }
+              groupsByYear={groupsByYear}
+              groupDateFormat={groupDateFormat}
+              onGroupDateFormatChange={setGroupDateFormat}
+              onLoadGroupThread={loadMessages}
+            />
 
-              {!contactCreating && (
-              <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-              <MessageSourcePicker
-                sources={sources}
-                messageSources={messageSources}
-                sourceCounts={sourceCounts}
-                source={source}
-                onSourceChange={setSource}
-              />
-              <YearThreadPicker
-                years={yearly}
-                activeYear={
-                  activeThread?.startsWith("y-")
-                    ? Number(activeThread.slice(2))
-                    : null
-                }
-                onSelect={(y) =>
-                  loadMessages(y.conversationIds, y.year, `y-${y.year}`)
-                }
-                emptyLabel="No individual messages"
-              />
-
-              <div className="mt-5">
-                <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  Group messages
-                </h3>
-                {groupsByYear.length === 0 ? (
-                  <p className="mt-2 text-[12px] text-muted">No group messages</p>
-                ) : (
-                  <div className="mt-3 space-y-12">
-                    {groupsByYear.map(([year, items], yearIdx) => (
-                      <div key={year}>
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="text-[13px] font-semibold text-text">
-                            {year}
-                          </div>
-                          {yearIdx === 0 && (
-                            <label className="flex items-center gap-1.5 text-[11px] text-muted">
-                              <span className="sr-only">Date format</span>
-                              <select
-                                value={groupDateFormat}
-                                onChange={(e) =>
-                                  setGroupDateFormat(
-                                    e.target.value as GroupDateFormat,
-                                  )
-                                }
-                                className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
-                              >
-                                <option value="md">01-31</option>
-                                <option value="mon-d">Jan 31</option>
-                                <option value="d-mon">31 Jan</option>
-                              </select>
-                            </label>
-                          )}
-                        </div>
-                        <ul className="divide-y divide-border/50 border-y border-border/50">
-                          {items.map((g) => {
-                            const convIds = g.conversationIds?.length
-                              ? g.conversationIds
-                              : [g.conversationId];
-                            const key = `g-${convIds.join("-")}-${g.year}`;
-                            const active = activeThread === key;
-                            return (
-                              <li key={key}>
-                                <button
-                                  type="button"
-                                  title={g.titleFull}
-                                  onClick={() =>
-                                    loadMessages(convIds, g.year, key)
-                                  }
-                                  className={`flex w-full items-start justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
-                                    active
-                                      ? "bg-white/12 text-accent"
-                                      : "text-text hover:bg-white/20 hover:text-accent"
-                                  }`}
-                                >
-                                  <span className="min-w-0">
-                                    <span className="line-clamp-2 font-medium leading-snug">
-                                      {g.title}
-                                    </span>
-                                    <span className="mt-0.5 block truncate text-[11px] text-muted">
-                                      {g.participantCount} people
-                                      <span className="mx-1.5">·</span>
-                                      {g.messageCount} msgs
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 pt-0.5 text-[11px] text-muted tabular-nums">
-                                    {groupDateMeta(g, groupDateFormat)}
-                                  </span>
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              </div>
-              )}
-            </>
-          )}
-        </section>
-
-        <div
-          role="separator"
-          aria-orientation="horizontal"
-          onMouseDown={startThreads}
-          className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
-        />
-
-        <section className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
-          {!activeThread && (
-            <p className="pt-8 text-center text-[13px] text-muted">
-              Select a year or group thread to read messages.
-            </p>
-          )}
-          {loadingMessages && messages.length === 0 && (
-            <p className="pt-8 text-center text-[13px] text-muted">Loading messages…</p>
-          )}
-          {activeThreadMeta && messages.length > 0 && (
             <div
-              className={`mx-auto flex max-w-2xl flex-col gap-2 ${
-                loadingMessages ? "opacity-60" : ""
-              }`}
-            >
-              <div className="mb-2 border-b border-border/60 pb-2 text-center">
-                <div className="text-[13px] font-medium text-text">
-                  {activeThreadMeta.title}
-                </div>
-                <div className="mt-0.5 text-[12px] text-muted">
-                  {activeThreadMeta.messageCount} msgs
-                  <span className="mx-1.5">·</span>
-                  {activeThreadMeta.dateStart === activeThreadMeta.dateEnd
-                    ? activeThreadMeta.dateStart
-                    : `${activeThreadMeta.dateStart} — ${activeThreadMeta.dateEnd}`}
-                </div>
-              </div>
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
-              ))}
-            </div>
-          )}
-        </section>
+              role="separator"
+              aria-orientation="horizontal"
+              onMouseDown={startThreads}
+              className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
+            />
+
+            <BrowseMessagesPane
+              activeThread={activeThread}
+              loadingMessages={loadingMessages}
+              messages={messages}
+              activeThreadMeta={activeThreadMeta}
+            />
           </div>
         )}
       </div>
@@ -1530,25 +1284,6 @@ function PencilIcon({ className }: { className?: string }) {
     >
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-function NewContactIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="8.5" cy="7.5" r="3" />
-      <path d="M2.5 19c.55-2.85 2.6-4.5 6-4.5 1.2 0 2.25.2 3.15.55" />
-      <path d="M17.5 10.5v9M13 15h9" strokeWidth="2.25" />
     </svg>
   );
 }

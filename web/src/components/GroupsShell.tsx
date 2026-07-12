@@ -3,7 +3,6 @@
 import type { GroupYearRow, MessageRow } from "@/lib/types";
 import { searchGroups } from "@/lib/groupSearch";
 import {
-  formatGroupDateTable,
   readStoredGroupDateFormat,
   writeStoredGroupDateFormat,
   type GroupDateFormat,
@@ -17,92 +16,10 @@ import {
   type MouseEvent,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MessageBubble } from "./MessageBubble";
+import { GroupsListPane } from "./GroupsListPane";
+import { GroupsMessagesPane } from "./GroupsMessagesPane";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
-
-function dateColClass(style: GroupDateFormat): string {
-  switch (style) {
-    case "mon-d":
-      return "inline-block w-[13ch] whitespace-nowrap";
-    case "d-mon":
-      return "inline-block w-[12ch] whitespace-nowrap";
-    case "md":
-    default:
-      return "inline-block w-[11ch] whitespace-nowrap";
-  }
-}
-
-/** Width of year range block: start + dash gap + end (matches full range rows). */
-function rangeBlockClass(style: GroupDateFormat): string {
-  switch (style) {
-    case "mon-d":
-      return "inline-flex w-[calc(13ch+0.5rem+13ch)] flex-nowrap items-center justify-center whitespace-nowrap";
-    case "d-mon":
-      return "inline-flex w-[calc(12ch+0.5rem+12ch)] flex-nowrap items-center justify-center whitespace-nowrap";
-    case "md":
-    default:
-      return "inline-flex w-[calc(11ch+0.5rem+11ch)] flex-nowrap items-center justify-center whitespace-nowrap";
-  }
-}
-
-function GroupDateCell({
-  g,
-  style,
-}: {
-  g: {
-    dateStart: string;
-    dateEnd: string;
-    conversationDateStart: string;
-  };
-  style: GroupDateFormat;
-}) {
-  const threadStart = formatGroupDateTable(g.conversationDateStart, style);
-  const start = formatGroupDateTable(g.dateStart, style);
-  const end = formatGroupDateTable(g.dateEnd, style);
-  const same = g.dateEnd === g.dateStart;
-  const dateCol = dateColClass(style);
-
-  return (
-    <span className="inline-flex shrink-0 items-center whitespace-nowrap font-mono text-[11px] leading-none text-muted">
-      <span className={`${dateCol} text-left`} title="Thread started">
-        {threadStart}
-      </span>
-      <span className="mx-2 inline-block w-px self-stretch bg-border/80" aria-hidden />
-      <span className={rangeBlockClass(style)}>
-        <span className={dateCol}>{start}</span>
-        {same ? (
-          <>
-            <span className="mx-1 invisible" aria-hidden>
-              –
-            </span>
-            <span className={`${dateCol} invisible`} aria-hidden>
-              {start}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="mx-1 inline-block" aria-hidden>
-              –
-            </span>
-            <span className={dateCol}>{end}</span>
-          </>
-        )}
-      </span>
-    </span>
-  );
-}
-
-function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
-  const dateCol = dateColClass(style);
-  return (
-    <span className="inline-flex shrink-0 items-center font-mono text-[10px] leading-none tracking-wide text-muted uppercase">
-      <span className={`${dateCol} text-left`}>Started</span>
-      <span className="mx-2 inline-block w-px" aria-hidden />
-      <span className={rangeBlockClass(style)}>Range</span>
-    </span>
-  );
-}
 
 export function GroupsShell({
   groups: initialGroups,
@@ -627,230 +544,34 @@ export function GroupsShell({
   return (
     <div ref={shellRef} className="flex h-full min-h-0 flex-col bg-bg">
       <div id="groups-split" className="flex min-h-0 flex-1 flex-col">
-        <section
-          className="min-h-0 flex flex-col overflow-hidden bg-bg"
-          style={{ height: `${threadsPct}%` }}
-        >
-          <div className="shrink-0 border-b border-border/60 bg-bg px-5 pt-4 pb-3">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <label className="flex shrink-0 items-center gap-2">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={allSelected}
-                    disabled={uniqueIds.length === 0}
-                    aria-label={
-                      mode === "trash"
-                        ? "Select all trashed groups"
-                        : "Select all group chats"
-                    }
-                    onChange={toggleSelectAll}
-                    className="checkbox-people"
-                  />
-                </label>
-                <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  {mode === "trash" ? "Trashed groups" : "Group messages"}
-                  <span className="ml-2 font-normal normal-case tracking-normal">
-                    {query.trim() ? `${filtered.length}/` : ""}
-                    {groups.length}
-                  </span>
-                </h2>
-                {status && (
-                  <span className="truncate text-[12px] text-muted">
-                    {status}
-                  </span>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {mode === "groups" && (
-                  <button
-                    type="button"
-                    disabled={!canAct}
-                    onClick={() => void moveToTrash()}
-                    className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
-                  >
-                    Delete
-                  </button>
-                )}
-                {mode === "trash" && (
-                  <>
-                    <button
-                      type="button"
-                      disabled={!canAct}
-                      onClick={() => void restoreFromTrash()}
-                      className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-white/12 hover:text-text disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      Undelete
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!canAct}
-                      onClick={() => void permanentlyDeleteFromTrash()}
-                      className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      Delete permanently
-                    </button>
-                  </>
-                )}
-                <label className="flex items-center gap-1.5 text-[11px] text-muted">
-                  <span className="sr-only">Date format</span>
-                  <select
-                    value={groupDateFormat}
-                    onChange={(e) =>
-                      setGroupDateFormat(e.target.value as GroupDateFormat)
-                    }
-                    className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
-                  >
-                    <option value="md">01-31-2025</option>
-                    <option value="mon-d">Jan 31, 2025</option>
-                    <option value="d-mon">31 Jan 2025</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            {years.length > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
-                {years.map((y) => (
-                  <button
-                    key={y}
-                    type="button"
-                    onClick={() => jumpToYearSection(y)}
-                    className={`text-[13px] font-medium ${
-                      listYear === y
-                        ? "text-accent"
-                        : "text-text hover:text-accent"
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div>
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by name or phone…"
-                className="w-full max-w-md rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
-              />
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto bg-bg">
-            {groups.length === 0 ? (
-              <p className="mt-2 px-5 text-[12px] text-muted">
-                {mode === "trash" ? "No trashed group chats" : "No group messages"}
-              </p>
-            ) : rowsByYear.length === 0 ? (
-              <p className="mt-2 px-5 text-[12px] text-muted">
-                No matching groups
-              </p>
-            ) : (
-              rowsByYear.map(([year, items]) => (
-                <div key={year} id={`group-year-${year}`} className="pb-6">
-                  <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-bg py-1.5 pr-5 pl-5">
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      <div className="text-[13px] font-semibold text-text">
-                        {year}
-                      </div>
-                      <span className="text-[11px] text-muted">
-                        {items.length} group{items.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    <GroupDateHeadings style={groupDateFormat} />
-                  </div>
-                  <ul className="divide-y divide-border/50 border-b border-border/50">
-                    {items.map((g) => {
-                      const key = `${g.id}-${g.year}`;
-                      const checked = selectedIds.has(g.id);
-                      const focused = activeKey === key;
-                      const selectionActive = selectedIds.size >= 1;
-                      return (
-                        <li key={key}>
-                          <div
-                            className={`group relative flex items-start gap-1.5 py-2 pr-5 pl-0 select-none ${
-                              checked
-                                ? "bg-accent/20 hover:bg-accent/25"
-                                : focused
-                                  ? "bg-elevated hover:bg-white/18"
-                                  : "hover:bg-white/20"
-                            }`}
-                            onContextMenu={
-                              mode === "trash"
-                                ? (e) => {
-                                    e.preventDefault();
-                                    openCtxMenu(g.id, e.clientX, e.clientY);
-                                  }
-                                : undefined
-                            }
-                          >
-                            {(checked || (focused && !selectionActive)) && (
-                              <span
-                                aria-hidden
-                                className={`absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full ${
-                                  checked ? "bg-accent" : "bg-[#c8c8c8]"
-                                }`}
-                              />
-                            )}
-                            <button
-                              type="button"
-                              aria-pressed={checked}
-                              aria-label={`Select ${g.title}`}
-                              onClick={(e) => onSelectColumnClick(g.id, e)}
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                if (e.shiftKey) e.preventDefault();
-                              }}
-                              className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                readOnly
-                                tabIndex={-1}
-                                aria-hidden
-                                className="checkbox-people pointer-events-none"
-                              />
-                            </button>
-                            <button
-                              type="button"
-                              title={g.titleFull}
-                              onClick={(e) => onRowClick(g, e)}
-                              onMouseDown={(e) => {
-                                if (e.shiftKey) e.preventDefault();
-                              }}
-                              className={`flex min-w-0 flex-1 items-start justify-between gap-4 text-left text-[13px] ${
-                                focused && !selectionActive
-                                  ? "text-accent"
-                                  : "text-text"
-                              }`}
-                            >
-                              <span className="min-w-0">
-                                <span className="line-clamp-2 font-medium leading-snug">
-                                  {g.title}
-                                </span>
-                                <span className="mt-0.5 block truncate text-[11px] text-muted">
-                                  {g.participantCount} people
-                                  <span className="mx-1.5">·</span>
-                                  {g.messageCount} msgs
-                                </span>
-                              </span>
-                              <GroupDateCell g={g} style={groupDateFormat} />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+        <GroupsListPane
+          threadsPct={threadsPct}
+          mode={mode}
+          selectAllRef={selectAllRef}
+          allSelected={allSelected}
+          uniqueIdsCount={uniqueIds.length}
+          query={query}
+          onQueryChange={setQuery}
+          onToggleSelectAll={toggleSelectAll}
+          filteredCount={filtered.length}
+          groupsCount={groups.length}
+          status={status}
+          canAct={canAct}
+          years={years}
+          listYear={listYear}
+          onJumpToYear={jumpToYearSection}
+          groupDateFormat={groupDateFormat}
+          onGroupDateFormatChange={setGroupDateFormat}
+          onMoveToTrash={() => void moveToTrash()}
+          onRestore={() => void restoreFromTrash()}
+          onPermanentDelete={() => void permanentlyDeleteFromTrash()}
+          rowsByYear={rowsByYear}
+          activeKey={activeKey}
+          selectedIds={selectedIds}
+          onSelectColumnClick={onSelectColumnClick}
+          onRowClick={onRowClick}
+          onOpenCtxMenu={openCtxMenu}
+        />
 
         <div
           role="separator"
@@ -859,71 +580,15 @@ export function GroupsShell({
           className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
         />
 
-        <section
-          ref={messagesPaneRef}
-          className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4"
-        >
-          {multiSelected && (
-            <p className="pt-8 text-center text-[13px] text-muted">
-              {selectedIds.size} group
-              {selectedIds.size === 1 ? "" : "s"} selected
-            </p>
-          )}
-          {!multiSelected && !selectedRow && (
-            <p className="pt-8 text-center text-[13px] text-muted">
-              Select a group to read messages.
-            </p>
-          )}
-          {!multiSelected && selectedRow && loading && messages.length === 0 && (
-            <p className="pt-8 text-center text-[13px] text-muted">
-              Loading messages…
-            </p>
-          )}
-          {!multiSelected &&
-            selectedRow &&
-            !loading &&
-            messages.length === 0 && (
-              <p className="pt-8 text-center text-[13px] text-muted">
-                No messages
-              </p>
-            )}
-          {!multiSelected && selectedRow && messages.length > 0 && (
-            <div
-              className={`mx-auto flex max-w-2xl flex-col gap-2 ${
-                loading ? "opacity-60" : ""
-              }`}
-            >
-              <div className="mb-2 border-b border-border/60 pb-2 text-center">
-                <div className="px-2 text-[13px] font-medium break-words text-text whitespace-normal">
-                  {selectedRow.participantNames.length > 0
-                    ? selectedRow.participantNames.join(" · ")
-                    : selectedRow.title}
-                </div>
-                {selectedRow.namedTitle ? (
-                  <div className="mt-0.5 text-[12px] text-muted">
-                    {selectedRow.namedTitle}
-                  </div>
-                ) : null}
-                <div className="mt-0.5 text-[12px] text-muted">
-                  {selectedRow.spansMultipleYears
-                    ? `${selectedRow.conversationDateStart} — ${selectedRow.conversationDateEnd}`
-                    : selectedRow.dateStart === selectedRow.dateEnd
-                      ? selectedRow.dateStart
-                      : `${selectedRow.dateStart} — ${selectedRow.dateEnd}`}
-                  {focusYear != null && selectedRow.spansMultipleYears ? (
-                    <>
-                      <span className="mx-1.5">·</span>
-                      starting {focusYear}
-                    </>
-                  ) : null}
-                </div>
-              </div>
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
-              ))}
-            </div>
-          )}
-        </section>
+        <GroupsMessagesPane
+          messagesPaneRef={messagesPaneRef}
+          multiSelected={multiSelected}
+          selectedIds={selectedIds}
+          selectedRow={selectedRow}
+          focusYear={focusYear}
+          loading={loading}
+          messages={messages}
+        />
       </div>
 
       {ctxMenu && mode === "trash" && (

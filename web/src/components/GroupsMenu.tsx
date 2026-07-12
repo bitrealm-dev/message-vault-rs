@@ -75,20 +75,21 @@ export function GroupsMenu({
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (mode === "create") {
-          setMode("list");
-          setNewName("");
-        } else {
-          closeMenu();
-        }
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (mode === "create") {
+        setMode("list");
+        setNewName("");
+      } else {
+        closeMenu();
       }
     };
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open, mode]);
 

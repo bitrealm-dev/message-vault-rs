@@ -565,6 +565,9 @@ const NAV_WIDTH_MAX = 360;
 /** Collapse nav when the viewport is narrower than this. */
 const NAV_AUTO_COLLAPSE_BELOW = 900;
 
+/** Last client-known nav width so remounts don't snap to the default. */
+let cachedNavWidth: number | null = null;
+
 function clampNavWidth(w: number): number {
   return Math.min(NAV_WIDTH_MAX, Math.max(NAV_WIDTH_MIN, w));
 }
@@ -577,6 +580,10 @@ function readStoredNavWidth(): number {
   return Number.isFinite(n) ? clampNavWidth(n) : NAV_WIDTH_DEFAULT;
 }
 
+function initialNavWidth(): number {
+  return cachedNavWidth ?? NAV_WIDTH_DEFAULT;
+}
+
 export function AppSidebar({
   active,
   tags = [],
@@ -587,8 +594,9 @@ export function AppSidebar({
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [forceExpand, setForceExpand] = useState(false);
-  const [navWidth, setNavWidth] = useState(() => readStoredNavWidth());
-  const navWidthRef = useRef(navWidth);
+  // Cache after first client read; SSR/first paint use default for hydration match.
+  const [navWidth, setNavWidth] = useState(initialNavWidth);
+  const navWidthRef = useRef(initialNavWidth());
   const wasNarrowRef = useRef(false);
   const dragging = useRef(false);
 
@@ -597,8 +605,9 @@ export function AppSidebar({
   useEffect(() => {
     setUserCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
     const w = readStoredNavWidth();
+    cachedNavWidth = w;
     navWidthRef.current = w;
-    setNavWidth(w);
+    setNavWidth((prev) => (prev === w ? prev : w));
 
     const syncNarrow = () => {
       const next = window.innerWidth < NAV_AUTO_COLLAPSE_BELOW;
@@ -616,11 +625,13 @@ export function AppSidebar({
       if (!dragging.current) return;
       const next = clampNavWidth(e.clientX);
       navWidthRef.current = next;
+      cachedNavWidth = next;
       setNavWidth(next);
     };
     const onUp = () => {
       if (!dragging.current) return;
       dragging.current = false;
+      cachedNavWidth = navWidthRef.current;
       window.localStorage.setItem(NAV_WIDTH_KEY, String(navWidthRef.current));
       document.body.style.cursor = "";
       document.body.style.userSelect = "";

@@ -15,19 +15,17 @@ import {
   phonesForSave,
   type ContactEditDraft,
 } from "./ContactEditPane";
-import { ContactDetailsCard } from "./ContactDetailsCard";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { EllipsisIcon } from "./icons";
-import { MessageBubble } from "./MessageBubble";
-import { MessageSourcePicker } from "./MessageSourcePicker";
 import {
-  UnmatchedSortMenu,
   type SortOrder,
   type UnmatchedSortBy,
 } from "./SortByMenu";
+import { UnmatchedContactList } from "./UnmatchedContactList";
+import { UnmatchedDetailPane } from "./UnmatchedDetailPane";
+import { UnmatchedMessagesPane } from "./UnmatchedMessagesPane";
 import { useSourceFilter } from "./SourceFilter";
 import { useResizablePanes } from "./useResizablePanes";
-import { YearThreadPicker } from "./YearThreadPicker";
 
 const UNMATCHED_SORT_ORDER_KEY = "mv-unmatched-sort-order";
 const UNMATCHED_SORT_BY_KEY = "mv-unmatched-sort-by";
@@ -831,154 +829,26 @@ export function UnmatchedShell({
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
-      <aside
-        className="flex shrink-0 flex-col bg-sidebar"
-        style={{ width: sidebarWidth }}
-      >
-        <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
-          <label className="flex min-w-0 items-center gap-2">
-            <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={allHandlesSelected}
-              disabled={sortedHandles.length === 0}
-              aria-label={
-                mode === "trash" ? "Select all trash" : "Select all unassigned"
-              }
-              onChange={toggleSelectAll}
-              className="checkbox-people"
-            />
-            <span className="truncate text-[13px] text-muted">
-              {handles.length}
-            </span>
-          </label>
-          <UnmatchedSortMenu
-            sortBy={sortBy}
-            order={sortOrder}
-            onChange={setUnmatchedSort}
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {sortedHandles.length === 0 && (
-            <p className="px-3 py-4 text-[12px] text-muted">
-              {mode === "trash"
-                ? "Trash is empty"
-                : "No unassigned 1:1 threads"}
-            </p>
-          )}
-          {sortedHandles.map((h) => {
-            const selectionActive = selectedHandles.size >= 1;
-            const checked = selectedHandles.has(h.handle);
-            const focused = h.handle === handle && !selectionActive;
-            const rowActive = selectionActive ? checked : focused;
-            return (
-              <div
-                key={h.handle}
-                className={`group relative flex items-start gap-1.5 border-b border-border/60 py-2 pr-2 pl-0 select-none ${
-                  checked
-                    ? "bg-accent/20 hover:bg-accent/25"
-                    : focused
-                      ? "bg-elevated hover:bg-white/18"
-                      : "hover:bg-white/20"
-                }`}
-              >
-                {rowActive && (
-                  <span
-                    aria-hidden
-                    className={`absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full ${
-                      checked ? "bg-accent" : "bg-[#c8c8c8]"
-                    }`}
-                  />
-                )}
-                <button
-                  type="button"
-                  aria-pressed={checked}
-                  aria-label={`Select ${h.displayName}`}
-                  onClick={(e) => onSelectColumnClick(h.handle, e)}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    if (e.shiftKey) e.preventDefault();
-                  }}
-                  className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    readOnly
-                    tabIndex={-1}
-                    aria-hidden
-                    className="checkbox-people pointer-events-none"
-                  />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => onRowClick(h.handle, e)}
-                  onMouseDown={(e) => {
-                    if (e.shiftKey) e.preventDefault();
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (mode === "trash") {
-                      openTrashMenu(e.clientX, e.clientY, h.handle);
-                    } else {
-                      openCtxMenuAt(
-                        e.clientX,
-                        e.clientY,
-                        h.handle,
-                        multiSelected && selectedHandles.has(h.handle)
-                          ? 88
-                          : 140,
-                      );
-                    }
-                  }}
-                  className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] text-text">
-                      {h.displayName}
-                    </span>
-                    {h.nameHint && (
-                      <span className="block truncate text-[11px] text-muted">
-                        {h.handle}
-                      </span>
-                    )}
-                    {h.dateStart && (
-                      <span className="block text-[11px] text-muted">
-                        {h.dateStart === h.dateEnd || !h.dateEnd
-                          ? h.dateStart
-                          : `${h.dateStart} — ${h.dateEnd}`}
-                      </span>
-                    )}
-                  </span>
-                  <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted">
-                    {h.messageCount.toLocaleString()}
-                  </span>
-                </button>
-                {mode === "trash" && (
-                  <button
-                    type="button"
-                    aria-label={`Trash options for ${h.displayName}`}
-                    disabled={saving}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const r = e.currentTarget.getBoundingClientRect();
-                      openTrashMenu(r.right - 8, r.bottom + 2, h.handle);
-                    }}
-                    className={`mr-0.5 shrink-0 self-center rounded p-0.5 text-muted hover:bg-white/10 hover:text-text disabled:opacity-40 ${
-                      rowActive
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100"
-                    }`}
-                  >
-                    <EllipsisIcon className="size-3.5" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </aside>
+      <UnmatchedContactList
+        sidebarWidth={sidebarWidth}
+        mode={mode}
+        selectAllRef={selectAllRef}
+        allHandlesSelected={allHandlesSelected}
+        handleCount={handles.length}
+        sortedHandles={sortedHandles}
+        handle={handle}
+        selectedHandles={selectedHandles}
+        multiSelected={multiSelected}
+        saving={saving}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={setUnmatchedSort}
+        onToggleSelectAll={toggleSelectAll}
+        onSelectColumnClick={onSelectColumnClick}
+        onRowClick={onRowClick}
+        onOpenCtxMenu={openCtxMenuAt}
+        onOpenTrashMenu={openTrashMenu}
+      />
 
       <div
         role="separator"
@@ -1141,91 +1011,27 @@ export function UnmatchedShell({
         )}
 
         <div id={splitId} className="flex min-h-0 flex-1 flex-col">
-        <section
-          className="flex flex-col overflow-y-auto bg-panel px-5 py-4"
-          style={{ height: `${threadsPct}%`, minHeight: 140 }}
-        >
-          {multiSelected ? (
-            <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-              <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
-                <h2 className="text-[14px] font-semibold text-text">
-                  {selectedItems.length}{" "}
-                  {mode === "trash" ? "trashed" : "unassigned"} handle
-                  {selectedItems.length === 1 ? "" : "s"} selected
-                </h2>
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
-                >
-                  Clear selection
-                </button>
-              </div>
-              <ul className="max-h-64 overflow-y-auto">
-                {selectedItems.map((h, i) => (
-                  <li
-                    key={h.handle}
-                    className={`flex items-center justify-between gap-4 px-4 py-2.5 ${
-                      i < selectedItems.length - 1
-                        ? "border-b border-border/60"
-                        : ""
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => selectHandle(h.handle)}
-                      className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
-                    >
-                      {h.displayName}
-                    </button>
-                    <span className="shrink-0 text-[12px] text-muted tabular-nums">
-                      {h.messageCount} msgs
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : !selected ? (
-            <p className="text-[13px] text-muted">
-              {mode === "trash"
-                ? "Choose a trashed number or email to read messages, or use Undelete / Delete permanently from the menu."
-                : "Choose an unassigned number or email to create a contact or add the handle to someone existing."}
-            </p>
-          ) : (
-            <>
-              <ContactDetailsCard
-                formOpen={creating}
-                draft={createDraft}
-                onDraftChange={setCreateDraft}
-                tags={creating ? (createDraft?.tags ?? []) : []}
-                excluded={
-                  creating ? Boolean(createDraft?.exclude) : false
-                }
-                phonesView={selected ? [selected.handle] : []}
-                dateStart={selected.dateStart}
-                dateEnd={selected.dateEnd}
-              />
-
-              <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-                <MessageSourcePicker
-                  sources={sources}
-                  messageSources={messageSources}
-                  sourceCounts={sourceCounts}
-                  source={source}
-                  onSourceChange={setSource}
-                />
-                <YearThreadPicker
-                  years={yearly}
-                  activeYear={activeYear}
-                  onSelect={(y) => loadYear(y.year, y.conversationIds)}
-                  emptyLabel="No messages for this source"
-                  loading={loadingThreads}
-                  showCounts
-                />
-              </div>
-            </>
-          )}
-        </section>
+        <UnmatchedDetailPane
+          threadsPct={threadsPct}
+          mode={mode}
+          multiSelected={multiSelected}
+          selected={selected}
+          selectedItems={selectedItems}
+          creating={creating}
+          createDraft={createDraft}
+          onDraftChange={setCreateDraft}
+          sources={sources}
+          messageSources={messageSources}
+          sourceCounts={sourceCounts}
+          source={source}
+          onSourceChange={setSource}
+          yearly={yearly}
+          activeYear={activeYear}
+          loadingThreads={loadingThreads}
+          onLoadYear={(y) => loadYear(y.year, y.conversationIds)}
+          onClearSelection={clearSelection}
+          onSelectHandle={selectHandle}
+        />
 
         <div
           role="separator"
@@ -1234,31 +1040,13 @@ export function UnmatchedShell({
           className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
         />
 
-        <section className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
-          {multiSelected ? (
-            <p className="pt-8 text-center text-[13px] text-muted">
-              Select a single handle to read messages.
-            </p>
-          ) : (
-            <>
-              {!activeYear && (
-                <p className="pt-8 text-center text-[13px] text-muted">
-                  Select a year to read messages.
-                </p>
-              )}
-              {loadingMessages && activeYear && (
-                <p className="pt-8 text-center text-[13px] text-muted">Loading…</p>
-              )}
-              {!loadingMessages && messages.length > 0 && (
-                <div className="mx-auto flex max-w-2xl flex-col gap-2">
-                  {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </section>
+        <UnmatchedMessagesPane
+          multiSelected={multiSelected}
+          activeYear={activeYear}
+          loadingMessages={loadingMessages}
+          messages={messages}
+        />
+
         </div>
       </div>
 
