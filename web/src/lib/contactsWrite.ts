@@ -22,7 +22,7 @@ import {
 
 export type ContactPatch = {
   exclude?: boolean;
-  groups?: string[];
+  contactGroups?: string[];
   firstName?: string | null;
   lastName?: string | null;
   phones?: string[];
@@ -39,7 +39,7 @@ export type ContactCreate = {
   lastName?: string | null;
   phones?: string[];
   exclude?: boolean;
-  groups?: string[];
+  contactGroups?: string[];
 };
 
 /** Insert a new contact in SQLite and append contacts.csv; returns the contact. */
@@ -57,8 +57,8 @@ export function createContact(input: ContactCreate): ContactDetail {
     );
   }
   const exclude = input.exclude ?? false;
-  const preferredPhone = preferredPhoneHandle(phones);
-  const groups = (input.groups ?? [])
+  const preferredHandle = preferredPhoneHandle(phones);
+  const contactGroups = (input.contactGroups ?? [])
     .map((t) => t.trim())
     .filter(Boolean)
     .filter((t) => !RESERVED_GROUP_NAMES.has(t.toLowerCase()));
@@ -76,25 +76,25 @@ export function createContact(input: ContactCreate): ContactDetail {
 
       const result = writeDb
         .prepare(
-          `INSERT INTO contacts (first_name, last_name, exclude, preferred_phone)
+          `INSERT INTO contacts (first_name, last_name, exclude, preferred_handle)
            VALUES (?, ?, ?, ?)`,
         )
-        .run(firstName, lastName, exclude ? 1 : 0, preferredPhone);
+        .run(firstName, lastName, exclude ? 1 : 0, preferredHandle);
       newId = Number(result.lastInsertRowid);
 
       const insertPhone = writeDb.prepare(
-        `INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?, ?)`,
+        `INSERT INTO contact_handles (handle, contact_id) VALUES (?, ?)`,
       );
       for (const phone of phones) {
         insertPhone.run(phone, newId);
       }
       clearTrashedHandles(writeDb, phones);
 
-      if (groups.length > 0) {
+      if (contactGroups.length > 0) {
         const insertMember = writeDb.prepare(
           `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
         );
-        for (const name of groups) {
+        for (const name of contactGroups) {
           const groupId = ensureGroupId(writeDb, name);
           insertMember.run(newId, groupId);
         }
@@ -111,7 +111,7 @@ export function createContact(input: ContactCreate): ContactDetail {
     firstName,
     lastName,
     exclude,
-    groups,
+    groups: contactGroups,
   });
 
   const created = getContact(newId);
@@ -224,7 +224,7 @@ function phoneOwner(
   phone: string,
 ): number | null {
   const row = db
-    .prepare(`SELECT contact_id FROM contact_phones WHERE phone_e164 = ?`)
+    .prepare(`SELECT contact_id FROM contact_handles WHERE handle = ?`)
     .get(phone) as { contact_id: number } | undefined;
   return row?.contact_id ?? null;
 }
@@ -249,10 +249,10 @@ function remapPhoneHandle(
   // Prefer updating the PK in place; if `to` already exists on this contact,
   // drop the old row instead (merge).
   if (owner === contactId) {
-    db.prepare(`DELETE FROM contact_phones WHERE phone_e164 = ?`).run(from);
+    db.prepare(`DELETE FROM contact_handles WHERE handle = ?`).run(from);
   } else {
     db.prepare(
-      `UPDATE contact_phones SET phone_e164 = ? WHERE phone_e164 = ?`,
+      `UPDATE contact_handles SET handle = ? WHERE handle = ?`,
     ).run(to, from);
   }
 
@@ -280,13 +280,13 @@ function syncContactPhones(
   }
 
   for (let i = shared; i < oldPhones.length; i++) {
-    db.prepare(`DELETE FROM contact_phones WHERE phone_e164 = ?`).run(
+    db.prepare(`DELETE FROM contact_handles WHERE handle = ?`).run(
       oldPhones[i],
     );
   }
 
   const insert = db.prepare(
-    `INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?, ?)`,
+    `INSERT INTO contact_handles (handle, contact_id) VALUES (?, ?)`,
   );
   for (let i = shared; i < newPhones.length; i++) {
     const phone = newPhones[i]!;
@@ -311,7 +311,7 @@ export function patchContact(
   }
 
   const exclude = patch.exclude ?? existing.exclude;
-  const groups = patch.groups ?? existing.groups;
+  const contactGroups = patch.contactGroups ?? existing.contactGroups;
   const firstName =
     patch.firstName !== undefined
       ? patch.firstName?.trim() || null
@@ -324,7 +324,7 @@ export function patchContact(
     patch.phones !== undefined
       ? patch.phones.map((p) => p.trim()).filter(Boolean)
       : existing.phones;
-  const preferredPhone = preferredPhoneHandle(phones);
+  const preferredHandle = preferredPhoneHandle(phones);
   const csvPhones = phoneHandlesOnly(phones);
   const existingCsvPhones = phoneHandlesOnly(existing.phones);
   const csvPhonesChanged =
@@ -349,19 +349,19 @@ export function patchContact(
       writeDb
         .prepare(
           `UPDATE contacts
-           SET first_name = ?, last_name = ?, exclude = ?, preferred_phone = ?
+           SET first_name = ?, last_name = ?, exclude = ?, preferred_handle = ?
            WHERE id = ?`,
         )
-        .run(firstName, lastName, exclude ? 1 : 0, preferredPhone, id);
+        .run(firstName, lastName, exclude ? 1 : 0, preferredHandle, id);
 
-      if (patch.groups) {
+      if (patch.contactGroups) {
         writeDb
           .prepare(`DELETE FROM contact_group_members WHERE contact_id = ?`)
           .run(id);
         const insert = writeDb.prepare(
           `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
         );
-        for (const name of groups) {
+        for (const name of contactGroups) {
           const groupId = ensureGroupId(writeDb, name);
           insert.run(id, groupId);
         }
@@ -378,7 +378,7 @@ export function patchContact(
     { firstName: existing.firstName, lastName: existing.lastName },
     {
       exclude,
-      groups,
+      groups: contactGroups,
       firstName: patch.firstName !== undefined ? firstName : undefined,
       lastName: patch.lastName !== undefined ? lastName : undefined,
       phones: csvPhonesChanged ? csvPhones : undefined,
@@ -411,7 +411,7 @@ export function addPhoneToContact(id: number, phone: string): ContactDetail {
       if (owner == null) {
         writeDb
           .prepare(
-            `INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?, ?)`,
+            `INSERT INTO contact_handles (handle, contact_id) VALUES (?, ?)`,
           )
           .run(trimmed, id);
         clearTrashedHandles(writeDb, [trimmed]);

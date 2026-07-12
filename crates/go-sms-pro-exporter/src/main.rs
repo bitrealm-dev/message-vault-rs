@@ -6,7 +6,7 @@ use go_sms_pro_exporter::convert_export;
 
 #[derive(Parser, Debug)]
 #[command(name = "go-sms-pro-exporter")]
-#[command(about = "Convert GO SMS Pro XML+PDU backups to imessage-json schema v3 NDJSON")]
+#[command(about = "Convert GO SMS Pro XML+PDU backups to SMS NDJSON (message_json::sms)")]
 struct Cli {
     /// Directory containing gosms_sys*.xml and I_*.pdu files
     #[arg(long)]

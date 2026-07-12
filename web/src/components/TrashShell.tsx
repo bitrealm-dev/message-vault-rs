@@ -10,7 +10,7 @@ type TrashTab = "unassigned" | "group-chats";
 
 export function TrashShell({
   handles,
-  groups,
+  groupChats,
   assignContacts,
   initialHandle,
   initialConversationId,
@@ -18,7 +18,7 @@ export function TrashShell({
   initialTab,
 }: {
   handles: UnassignedHandle[];
-  groups: GroupYearRow[];
+  groupChats: GroupYearRow[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
   initialConversationId: number | null;
@@ -81,7 +81,7 @@ export function TrashShell({
         >
           Group chats
           <span className="ml-1.5 text-muted">
-            {new Set(groups.map((g) => g.id)).size}
+            {new Set(groupChats.map((g) => g.id)).size}
           </span>
         </button>
       </div>
@@ -96,7 +96,7 @@ export function TrashShell({
         ) : (
           <GroupChatsShell
             mode="trash"
-            groups={groups}
+            groupChats={groupChats}
             initialConversationId={initialConversationId}
             initialYear={initialYear}
           />

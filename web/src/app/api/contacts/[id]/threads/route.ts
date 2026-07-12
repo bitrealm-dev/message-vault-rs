@@ -16,12 +16,12 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const source = new URL(req.url).searchParams.get("source");
-  const { yearly, groups, messageSources, sourceCounts } =
+  const { yearly, groupChats, messageSources, sourceCounts } =
     contactThreadsBundle(id, source);
   return NextResponse.json({
     contact,
     yearly,
-    groups,
+    groupChats,
     messageSources,
     sourceCounts,
   });

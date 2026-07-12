@@ -1,4 +1,4 @@
-//! `convert`: turn SMS Backup+ `.eml` trees into imessage-json NDJSON.
+//! `convert`: turn SMS Backup+ `.eml` trees into SMS NDJSON (`message_json::sms`).
 
 use crate::archive::parse_archive_eml_mail;
 use crate::contacts::{ContactsBook, NameMapping, apply_name_mapping, fill_unknown_phone};
@@ -327,7 +327,7 @@ pub(crate) fn report_progress(verbose: bool, label: &str, processed: u64, total:
     }
 }
 
-/// Convert SMS Backup+ EML tree(s) into imessage-json schema v3 NDJSON.
+/// Convert SMS Backup+ EML tree(s) into SMS NDJSON (`message_json::sms`).
 ///
 /// `inputs`: one or more `.eml` files or directories to scan (merged, then deduped
 /// by path).

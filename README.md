@@ -6,12 +6,14 @@ This repo is a **Cargo workspace**: the vault binary, shared NDJSON schema, and 
 
 ```text
 crates/
-  message-json/                 # shared NDJSON schema
+  message-json/                 # shared NDJSON schemas (sms + imessage)
   go-sms-pro-exporter/
   sms-backup-restore-exporter/
   sms-backup-plus-exporter/
   imessage-exporter/            # bin: imessage-exporter-json (JSON fork)
                                 # depends on crates.io imessage-database
+config/                         # local machine config (examples committed)
+sources/                        # optional placeholder for raw backups (gitignored)
 scripts/
   ingest-staging.sh             # archive-path wrapper around `ingest`
   build-staging.sh              # export only (debug)
@@ -22,6 +24,15 @@ web/                            # Next.js browser UI
 ```bash
 cargo build --workspace --release
 ```
+
+### NDJSON schemas
+
+Exporters write one of two wire formats from [`crates/message-json`](crates/message-json):
+
+- **SMS NDJSON** (`message_json::sms`) — GO SMS Pro, SMS Backup & Restore, SMS Backup+
+- **iMessage NDJSON** (`message_json::imessage`) — `imessage-exporter-json`
+
+Vault import auto-detects the schema from each file’s conversation header. Details: [`crates/message-json/README.md`](crates/message-json/README.md).
 
 ## Multi-source layout
 
@@ -54,6 +65,12 @@ export_dir = "staging/sms-backup-restore"
 ```
 
 Resolved asset roots default to `data/<source_id>/assets` and `data/<source_id>/assets_converted`. Override with full paths on a source if needed.
+
+### Raw inputs (`sources/` vs `source_dir`)
+
+[`sources/`](sources/) is an optional, gitignored placeholder for keeping raw backups inside the clone (contents are ignored; only `.gitkeep` is tracked). Ingest does **not** read from `sources/` automatically.
+
+Point each `[[sources]]` entry at real input with absolute (or repo-relative) `source_dir` / `source_dirs` in `config.toml`, or pass `--from` on the CLI. Putting trees under `sources/` is only a convenience for local layout — paths still go in config or `--from`.
 
 One shared SQLite DB holds all sources. Each message row has a `source` column. The web UI can filter by source or show the combined (all) view.
 
@@ -166,4 +183,6 @@ Contact browsing:
 - **All** — every contact with messages, including excluded.
 - **Excluded** — `exclude=true`. Still browsable; hidden from Contacts and from groups.
 
-`contacts.csv` maps **phone numbers** only. iMessage email handles can be assigned to a contact in the UI and are stored in SQLite only (so threads link); they are not written back to the CSV. Email-only peers you do not want to map stay under Unassigned.
+`contacts.csv` maps **phone numbers** only. In SQLite, `contact_handles` stores phones and optional iMessage emails for thread linking; emails are never written back to the CSV. Email-only peers you do not want to map stay under Unassigned.
+
+**Breaking:** older DBs used `contact_phones` / `preferred_phone`. Import or ingest with contacts reload upgrades the schema (or wipe `data/vault.db` and re-ingest).

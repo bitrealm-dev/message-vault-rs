@@ -20,7 +20,7 @@ export function groupThreadKey(thread: {
 }
 
 /** Match canonical merged key or single-id form used before merges. */
-export function isGroupThreadKey(
+export function isGroupChatThreadKey(
   thread: {
     conversationId: number;
     conversationIds?: number[] | null;

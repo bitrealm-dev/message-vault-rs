@@ -50,7 +50,7 @@ pub struct ImportStats {
     pub assets_deduped: u64,
     pub assets_missing: u64,
     pub contacts: u64,
-    pub contact_phones: u64,
+    pub contact_handles: u64,
     pub contact_group_links: u64,
     pub contacts_skipped: bool,
     pub conversations_excluded: u64,
@@ -157,7 +157,7 @@ pub fn import_export(
 
     let mut stats = ImportStats {
         contacts: contact_stats.contacts,
-        contact_phones: contact_stats.phones,
+        contact_handles: contact_stats.phones,
         contact_group_links: contact_stats.groups,
         contacts_skipped: contact_stats.skipped,
         mode: mode.as_str().to_string(),

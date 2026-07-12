@@ -7,7 +7,7 @@ import {
   resetDb,
   usefulNameHint,
 } from "./dbCore";
-import type { GroupThread, GroupYearRow } from "./types";
+import type { GroupChatThread, GroupYearRow } from "./types";
 
 const MAX_VISIBLE_NAMES = 8;
 
@@ -113,7 +113,7 @@ function groupPeopleTitles(
       `SELECT p.conversation_id, p.handle, p.name_hint,
               c.first_name, c.last_name
        FROM participants p
-       LEFT JOIN contact_phones cp ON cp.phone_e164 = p.handle
+       LEFT JOIN contact_handles cp ON cp.handle = p.handle
        LEFT JOIN contacts c ON c.id = cp.contact_id
        WHERE p.conversation_id IN (${placeholders})`,
     )
@@ -167,10 +167,10 @@ function groupPeopleTitles(
   return out;
 }
 
-export function contactGroupThreadsForPhones(
+export function contactGroupChatThreadsForPhones(
   phones: string[],
   source?: string | null,
-): GroupThread[] {
+): GroupChatThread[] {
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");

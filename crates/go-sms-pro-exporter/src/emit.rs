@@ -1,4 +1,4 @@
-//! Convert GO SMS Pro export → imessage-json schema v3 NDJSON.
+//! Convert GO SMS Pro export → SMS NDJSON (`message_json::sms`).
 
 use crate::phone::{owner_digits, sanitize_number, to_e164};
 use crate::pdu::{parse_pdu_file, ParsedPdu};
@@ -404,7 +404,7 @@ fn write_conversation(
     Ok(())
 }
 
-/// Convert a GO SMS Pro export directory into imessage-json schema v3 NDJSON.
+/// Convert a GO SMS Pro export directory into SMS NDJSON (`message_json::sms`).
 pub fn convert_export(
     input_dir: &Path,
     output_dir: &Path,

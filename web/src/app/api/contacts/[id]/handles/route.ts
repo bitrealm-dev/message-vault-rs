@@ -19,13 +19,18 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-  if (!phone) {
-    return NextResponse.json({ error: "phone required" }, { status: 400 });
+  const handle =
+    typeof body.handle === "string"
+      ? body.handle.trim()
+      : typeof body.phone === "string"
+        ? body.phone.trim()
+        : "";
+  if (!handle) {
+    return NextResponse.json({ error: "handle required" }, { status: 400 });
   }
 
   try {
-    const contact = addPhoneToContact(id, phone);
+    const contact = addPhoneToContact(id, handle);
     return NextResponse.json({ contact });
   } catch (err) {
     const message = err instanceof Error ? err.message : "update failed";

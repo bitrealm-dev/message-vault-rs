@@ -186,9 +186,9 @@ export function BrowseContactList({
                       <span className="block truncate text-[13px] font-semibold text-text">
                         {c.displayName}
                       </span>
-                      {c.preferredPhone && (
+                      {c.preferredHandle && (
                         <span className="block truncate text-[11px] text-muted">
-                          {c.preferredPhone}
+                          {c.preferredHandle}
                         </span>
                       )}
                     </span>

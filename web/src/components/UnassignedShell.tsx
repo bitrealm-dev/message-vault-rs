@@ -250,20 +250,20 @@ export function UnassignedShell({
 
   const menuGroups = useMemo(() => {
     const names = new Set([...allGroups, ...extraGroups]);
-    for (const g of createDraft?.groups ?? []) names.add(g);
+    for (const g of createDraft?.contactGroups ?? []) names.add(g);
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [allGroups, extraGroups, createDraft?.groups]);
+  }, [allGroups, extraGroups, createDraft?.contactGroups]);
 
   const draftGroupChecks = useMemo(() => {
     const result: Record<string, GroupCheckState> = {};
-    const groups = createDraft?.groups ?? [];
+    const groups = createDraft?.contactGroups ?? [];
     for (const name of menuGroups) {
       result[name] = groups.includes(name) ? "on" : "off";
     }
     return result;
-  }, [menuGroups, createDraft?.groups]);
+  }, [menuGroups, createDraft?.contactGroups]);
 
   const draftExcludedCheck = useMemo((): GroupCheckState => {
     return createDraft?.exclude ? "on" : "off";
@@ -272,13 +272,13 @@ export function UnassignedShell({
   const toggleDraftGroup = useCallback((name: string) => {
     setCreateDraft((prev) => {
       if (!prev) return prev;
-      const has = prev.groups.includes(name);
-      const groups = has
-        ? prev.groups.filter((g) => g !== name)
-        : [...prev.groups, name].sort((a, b) =>
+      const has = prev.contactGroups.includes(name);
+      const contactGroups = has
+        ? prev.contactGroups.filter((g) => g !== name)
+        : [...prev.contactGroups, name].sort((a, b) =>
             a.localeCompare(b, undefined, { sensitivity: "base" }),
           );
-      return { ...prev, groups };
+      return { ...prev, contactGroups };
     });
   }, []);
 
@@ -288,10 +288,10 @@ export function UnassignedShell({
     );
     setCreateDraft((prev) => {
       if (!prev) return prev;
-      if (prev.groups.includes(name)) return prev;
+      if (prev.contactGroups.includes(name)) return prev;
       return {
         ...prev,
-        groups: [...prev.groups, name].sort((a, b) =>
+        contactGroups: [...prev.contactGroups, name].sort((a, b) =>
           a.localeCompare(b, undefined, { sensitivity: "base" }),
         ),
       };
@@ -508,7 +508,7 @@ export function UnassignedShell({
           lastName: createDraft.lastName.trim() || null,
           phones,
           exclude: createDraft.exclude,
-          groups: createDraft.groups,
+          contactGroups: createDraft.contactGroups,
         }),
       });
       const data = await res.json();
@@ -556,10 +556,10 @@ export function UnassignedShell({
     try {
       let displayName = "";
       for (const phone of targets) {
-        const res = await fetch(`/api/contacts/${contactId}/phones`, {
+        const res = await fetch(`/api/contacts/${contactId}/handles`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone }),
+          body: JSON.stringify({ handle: phone }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "assign failed");
@@ -630,9 +630,9 @@ export function UnassignedShell({
               <span className="truncate text-[13px] text-text">
                 {c.displayName}
               </span>
-              {c.preferredPhone && (
+              {c.preferredHandle && (
                 <span className="truncate text-[11px] text-muted">
-                  {c.preferredPhone}
+                  {c.preferredHandle}
                 </span>
               )}
             </button>

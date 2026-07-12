@@ -5,7 +5,7 @@ export type ContactEditDraft = {
   lastName: string;
   phones: string[];
   exclude: boolean;
-  groups: string[];
+  contactGroups: string[];
 };
 
 export function seedContactEditDraft(contact: {
@@ -13,27 +13,27 @@ export function seedContactEditDraft(contact: {
   lastName: string | null;
   phones: string[];
   exclude: boolean;
-  groups?: string[];
+  contactGroups?: string[];
 }): ContactEditDraft {
   return {
     firstName: contact.firstName ?? "",
     lastName: contact.lastName ?? "",
     phones: [...contact.phones, ""],
     exclude: contact.exclude,
-    groups: contact.groups ? [...contact.groups] : [],
+    contactGroups: contact.contactGroups ? [...contact.contactGroups] : [],
   };
 }
 
 export function emptyContactEditDraft(defaults?: {
   exclude?: boolean;
-  groups?: string[];
+  contactGroups?: string[];
 }): ContactEditDraft {
   return {
     firstName: "",
     lastName: "",
     phones: [""],
     exclude: defaults?.exclude ?? false,
-    groups: defaults?.groups ? [...defaults.groups] : [],
+    contactGroups: defaults?.contactGroups ? [...defaults.contactGroups] : [],
   };
 }
 
@@ -43,10 +43,10 @@ export function draftHasName(draft: ContactEditDraft): boolean {
 
 /** Groups list for the contact card: Excluded first when set. */
 export function displayGroupNames(
-  groups: string[],
+  contactGroups: string[],
   excluded: boolean,
 ): string[] {
-  const rest = groups.filter((g) => g.toLowerCase() !== "excluded");
+  const rest = contactGroups.filter((g) => g.toLowerCase() !== "excluded");
   return excluded ? ["Excluded", ...rest] : rest;
 }
 
@@ -121,41 +121,22 @@ export function ContactPhoneList({
                 onChange(updatePhoneAt(phones, index, e.target.value))
               }
               onBlur={() => onChange(blurPhoneAt(phones, index))}
-              placeholder="0123 456 789"
+              placeholder="Phone or email"
               className="min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
             />
-            {showRemove ? (
+            {showRemove && (
               <button
                 type="button"
                 onClick={() => onChange(removePhoneAt(phones, index))}
-                aria-label="Remove phone"
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-white/10 hover:text-text"
+                className="shrink-0 rounded px-1.5 text-[12px] text-muted hover:bg-white/10 hover:text-text"
+                aria-label="Remove handle"
               >
-                <CloseIcon className="size-3.5" />
+                ×
               </button>
-            ) : (
-              <span className="size-6 shrink-0" aria-hidden />
             )}
           </div>
         );
       })}
     </div>
-  );
-}
-
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
   );
 }

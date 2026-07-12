@@ -4,7 +4,7 @@ import type {
   ContactDetail,
   ContactListItem,
   ContactSection,
-  GroupThread,
+  GroupChatThread,
   MessageRow,
   YearThread,
 } from "@/lib/types";
@@ -12,7 +12,7 @@ import { searchContacts } from "@/lib/contactSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import { phoneHandlesOnly } from "@/lib/handleKind";
 import {
-  isGroupThreadKey,
+  isGroupChatThreadKey,
   yearThreadKey,
 } from "@/lib/threadKeys";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -80,7 +80,7 @@ export function BrowseShell({
   const [contactId, setContactId] = useState<number | null>(initialContactId);
   const [detail, setDetail] = useState<ContactDetail | null>(null);
   const [yearly, setYearly] = useState<YearThread[]>([]);
-  const [groups, setGroups] = useState<GroupThread[]>([]);
+  const [groupChats, setGroupChats] = useState<GroupChatThread[]>([]);
   const [messageSources, setMessageSources] = useState<string[]>([]);
   const [sourceCounts, setSourceCounts] = useState<{
     all: number;
@@ -121,7 +121,7 @@ export function BrowseShell({
   const saveContactPatch = useCallback(
     async (patch: {
       exclude?: boolean;
-      groups?: string[];
+      contactGroups?: string[];
       firstName?: string | null;
       lastName?: string | null;
       phones?: string[];
@@ -315,7 +315,7 @@ export function BrowseShell({
       loadedContactIdRef.current = null;
       setDetail(null);
       setYearly([]);
-      setGroups([]);
+      setGroupChats([]);
       setMessageSources([]);
       setSourceCounts({ all: 0, bySource: {} });
       return;
@@ -337,9 +337,9 @@ export function BrowseShell({
           setDetail(data.contact);
         }
         const nextYearly: YearThread[] = data.yearly ?? [];
-        const nextGroups: GroupThread[] = data.groups ?? [];
+        const nextGroupChats: GroupChatThread[] = data.groupChats ?? [];
         setYearly(nextYearly);
-        setGroups(nextGroups);
+        setGroupChats(nextGroupChats);
         setMessageSources(data.messageSources ?? []);
         setSourceCounts(
           data.sourceCounts ?? { all: 0, bySource: {} },
@@ -358,7 +358,7 @@ export function BrowseShell({
             const year = Number(prev.slice(2));
             return nextYearly.some((t) => t.year === year) ? prev : null;
           }
-          return nextGroups.some((t) => isGroupThreadKey(t, prev))
+          return nextGroupChats.some((t) => isGroupChatThreadKey(t, prev))
             ? prev
             : null;
         });
@@ -369,7 +369,7 @@ export function BrowseShell({
           const year = Number(key.slice(2));
           if (!nextYearly.some((t) => t.year === year)) key = null;
         } else if (key) {
-          if (!nextGroups.some((t) => isGroupThreadKey(t, key!))) key = null;
+          if (!nextGroupChats.some((t) => isGroupChatThreadKey(t, key!))) key = null;
         }
         if (nextYearly.length === 1) {
           key = yearThreadKey(nextYearly[0]!.year);
@@ -388,7 +388,7 @@ export function BrowseShell({
             year = y.year;
           }
         } else {
-          const g = nextGroups.find((t) => isGroupThreadKey(t, key!));
+          const g = nextGroupChats.find((t) => isGroupChatThreadKey(t, key!));
           if (g) {
             convIds = g.conversationIds?.length
               ? g.conversationIds
@@ -432,14 +432,14 @@ export function BrowseShell({
     [sourceQuery],
   );
 
-  const groupsByYear = useMemo(() => {
-    const map = new Map<number, GroupThread[]>();
-    for (const g of groups) {
+  const groupChatsByYear = useMemo(() => {
+    const map = new Map<number, GroupChatThread[]>();
+    for (const g of groupChats) {
       if (!map.has(g.year)) map.set(g.year, []);
       map.get(g.year)!.push(g);
     }
     return [...map.entries()].sort(([a], [b]) => b - a);
-  }, [groups]);
+  }, [groupChats]);
 
   const selectedContacts = useMemo(() => {
     const selected = new Set(selectedIds);
@@ -498,13 +498,13 @@ export function BrowseShell({
 
   const createDefaults = useMemo(() => {
     if (typeof contactSection === "object") {
-      return { groups: [contactSection.group], exclude: false };
+      return { contactGroups: [contactSection.group], exclude: false };
     }
     if (contactSection === "excluded") {
-      return { groups: [] as string[], exclude: true };
+      return { contactGroups: [] as string[], exclude: true };
     }
     // all, no-group
-    return { groups: [] as string[], exclude: false };
+    return { contactGroups: [] as string[], exclude: false };
   }, [contactSection]);
 
   const beginCreateContact = useCallback(() => {
@@ -512,7 +512,7 @@ export function BrowseShell({
     setContactId(null);
     setDetail(null);
     setYearly([]);
-    setGroups([]);
+    setGroupChats([]);
     setMessageSources([]);
     setSourceCounts({ all: 0, bySource: {} });
     setMessages([]);
@@ -542,6 +542,7 @@ export function BrowseShell({
       lastName: editDraft.lastName.trim() || null,
       phones: phonesForSave(editDraft.phones),
       exclude: editDraft.exclude,
+      contactGroups: editDraft.contactGroups,
     });
     if (!ok) return;
     setContactEditing(false);
@@ -561,7 +562,7 @@ export function BrowseShell({
           lastName: editDraft.lastName.trim() || null,
           phones: phonesForSave(editDraft.phones),
           exclude: editDraft.exclude,
-          groups: editDraft.groups,
+          contactGroups: editDraft.contactGroups,
         }),
       });
       const data = await res.json();
@@ -619,7 +620,7 @@ export function BrowseShell({
       setEditDraft(null);
       setDetail(null);
       setYearly([]);
-      setGroups([]);
+      setGroupChats([]);
       setMessageSources([]);
       setSourceCounts({ all: 0, bySource: {} });
       setMessages([]);
@@ -656,19 +657,19 @@ export function BrowseShell({
     if (hasSelection) {
       return selectedContacts.map((c) => ({
         id: c.id,
-        groups: groupsFor(c.id, c.groups),
+        contactGroups: groupsFor(c.id, c.contactGroups),
       }));
     }
     if (detail) {
-      return [{ id: detail.id, groups: groupsFor(detail.id, detail.groups) }];
+      return [{ id: detail.id, contactGroups: groupsFor(detail.id, detail.contactGroups) }];
     }
-    return [] as Array<{ id: number; groups: string[] }>;
+    return [] as Array<{ id: number; contactGroups: string[] }>;
   }, [hasSelection, selectedContacts, detail, groupsFor]);
 
   const menuGroups = useMemo(() => {
     const names = new Set(allGroups);
     for (const person of groupTargets) {
-      for (const group of person.groups) names.add(group);
+      for (const group of person.contactGroups) names.add(group);
     }
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
@@ -685,7 +686,7 @@ export function BrowseShell({
       }
       let count = 0;
       for (const person of groupTargets) {
-        if (person.groups.includes(name)) count++;
+        if (person.contactGroups.includes(name)) count++;
       }
       result[name] =
         count === 0 ? "off" : count === n ? "on" : "mixed";
@@ -700,7 +701,7 @@ export function BrowseShell({
 
       let changed = 0;
       for (const person of targets) {
-        if (person.groups.includes(name) !== enable) changed++;
+        if (person.contactGroups.includes(name) !== enable) changed++;
       }
       if (changed === 0) return;
 
@@ -708,7 +709,7 @@ export function BrowseShell({
       setGroupOverrides((prev) => {
         const next = new Map(prev);
         for (const person of targets) {
-          const current = next.get(person.id) ?? person.groups;
+          const current = next.get(person.id) ?? person.contactGroups;
           const has = current.includes(name);
           if (enable === has) continue;
           const groups = enable
@@ -731,22 +732,22 @@ export function BrowseShell({
 
       try {
         for (const person of targets) {
-          const has = person.groups.includes(name);
+          const has = person.contactGroups.includes(name);
           if (enable === has) continue;
           const groups = enable
-            ? [...person.groups, name].sort((a, b) =>
+            ? [...person.contactGroups, name].sort((a, b) =>
                 a.localeCompare(b, undefined, { sensitivity: "base" }),
               )
-            : person.groups.filter((g) => g !== name);
+            : person.contactGroups.filter((g) => g !== name);
 
           if (!hasSelection && person.id === contactId) {
-            const ok = await saveContactPatch({ groups });
+            const ok = await saveContactPatch({ contactGroups: groups });
             if (!ok) throw new Error("save failed");
           } else {
             const res = await fetch(`/api/contacts/${person.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ groups }),
+              body: JSON.stringify({ contactGroups: groups }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error ?? "save failed");
@@ -902,7 +903,7 @@ export function BrowseShell({
         messageCount: y.messageCount,
       };
     }
-    const g = groups.find((t) => isGroupThreadKey(t, activeThread));
+    const g = groupChats.find((t) => isGroupChatThreadKey(t, activeThread));
     if (!g) return null;
     return {
       title: g.title,
@@ -910,7 +911,7 @@ export function BrowseShell({
       dateEnd: g.dateEnd,
       messageCount: g.messageCount,
     };
-  }, [activeThread, yearly, groups]);
+  }, [activeThread, yearly, groupChats]);
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
@@ -1084,7 +1085,7 @@ export function BrowseShell({
                       {c.displayName}
                     </button>
                     <span className="shrink-0 text-[13px] text-muted tabular-nums">
-                      {c.preferredPhone ?? ""}
+                      {c.preferredHandle ?? ""}
                     </span>
                   </li>
                 ))}
@@ -1113,10 +1114,10 @@ export function BrowseShell({
               onLoadYear={(y) =>
                 loadMessages(y.conversationIds, y.year, yearThreadKey(y.year))
               }
-              groupsByYear={groupsByYear}
+              groupChatsByYear={groupChatsByYear}
               groupDateFormat={groupDateFormat}
               onGroupDateFormatChange={setGroupDateFormat}
-              onLoadGroupThread={loadMessages}
+              onLoadGroupChatThread={loadMessages}
             />
 
             <div

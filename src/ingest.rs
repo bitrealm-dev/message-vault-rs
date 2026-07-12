@@ -104,9 +104,39 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
     })
 }
 
+/// Known ingest export backends. Add new sources here (and a match arm below).
+#[derive(Debug, Clone, Copy)]
+enum ExportBackend {
+    GoSmsPro,
+    SmsBackupRestore,
+    SmsBackupPlus,
+    Imessage,
+}
+
+const EXPORT_REGISTRY: &[(&str, ExportBackend)] = &[
+    ("go-sms-pro", ExportBackend::GoSmsPro),
+    ("sms-backup-restore", ExportBackend::SmsBackupRestore),
+    ("sms-backup-plus", ExportBackend::SmsBackupPlus),
+    ("imessage", ExportBackend::Imessage),
+];
+
+fn lookup_export_backend(source_id: &str) -> Option<ExportBackend> {
+    EXPORT_REGISTRY
+        .iter()
+        .find(|(id, _)| *id == source_id)
+        .map(|(_, backend)| *backend)
+}
+
 fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path) -> Result<()> {
-    match source_id {
-        "go-sms-pro" => {
+    let Some(backend) = lookup_export_backend(source_id) else {
+        bail!(
+            "ingest does not know how to export source '{source_id}' \
+             (supported: imessage, go-sms-pro, sms-backup-plus, sms-backup-restore)"
+        );
+    };
+
+    match backend {
+        ExportBackend::GoSmsPro => {
             let from = require_single_input(source_id, from)?;
             let report =
                 go_sms_pro_exporter::convert_export(from, staging, &cfg.owner.phone_e164)?;
@@ -118,7 +148,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
                 report.attachments_saved
             );
         }
-        "sms-backup-restore" => {
+        ExportBackend::SmsBackupRestore => {
             let from = require_single_input(source_id, from)?;
             let report = sms_backup_restore_exporter::convert_export(
                 from,
@@ -133,7 +163,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
                 report.attachments_saved
             );
         }
-        "sms-backup-plus" => {
+        ExportBackend::SmsBackupPlus => {
             let emails = if cfg.owner.emails.is_empty() {
                 vec!["owner@example.com".to_string()]
             } else {
@@ -156,15 +186,9 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
                 report.conversations, report.messages, report.attachments_saved
             );
         }
-        "imessage" => {
+        ExportBackend::Imessage => {
             let from = require_single_input(source_id, from)?;
             export_imessage(from, staging)?;
-        }
-        other => {
-            bail!(
-                "ingest does not know how to export source '{other}' \
-                 (supported: imessage, go-sms-pro, sms-backup-plus, sms-backup-restore)"
-            );
         }
     }
     Ok(())
@@ -299,5 +323,26 @@ mod tests {
         assert!(is_archive_stamp("20260712T033045Z"));
         assert!(!is_archive_stamp(".gitkeep"));
         assert!(!is_archive_stamp("chat.json"));
+    }
+
+    #[test]
+    fn export_registry_known_ids() {
+        assert!(matches!(
+            lookup_export_backend("imessage"),
+            Some(ExportBackend::Imessage)
+        ));
+        assert!(matches!(
+            lookup_export_backend("go-sms-pro"),
+            Some(ExportBackend::GoSmsPro)
+        ));
+        assert!(matches!(
+            lookup_export_backend("sms-backup-plus"),
+            Some(ExportBackend::SmsBackupPlus)
+        ));
+        assert!(matches!(
+            lookup_export_backend("sms-backup-restore"),
+            Some(ExportBackend::SmsBackupRestore)
+        ));
+        assert!(lookup_export_backend("unknown-source").is_none());
     }
 }

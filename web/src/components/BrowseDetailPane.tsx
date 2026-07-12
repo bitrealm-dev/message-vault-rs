@@ -2,7 +2,7 @@
 
 import type {
   ContactDetail,
-  GroupThread,
+  GroupChatThread,
   YearThread,
 } from "@/lib/types";
 import {
@@ -33,10 +33,10 @@ export function BrowseDetailPane({
   yearly,
   activeThread,
   onLoadYear,
-  groupsByYear,
+  groupChatsByYear,
   groupDateFormat,
   onGroupDateFormatChange,
-  onLoadGroupThread,
+  onLoadGroupChatThread,
 }: {
   threadsPct: number;
   detail: ContactDetail | null;
@@ -55,10 +55,10 @@ export function BrowseDetailPane({
   yearly: YearThread[];
   activeThread: string | null;
   onLoadYear: (y: YearThread) => void;
-  groupsByYear: [number, GroupThread[]][];
+  groupChatsByYear: [number, GroupChatThread[]][];
   groupDateFormat: GroupDateFormat;
   onGroupDateFormatChange: (next: GroupDateFormat) => void;
-  onLoadGroupThread: (
+  onLoadGroupChatThread: (
     conversationIds: number[],
     year: number,
     key: string,
@@ -77,9 +77,9 @@ export function BrowseDetailPane({
             onDraftChange={onDraftChange}
             groups={
               contactCreating && editDraft
-                ? editDraft.groups
+                ? editDraft.contactGroups
                 : detail
-                  ? groupsFor(detail.id, detail.groups)
+                  ? groupsFor(detail.id, detail.contactGroups)
                   : []
             }
             excluded={
@@ -116,11 +116,11 @@ export function BrowseDetailPane({
                 <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
                   Group chats
                 </h3>
-                {groupsByYear.length === 0 ? (
+                {groupChatsByYear.length === 0 ? (
                   <p className="mt-2 text-[12px] text-muted">No group chats</p>
                 ) : (
                   <div className="mt-3 space-y-12">
-                    {groupsByYear.map(([year, items], yearIdx) => (
+                    {groupChatsByYear.map(([year, items], yearIdx) => (
                       <div key={year}>
                         <div className="mb-2 flex items-center justify-between gap-3">
                           <div className="text-[13px] font-semibold text-text">
@@ -158,7 +158,7 @@ export function BrowseDetailPane({
                                   type="button"
                                   title={g.titleFull}
                                   onClick={() =>
-                                    onLoadGroupThread(convIds, g.year, key)
+                                    onLoadGroupChatThread(convIds, g.year, key)
                                   }
                                   className={`flex w-full items-start justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
                                     active

@@ -183,12 +183,12 @@ struct ExportTapback {
 fn list_export_contacts(conn: &Connection) -> Result<Vec<ExportContact>> {
     let mut stmt = conn.prepare(
         r#"
-        SELECT id, first_name, last_name, preferred_phone
+        SELECT id, first_name, last_name, preferred_handle
         FROM contacts
         WHERE exclude = 0
         ORDER BY
-          LOWER(COALESCE(NULLIF(TRIM(last_name), ''), first_name, preferred_phone, '')),
-          LOWER(COALESCE(NULLIF(TRIM(first_name), ''), preferred_phone, ''))
+          LOWER(COALESCE(NULLIF(TRIM(last_name), ''), first_name, preferred_handle, '')),
+          LOWER(COALESCE(NULLIF(TRIM(first_name), ''), preferred_handle, ''))
         "#,
     )?;
     let rows = stmt.query_map([], |row| {
@@ -202,7 +202,7 @@ fn list_export_contacts(conn: &Connection) -> Result<Vec<ExportContact>> {
 
     let mut out = Vec::new();
     let mut phone_stmt =
-        conn.prepare("SELECT phone_e164 FROM contact_phones WHERE contact_id = ?1")?;
+        conn.prepare("SELECT handle FROM contact_handles WHERE contact_id = ?1")?;
     for row in rows {
         let (id, first, last, preferred) = row?;
         let phones: Vec<String> = phone_stmt
@@ -305,9 +305,9 @@ fn load_year_messages(
     let sql = format!(
         r#"
         SELECT m.id, m.source, m.timestamp, m.is_from_me, m.sender, m.body,
-               c.first_name, c.last_name, c.preferred_phone, p.name_hint
+               c.first_name, c.last_name, c.preferred_handle, p.name_hint
         FROM messages m
-        LEFT JOIN contact_phones cp ON cp.phone_e164 = m.sender
+        LEFT JOIN contact_handles cp ON cp.handle = m.sender
         LEFT JOIN contacts c ON c.id = cp.contact_id
         LEFT JOIN participants p
           ON p.conversation_id = m.conversation_id AND p.handle = m.sender
@@ -365,7 +365,7 @@ fn load_year_messages(
             body,
             first_name,
             last_name,
-            preferred_phone,
+            preferred_handle,
             name_hint,
         ) = row?;
         let from_me = is_from_me != 0;
@@ -375,12 +375,12 @@ fn load_year_messages(
             let mut name = display_name(
                 first_name.as_deref(),
                 last_name.as_deref(),
-                preferred_phone
+                preferred_handle
                     .as_deref()
                     .or(sender.as_deref())
                     .or(Some(contact.display_name.as_str())),
             );
-            if name == preferred_phone.as_deref().unwrap_or("")
+            if name == preferred_handle.as_deref().unwrap_or("")
                 || name == sender.as_deref().unwrap_or("")
             {
                 if let Some(hint) = name_hint.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -878,7 +878,7 @@ mod tests {
 
         conn.execute(
             r#"
-            INSERT INTO contacts (first_name, last_name, exclude, preferred_phone)
+            INSERT INTO contacts (first_name, last_name, exclude, preferred_handle)
             VALUES ('Zach', 'Henson', 0, '+18285532527')
             "#,
             [],
@@ -886,7 +886,7 @@ mod tests {
         .unwrap();
         let contact_id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?1, ?2)",
+            "INSERT INTO contact_handles (handle, contact_id) VALUES (?1, ?2)",
             params!["+18285532527", contact_id],
         )
         .unwrap();

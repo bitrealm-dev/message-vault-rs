@@ -62,10 +62,10 @@ function loadConversationMessages(
   const rows = db
     .prepare(
       `SELECT m.id, m.source, m.timestamp, m.is_from_me, m.sender, m.body, m.is_announcement,
-              c.first_name, c.last_name, c.preferred_phone,
+              c.first_name, c.last_name, c.preferred_handle,
               p.name_hint
        FROM messages m
-       LEFT JOIN contact_phones cp ON cp.phone_e164 = m.sender
+       LEFT JOIN contact_handles cp ON cp.handle = m.sender
        LEFT JOIN contacts c ON c.id = cp.contact_id
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
@@ -82,7 +82,7 @@ function loadConversationMessages(
     is_announcement: number;
     first_name: string | null;
     last_name: string | null;
-    preferred_phone: string | null;
+    preferred_handle: string | null;
     name_hint: string | null;
   }>;
 
@@ -150,9 +150,9 @@ function loadConversationMessages(
       senderName = displayName({
         first_name: r.first_name,
         last_name: r.last_name,
-        preferred_phone: r.preferred_phone ?? r.sender,
+        preferred_handle: r.preferred_handle ?? r.sender,
       });
-      if (senderName === (r.preferred_phone ?? r.sender)) {
+      if (senderName === (r.preferred_handle ?? r.sender)) {
         const hint = usefulNameHint(r.name_hint, r.sender);
         if (hint) senderName = hint;
       }

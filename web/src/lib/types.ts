@@ -9,13 +9,13 @@ export type ContactSection =
 export type ContactListItem = {
   id: number;
   displayName: string;
-  preferredPhone: string | null;
+  preferredHandle: string | null;
   firstName: string | null;
   lastName: string | null;
   sortFirst: string;
   sortLast: string;
   letter: string;
-  groups: string[];
+  contactGroups: string[];
   exclude: boolean;
   /** Soft-deduped 1:1 message total (Combined view). */
   messageCount: number;
@@ -35,7 +35,7 @@ export type YearThread = {
   conversationIds: number[];
 };
 
-export type GroupThread = {
+export type GroupChatThread = {
   conversationId: number;
   conversationIds: number[];
   title: string;

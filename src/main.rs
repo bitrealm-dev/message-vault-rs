@@ -343,7 +343,7 @@ fn main() -> Result<()> {
                     println!("  contacts:      (skipped — already loaded; use --overwrite-contacts)");
                 } else {
                     println!("  contacts:      {}", stats.contacts);
-                    println!("  contact phones:{}", stats.contact_phones);
+                    println!("  contact handles:{}", stats.contact_handles);
                     println!("  contact groups:{}", stats.contact_group_links);
                 }
                 println!("  files:         {}", stats.files);

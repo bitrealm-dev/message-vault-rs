@@ -49,24 +49,24 @@ export function combinedDedupeSql(source?: string | null, alias?: string): strin
 export function displayName(row: {
   first_name: string | null;
   last_name: string | null;
-  preferred_phone: string | null;
+  preferred_handle: string | null;
 }): string {
   const parts = [row.first_name, row.last_name]
     .map((p) => p?.trim())
     .filter(Boolean) as string[];
   if (parts.length) return parts.join(" ");
-  return row.preferred_phone ?? "Unknown";
+  return row.preferred_handle ?? "Unknown";
 }
 
 export function sortFields(row: {
   first_name: string | null;
   last_name: string | null;
-  preferred_phone: string | null;
+  preferred_handle: string | null;
 }): { sortFirst: string; sortLast: string; letter: string } {
   const first = (row.first_name || "").trim();
   const last = (row.last_name || row.first_name || "").trim();
-  const sortFirst = first || row.preferred_phone || "Unknown";
-  const sortLast = last || row.preferred_phone || "Unknown";
+  const sortFirst = first || row.preferred_handle || "Unknown";
+  const sortLast = last || row.preferred_handle || "Unknown";
   const letterSrc = sortLast;
   const ch = letterSrc.charAt(0).toUpperCase();
   const letter = ch >= "A" && ch <= "Z" ? ch : "#";

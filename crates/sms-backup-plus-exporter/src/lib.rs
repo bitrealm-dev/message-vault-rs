@@ -1,4 +1,4 @@
-//! SMS Backup+ (jberkel) EML → imessage-json schema v3 exporter.
+//! SMS Backup+ (jberkel) EML → SMS NDJSON (`message_json::sms`) exporter.
 
 pub(crate) mod archive;
 pub(crate) mod assets;

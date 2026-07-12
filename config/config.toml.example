@@ -5,8 +5,9 @@
 #
 # Real config/contacts/blacklist files are gitignored.
 # contacts.csv: phone numbers only (semicolon-separated). Set exclude=true to hide from
-# Contacts/groups (All still lists them). iMessage emails can be attached in the UI and
-# live only in the DB — they are never written to this CSV.
+# Contacts/groups (All still lists them). iMessage emails attach in the UI into
+# contact_handles (DB only) — never written to this CSV.
+# Breaking rename: contact_phones → contact_handles (reload contacts / wipe vault.db).
 
 [owner]
 display_name = "Your Name"

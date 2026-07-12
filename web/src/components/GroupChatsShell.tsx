@@ -38,12 +38,12 @@ function newestYearForConversation(
 }
 
 export function GroupChatsShell({
-  groups: initialGroups,
+  groupChats: initialGroupChats,
   initialConversationId,
   initialYear,
   mode = "group-chats",
 }: {
-  groups: GroupYearRow[];
+  groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
@@ -53,7 +53,7 @@ export function GroupChatsShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { sourceQuery } = useSourceFilter();
-  const [groups, setGroups] = useState(initialGroups);
+  const [groupChats, setGroupChats] = useState(initialGroupChats);
   const [conversationId, setConversationId] = useState<number | null>(
     initialConversationId,
   );
@@ -77,8 +77,8 @@ export function GroupChatsShell({
   const ctxMenuRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(
-    () => searchGroups(groups, query),
-    [groups, query],
+    () => searchGroups(groupChats, query),
+    [groupChats, query],
   );
 
   /** Unique conversation ids in filtered list order (first appearance). */
@@ -93,7 +93,7 @@ export function GroupChatsShell({
     return ids;
   }, [filtered]);
 
-  const validIds = useMemo(() => groups.map((g) => g.id), [groups]);
+  const validIds = useMemo(() => groupChats.map((g) => g.id), [groupChats]);
 
   const {
     selectedIds,
@@ -121,11 +121,11 @@ export function GroupChatsShell({
   });
 
   const years = useMemo(() => {
-    const source = query.trim() ? filtered : groups;
+    const source = query.trim() ? filtered : groupChats;
     const set = new Set<number>();
     for (const g of source) set.add(g.year);
     return [...set].sort((a, b) => b - a);
-  }, [groups, filtered, query]);
+  }, [groupChats, filtered, query]);
 
   // Default to newest year; keep selection if still in the list.
   useEffect(() => {
@@ -151,11 +151,11 @@ export function GroupChatsShell({
   const selectedRow = useMemo(() => {
     if (conversationId == null || focusYear == null) return null;
     return (
-      groups.find(
+      groupChats.find(
         (g) => g.id === conversationId && g.year === focusYear,
       ) ?? null
     );
-  }, [groups, conversationId, focusYear]);
+  }, [groupChats, conversationId, focusYear]);
 
   const actionTargets = useMemo(() => {
     if (multiSelected) return [...selectedIds];
@@ -177,14 +177,14 @@ export function GroupChatsShell({
   // Deep link / refresh: require a valid year for the selected conversation.
   useEffect(() => {
     if (conversationId == null) return;
-    if (!groups.some((g) => g.id === conversationId)) return;
+    if (!groupChats.some((g) => g.id === conversationId)) return;
 
     const yearOk =
       focusYear != null &&
-      groups.some((g) => g.id === conversationId && g.year === focusYear);
+      groupChats.some((g) => g.id === conversationId && g.year === focusYear);
     if (yearOk) return;
 
-    const nextYear = newestYearForConversation(groups, conversationId);
+    const nextYear = newestYearForConversation(groupChats, conversationId);
     if (nextYear == null) return;
     setFocusYear(nextYear);
     pendingScrollYearRef.current = nextYear;
@@ -192,19 +192,19 @@ export function GroupChatsShell({
     params.set("g", String(conversationId));
     params.set("y", String(nextYear));
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [groups, conversationId, focusYear, pathname, router, searchParams]);
+  }, [groupChats, conversationId, focusYear, pathname, router, searchParams]);
 
   useEffect(() => {
-    setGroups(initialGroups);
+    setGroupChats(initialGroupChats);
     if (
       conversationId != null &&
-      !initialGroups.some((g) => g.id === conversationId)
+      !initialGroupChats.some((g) => g.id === conversationId)
     ) {
       setConversationId(null);
       setFocusYear(null);
       setMessages([]);
     }
-  }, [initialGroups, conversationId, setMessages]);
+  }, [initialGroupChats, conversationId, setMessages]);
 
   useDismissible({
     open: ctxMenu != null,
@@ -227,7 +227,7 @@ export function GroupChatsShell({
   const clearFocusAfterRemoval = useCallback(
     (removedIds: number[]) => {
       const removed = new Set(removedIds);
-      setGroups((prev) => prev.filter((g) => !removed.has(g.id)));
+      setGroupChats((prev) => prev.filter((g) => !removed.has(g.id)));
       setSelectedIds((prev) => {
         const next = new Set(prev);
         for (const id of removed) next.delete(id);
@@ -249,8 +249,8 @@ export function GroupChatsShell({
 
   const conversationSpansMultipleYears = useCallback(
     (id: number) =>
-      groups.some((g) => g.id === id && g.spansMultipleYears),
-    [groups],
+      groupChats.some((g) => g.id === id && g.spansMultipleYears),
+    [groupChats],
   );
 
   const getTrashTargets = useCallback(
@@ -412,7 +412,7 @@ export function GroupChatsShell({
           onQueryChange={setQuery}
           onToggleSelectAll={toggleSelectAll}
           filteredCount={filtered.length}
-          groupsCount={groups.length}
+          groupsCount={groupChats.length}
           status={status}
           canAct={canAct}
           years={years}

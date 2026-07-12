@@ -14,13 +14,13 @@ export default async function GroupChatsPage({
   const conversationId = Number.isFinite(rawG) ? rawG : null;
   const rawY = sp.y ? Number(sp.y) : null;
   const year = Number.isFinite(rawY) ? rawY : null;
-  const groups = listGroupYearRows();
+  const groupChats = listGroupYearRows();
   const contactGroups = listGroups();
 
   return (
     <BrowsePageLayout active="/group-chats" groups={contactGroups}>
       <GroupChatsShell
-        groups={groups}
+        groupChats={groupChats}
         initialConversationId={conversationId}
         initialYear={year}
       />

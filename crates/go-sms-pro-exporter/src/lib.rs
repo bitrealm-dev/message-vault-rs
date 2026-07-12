@@ -1,4 +1,4 @@
-//! GO SMS Pro → imessage-json schema v3 exporter.
+//! GO SMS Pro → SMS NDJSON (`message_json::sms`) exporter.
 
 pub mod emit;
 pub mod emoji;

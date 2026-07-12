@@ -24,7 +24,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Convert EML tree to imessage-json schema v3 NDJSON
+    /// Convert EML tree to SMS NDJSON (`message_json::sms`)
     Convert {
         /// Path to a .eml file or directory tree of EMLs (Archive/, Sent/, …).
         /// Repeat for multiple roots; trees are merged and path-deduped.
@@ -51,7 +51,7 @@ enum Commands {
         contacts: Option<PathBuf>,
 
         /// Name mapping CSV (correct_name,incorrect_name) for EML export aliases.
-        /// Default: config/name-mapping.csv when that file exists.
+        /// Default: repo config/name-mapping.csv when that file exists.
         #[arg(long = "name-mapping")]
         name_mapping: Option<PathBuf>,
     },
@@ -82,7 +82,7 @@ enum Commands {
         contacts: Option<PathBuf>,
 
         /// Name mapping CSV (correct_name,incorrect_name) for EML export aliases.
-        /// Default: config/name-mapping.csv when that file exists.
+        /// Default: repo config/name-mapping.csv when that file exists.
         #[arg(long = "name-mapping")]
         name_mapping: Option<PathBuf>,
     },
@@ -188,6 +188,7 @@ fn main() -> Result<()> {
                 name_mapping,
                 &[
                     "config/name-mapping.csv",
+                    "../../config/name-mapping.csv",
                     "crates/sms-backup-plus-exporter/config/name-mapping.csv",
                 ],
             );
@@ -245,6 +246,7 @@ fn main() -> Result<()> {
                 name_mapping,
                 &[
                     "config/name-mapping.csv",
+                    "../../config/name-mapping.csv",
                     "crates/sms-backup-plus-exporter/config/name-mapping.csv",
                 ],
             );

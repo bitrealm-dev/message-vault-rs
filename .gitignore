@@ -45,4 +45,5 @@ target
 /config/config.toml
 /config/contacts.csv
 /config/blacklist.csv
+/config/name-mapping.csv
 /config/contacts.xlsx

@@ -6,13 +6,13 @@ import {
   sortFields,
 } from "./dbCore";
 import { groupSlug } from "./groupSlug";
-import { contactGroupThreadsForPhones } from "./groupChatsRead";
+import { contactGroupChatThreadsForPhones } from "./groupChatsRead";
 import { RESERVED_GROUP_NAMES } from "./reservedGroups";
 import type {
   ContactDetail,
   ContactListItem,
   ContactSection,
-  GroupThread,
+  GroupChatThread,
   YearThread,
 } from "./types";
 
@@ -42,7 +42,7 @@ export function groupFromSlug(slug: string): string | null {
 const CONTACT_HAS_MESSAGES_SQL = `
   EXISTS (
     SELECT 1
-    FROM contact_phones cp
+    FROM contact_handles cp
     WHERE cp.contact_id = c.id
       AND (
         EXISTS (
@@ -50,13 +50,13 @@ const CONTACT_HAS_MESSAGES_SQL = `
           FROM conversations cv
           JOIN messages m ON m.conversation_id = cv.id
           WHERE cv.conv_type = 'individual'
-            AND cv.chat_identifier = cp.phone_e164
+            AND cv.chat_identifier = cp.handle
         )
         OR EXISTS (
           SELECT 1
           FROM participants p
           JOIN messages m ON m.conversation_id = p.conversation_id
-          WHERE p.handle = cp.phone_e164
+          WHERE p.handle = cp.handle
         )
       )
   )
@@ -147,7 +147,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
     id: number;
     first_name: string | null;
     last_name: string | null;
-    preferred_phone: string | null;
+    preferred_handle: string | null;
     exclude: number;
   }>;
 
@@ -175,10 +175,10 @@ export function listContacts(section: ContactSection): ContactListItem[] {
       return {
         id: row.id,
         displayName: name,
-        preferredPhone: row.preferred_phone,
+        preferredHandle: row.preferred_handle,
         firstName: row.first_name,
         lastName: row.last_name,
-        groups: groupsByContact.get(row.id) ?? [],
+        contactGroups: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: messageCounts.get(row.id) ?? 0,
         ...sorts,
@@ -195,7 +195,7 @@ export function getContact(id: number): ContactDetail | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, first_name, last_name, exclude, preferred_phone
+      `SELECT id, first_name, last_name, exclude, preferred_handle
        FROM contacts WHERE id = ?`,
     )
     .get(id) as
@@ -204,14 +204,14 @@ export function getContact(id: number): ContactDetail | null {
         first_name: string | null;
         last_name: string | null;
         exclude: number;
-        preferred_phone: string | null;
+        preferred_handle: string | null;
       }
     | undefined;
   if (!row) return null;
 
   const phones = db
-    .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ? ORDER BY phone_e164`)
-    .all(id) as Array<{ phone_e164: string }>;
+    .prepare(`SELECT handle FROM contact_handles WHERE contact_id = ? ORDER BY handle`)
+    .all(id) as Array<{ handle: string }>;
 
   const groups = db
     .prepare(
@@ -222,7 +222,7 @@ export function getContact(id: number): ContactDetail | null {
     )
     .all(id) as Array<{ name: string }>;
 
-  const phoneList = phones.map((p) => p.phone_e164);
+  const phoneList = phones.map((p) => p.handle);
   const dateRange = contactDateRange(phoneList);
   const messageCount = contactMessageSourceCountsForConversations(
     contactIndividualConversationIds(phoneList),
@@ -232,11 +232,11 @@ export function getContact(id: number): ContactDetail | null {
   return {
     id: row.id,
     displayName: displayName(row),
-    preferredPhone: row.preferred_phone,
+    preferredHandle: row.preferred_handle,
     firstName: row.first_name,
     lastName: row.last_name,
     exclude: row.exclude !== 0,
-    groups: groups.map((t) => t.name),
+    contactGroups: groups.map((t) => t.name),
     phones: phoneList,
     dateStart: dateRange?.start ?? null,
     dateEnd: dateRange?.end ?? null,
@@ -269,9 +269,9 @@ function contactPhones(contactId: number): string[] {
   const db = getDb();
   return (
     db
-      .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ?`)
-      .all(contactId) as Array<{ phone_e164: string }>
-  ).map((r) => r.phone_e164);
+      .prepare(`SELECT handle FROM contact_handles WHERE contact_id = ?`)
+      .all(contactId) as Array<{ handle: string }>
+  ).map((r) => r.handle);
 }
 
 function contactIndividualConversationIds(phones: string[]): number[] {
@@ -359,9 +359,9 @@ function contactMessageCountsById(
   const rows = db
     .prepare(
       `SELECT cp.contact_id AS contact_id, COUNT(m.id) AS n
-       FROM contact_phones cp
+       FROM contact_handles cp
        JOIN conversations c
-         ON c.chat_identifier = cp.phone_e164
+         ON c.chat_identifier = cp.handle
         AND c.conv_type = 'individual'
        JOIN messages m ON m.conversation_id = c.id
        WHERE cp.contact_id IN (${placeholders})${hideDupes}
@@ -378,7 +378,7 @@ export function contactThreadsBundle(
   source?: string | null,
 ): {
   yearly: YearThread[];
-  groups: GroupThread[];
+  groupChats: GroupChatThread[];
   messageSources: string[];
   sourceCounts: ContactSourceCounts;
 } {
@@ -386,7 +386,7 @@ export function contactThreadsBundle(
   if (!phones.length) {
     return {
       yearly: [],
-      groups: [],
+      groupChats: [],
       messageSources: [],
       sourceCounts: { all: 0, bySource: {} },
     };
@@ -400,7 +400,7 @@ export function contactThreadsBundle(
     contactMessageSourceCountsForConversations(allConvIds);
   return {
     yearly: contactYearlyThreadsForPhones(phones, source),
-    groups: contactGroupThreadsForPhones(phones, source),
+    groupChats: contactGroupChatThreadsForPhones(phones, source),
     messageSources: Object.keys(anySourceCounts.bySource).sort(),
     sourceCounts,
   };
@@ -469,14 +469,14 @@ export function listContactsForPicker(): ContactListItem[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT id, first_name, last_name, preferred_phone, exclude
+      `SELECT id, first_name, last_name, preferred_handle, exclude
        FROM contacts`,
     )
     .all() as Array<{
     id: number;
     first_name: string | null;
     last_name: string | null;
-    preferred_phone: string | null;
+    preferred_handle: string | null;
     exclude: number;
   }>;
 
@@ -502,10 +502,10 @@ export function listContactsForPicker(): ContactListItem[] {
       return {
         id: row.id,
         displayName: name,
-        preferredPhone: row.preferred_phone,
+        preferredHandle: row.preferred_handle,
         firstName: row.first_name,
         lastName: row.last_name,
-        groups: groupsByContact.get(row.id) ?? [],
+        contactGroups: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: 0,
         ...sorts,

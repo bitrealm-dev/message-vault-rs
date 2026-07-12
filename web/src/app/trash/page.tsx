@@ -22,7 +22,7 @@ export default async function TrashPage({
   const initialYear = Number.isFinite(rawY) ? rawY : null;
   const initialTab = sp.tab === "group-chats" ? "group-chats" : "unassigned";
   const handles = listTrashedHandles();
-  const groups = listTrashedGroupYearRows();
+  const groupChats = listTrashedGroupYearRows();
   const assignContacts = listContactsForPicker();
   const contactGroups = listGroups();
 
@@ -30,7 +30,7 @@ export default async function TrashPage({
     <BrowsePageLayout active="/trash" groups={contactGroups}>
       <TrashShell
         handles={handles}
-        groups={groups}
+        groupChats={groupChats}
         assignContacts={assignContacts}
         initialHandle={initialHandle}
         initialConversationId={initialConversationId}

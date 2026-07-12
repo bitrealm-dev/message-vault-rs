@@ -43,7 +43,7 @@ pub struct Contact {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub exclude: bool,
-    pub preferred_phone: Option<String>,
+    pub preferred_handle: Option<String>,
 }
 
 impl Contact {
@@ -80,9 +80,23 @@ struct EmailSnapshot {
 
 fn snapshot_email_handles(conn: &Connection) -> Result<EmailSnapshot> {
     let mut by_contact: HashMap<i64, (HashSet<String>, Vec<String>)> = HashMap::new();
-    let mut stmt = conn.prepare(
-        "SELECT contact_id, phone_e164 FROM contact_phones ORDER BY contact_id, phone_e164",
-    )?;
+
+    // Prefer new table; fall back to legacy contact_phones during schema migration.
+    let sql = if crate::schema::contacts_schema_outdated(conn).unwrap_or(true)
+        && conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contact_phones'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false)
+    {
+        "SELECT contact_id, phone_e164 FROM contact_phones ORDER BY contact_id, phone_e164"
+    } else {
+        "SELECT contact_id, handle FROM contact_handles ORDER BY contact_id, handle"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
@@ -117,7 +131,7 @@ fn restore_email_handles(
         for phone in phones {
             let found: Option<i64> = conn
                 .query_row(
-                    "SELECT contact_id FROM contact_phones WHERE phone_e164 = ?1",
+                    "SELECT contact_id FROM contact_handles WHERE handle = ?1",
                     params![phone],
                     |row| row.get(0),
                 )
@@ -133,7 +147,7 @@ fn restore_email_handles(
         for email in emails {
             let owner: Option<i64> = conn
                 .query_row(
-                    "SELECT contact_id FROM contact_phones WHERE phone_e164 = ?1",
+                    "SELECT contact_id FROM contact_handles WHERE handle = ?1",
                     params![email],
                     |row| row.get(0),
                 )
@@ -147,7 +161,7 @@ fn restore_email_handles(
                 continue;
             }
             conn.execute(
-                "INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?1, ?2)",
+                "INSERT INTO contact_handles (handle, contact_id) VALUES (?1, ?2)",
                 params![email, id],
             )?;
             restored += 1;
@@ -156,10 +170,11 @@ fn restore_email_handles(
     Ok(restored)
 }
 
-/// Load contacts from CSV when the table is empty, or when `overwrite` is true.
+/// Load contacts from CSV when the table is empty, when `overwrite` is true,
+/// or when the contacts schema is outdated (handle rename).
 ///
-/// On overwrite, email handles already in SQLite are snapshotted by phone set and
-/// reattached after CSV reload (contacts.csv is phone-only).
+/// On overwrite / schema upgrade, email handles already in SQLite are snapshotted
+/// by phone set and reattached after CSV reload (contacts.csv is phone-only).
 pub fn load_contacts_if_needed(
     conn: &mut Connection,
     csv_path: &Path,
@@ -171,20 +186,27 @@ pub fn load_contacts_if_needed(
         .is_err()
     {
         crate::schema::recreate_contacts(conn)?;
+    } else if crate::schema::contacts_schema_outdated(conn)? {
+        eprintln!(
+            "contacts: schema outdated (phone→handle rename); reloading from CSV"
+        );
     } else {
         crate::schema::ensure_contacts_schema(conn)?;
     }
 
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM contacts", [], |row| row.get(0))?;
+    let outdated = crate::schema::contacts_schema_outdated(conn).unwrap_or(false);
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM contacts", [], |row| row.get(0))
+        .unwrap_or(0);
 
-    if count > 0 && !overwrite {
+    if count > 0 && !overwrite && !outdated {
         return Ok(ContactLoadStats {
             skipped: true,
             ..Default::default()
         });
     }
 
-    let email_snapshot = if count > 0 && overwrite {
+    let email_snapshot = if count > 0 && (overwrite || outdated) {
         snapshot_email_handles(conn)?
     } else {
         EmailSnapshot::default()
@@ -263,7 +285,7 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
         tx.execute(
             r#"
             INSERT INTO contacts (
-                first_name, last_name, exclude, preferred_phone
+                first_name, last_name, exclude, preferred_handle
             ) VALUES (?1, ?2, ?3, ?4)
             "#,
             params![first_name, last_name, exclude as i64, preferred],
@@ -273,7 +295,7 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
 
         for phone in &phones {
             tx.execute(
-                "INSERT INTO contact_phones (phone_e164, contact_id) VALUES (?1, ?2)",
+                "INSERT INTO contact_handles (handle, contact_id) VALUES (?1, ?2)",
                 params![phone, contact_id],
             )?;
             stats.phones += 1;
@@ -307,23 +329,23 @@ fn ensure_group(conn: &Connection, name: &str) -> Result<i64> {
 }
 
 #[allow(dead_code)]
-pub fn lookup_by_phone(conn: &Connection, phone_e164: &str) -> Result<Option<Contact>> {
+pub fn lookup_by_phone(conn: &Connection, handle: &str) -> Result<Option<Contact>> {
     let contact = conn
         .query_row(
             r#"
-            SELECT c.id, c.first_name, c.last_name, c.exclude, c.preferred_phone
-            FROM contact_phones p
+            SELECT c.id, c.first_name, c.last_name, c.exclude, c.preferred_handle
+            FROM contact_handles p
             JOIN contacts c ON c.id = p.contact_id
-            WHERE p.phone_e164 = ?1
+            WHERE p.handle = ?1
             "#,
-            params![phone_e164],
+            params![handle],
             |row| {
                 Ok(Contact {
                     id: row.get(0)?,
                     first_name: row.get(1)?,
                     last_name: row.get(2)?,
                     exclude: row.get::<_, i64>(3)? != 0,
-                    preferred_phone: row.get(4)?,
+                    preferred_handle: row.get(4)?,
                 })
             },
         )

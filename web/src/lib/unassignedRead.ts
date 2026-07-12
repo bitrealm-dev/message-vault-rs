@@ -29,7 +29,7 @@ export function countUnassignedHandles(): number {
          JOIN messages m ON m.conversation_id = c.id
          WHERE c.conv_type = 'individual'
            AND NOT EXISTS (
-             SELECT 1 FROM contact_phones cp WHERE cp.phone_e164 = c.chat_identifier
+             SELECT 1 FROM contact_handles cp WHERE cp.handle = c.chat_identifier
            )
            ${trashFilter}${hideDupes}
          GROUP BY c.id
@@ -82,7 +82,7 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
          ON p.conversation_id = c.id AND p.handle = c.chat_identifier
        WHERE c.conv_type = 'individual'
          AND NOT EXISTS (
-           SELECT 1 FROM contact_phones cp WHERE cp.phone_e164 = c.chat_identifier
+           SELECT 1 FROM contact_handles cp WHERE cp.handle = c.chat_identifier
          )
          ${trashFilter}${hideDupes}
        GROUP BY c.id
@@ -141,7 +141,7 @@ export function unassignedThreadsBundle(
   if (!conv) return null;
 
   const owned = db
-    .prepare(`SELECT 1 AS ok FROM contact_phones WHERE phone_e164 = ?`)
+    .prepare(`SELECT 1 AS ok FROM contact_handles WHERE handle = ?`)
     .get(trimmed) as { ok: number } | undefined;
   if (owned) return null;
 

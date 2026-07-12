@@ -16,7 +16,7 @@ function toSearchable(c: ContactListItem): SearchableContact {
     .toLowerCase();
   return {
     ...c,
-    phoneDigits: (c.preferredPhone ?? "").replace(/\D/g, ""),
+    phoneDigits: (c.preferredHandle ?? "").replace(/\D/g, ""),
     initials,
   };
 }
@@ -35,7 +35,7 @@ export function searchContacts(
       { name: "displayName", weight: 0.4 },
       { name: "firstName", weight: 0.25 },
       { name: "lastName", weight: 0.25 },
-      { name: "preferredPhone", weight: 0.05 },
+      { name: "preferredHandle", weight: 0.05 },
       { name: "phoneDigits", weight: 0.1 },
       { name: "initials", weight: 0.1 },
     ],

@@ -24,13 +24,20 @@ export async function POST(req: Request) {
       ? body.phones.map((p) => p.trim()).filter(Boolean)
       : undefined;
   const exclude = typeof body.exclude === "boolean" ? body.exclude : undefined;
-  const groups =
-    Array.isArray(body.groups) && body.groups.every((t) => typeof t === "string")
-      ? body.groups.map((t) => t.trim()).filter(Boolean)
+  const groupsBody = body.contactGroups ?? body.groups;
+  const contactGroups =
+    Array.isArray(groupsBody) && groupsBody.every((t) => typeof t === "string")
+      ? groupsBody.map((t) => t.trim()).filter(Boolean)
       : undefined;
 
   try {
-    const contact = createContact({ firstName, lastName, phones, exclude, groups });
+    const contact = createContact({
+      firstName,
+      lastName,
+      phones,
+      exclude,
+      contactGroups,
+    });
     return NextResponse.json({ contact });
   } catch (err) {
     const message = err instanceof Error ? err.message : "create failed";

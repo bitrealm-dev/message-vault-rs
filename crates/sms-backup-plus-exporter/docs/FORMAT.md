@@ -29,12 +29,12 @@ Body is `text/plain` (first part). Non-text MIME parts are exported as attachmen
 
 Optional MIME attachments are attached to messages in order.
 
-## Mapping to imessage-json v3
+## Mapping to SMS NDJSON (`message_json::sms`)
 
-| Source | v3 |
-|--------|----|
+| Source | SMS NDJSON |
+|--------|------------|
 | counterparty E.164 / group key | `chat_identifier` |
-| — | `service` = `"SMS"`, `schema_version` = `3` |
+| — | `service` = `"SMS"`, `"schema": "sms"`, `schema_version` = `1` |
 | X-smssync-type / From owner email | `is_from_me` |
 | address / From | `sender` |
 | body | `text` |

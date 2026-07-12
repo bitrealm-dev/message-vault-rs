@@ -34,7 +34,7 @@ export function trashHandle(handle: string): void {
   try {
     ensureTrashedHandlesTable(writeDb);
     const owned = writeDb
-      .prepare(`SELECT 1 AS ok FROM contact_phones WHERE phone_e164 = ?`)
+      .prepare(`SELECT 1 AS ok FROM contact_handles WHERE handle = ?`)
       .get(trimmed) as { ok: number } | undefined;
     if (owned) {
       throw new Error("handle already belongs to a contact");
@@ -85,7 +85,7 @@ export function permanentlyDeleteHandle(handle: string): void {
       throw new Error("handle is not in trash");
     }
     const owned = writeDb
-      .prepare(`SELECT 1 AS ok FROM contact_phones WHERE phone_e164 = ?`)
+      .prepare(`SELECT 1 AS ok FROM contact_handles WHERE handle = ?`)
       .get(trimmed) as { ok: number } | undefined;
     if (owned) {
       throw new Error("handle already belongs to a contact");

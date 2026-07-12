@@ -78,25 +78,28 @@ For those cases, `dedupe-eml` generates a new flat `.eml` (logged as `GENERATED`
 
 ### Contacts and name mapping
 
-Some archive (and a few flat) messages only know a person’s name, not their phone. Those can be filled in with CSVs:
+Some archive (and a few flat) messages only know a person’s name, not their phone. Those can be filled in with CSVs under the **repo root** `config/`:
 
 | File | Columns | Role |
 | --- | --- | --- |
-| Vault `config/contacts.csv` | `phones,first_name,last_name,…` | Name → phone (same file the vault imports; `exclude=true` rows are skipped) |
-| `config/name-mapping.csv` | `correct_name,incorrect_name` | Fix messy subject names, then look up contacts |
+| Repo `config/contacts.csv` | `phones,first_name,last_name,…` | Name → phone (same file the vault imports; `exclude=true` rows are skipped) |
+| Repo `config/name-mapping.csv` | `correct_name,incorrect_name` | Fix messy subject names, then look up contacts |
 
 Example: subject says `Casey Typo` → mapping rewrites to `Casey Proper` → contacts CSV supplies `+15555550888`.
 
 Unresolved names stay under `junk/` and are listed in `junk/unresolved_names.txt`. The CLI reports **unique** names mapped and contacts resolved (not one count per message).
 
-Defaults (when present):
+Defaults (lookup order when flags are omitted):
 
-- Repo `config/contacts.csv` (or `../../config/contacts.csv` if you run from this crate directory)
-- [`config/name-mapping.example.csv`](config/name-mapping.example.csv) → copy to `config/name-mapping.csv`
-- [`config/owner.example.toml`](config/owner.example.toml) → copy to `config/owner.toml` for default `--owner-phone` / `--owner-email` / `--input` (`source_dirs`)
+- Repo `config/contacts.csv` (or `../../config/contacts.csv` if the working directory is this crate)
+- Repo `config/name-mapping.csv`, then this crate’s `config/name-mapping.csv` as a fallback
+- Copy examples: [`config/name-mapping.csv.example`](../../config/name-mapping.csv.example) → `config/name-mapping.csv`, and [`config/contacts.csv.example`](../../config/contacts.csv.example) → `config/contacts.csv`
 
+### CLI-only owner defaults (`owner.toml`)
 
-`name-mapping.csv` and `owner.toml` under this crate’s `config/` are gitignored. CLI flags still override defaults when provided.
+Vault ingest uses `[owner]` from root `config/config.toml`. The exporter CLI does **not** read that file. For standalone `dedupe-eml` / `convert` runs, copy [`config/owner.example.toml`](config/owner.example.toml) → `config/owner.toml` under this crate (or `config/owner.toml` at the repo root) for default `--owner-phone` / `--owner-email` / `--input` (`source_dirs`). That file is CLI-only and gitignored under this crate.
+
+CLI flags still override any defaults when provided.
 
 ```bash
 cargo run --release -p sms-backup-plus-exporter -- -v dedupe-eml \
