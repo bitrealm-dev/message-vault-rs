@@ -17,17 +17,6 @@ export const MONTH_SHORT = [
   "Dec",
 ] as const;
 
-export function readStoredGroupDateFormat(): GroupDateFormat {
-  if (typeof window === "undefined") return "md";
-  const v = localStorage.getItem(GROUP_DATE_FORMAT_KEY);
-  if (v === "md" || v === "mon-d" || v === "d-mon") return v;
-  return "md";
-}
-
-export function writeStoredGroupDateFormat(next: GroupDateFormat): void {
-  localStorage.setItem(GROUP_DATE_FORMAT_KEY, next);
-}
-
 /** Compact date for contact-card group meta (year lives in the section header). */
 export function formatGroupDateCompact(
   isoDate: string,

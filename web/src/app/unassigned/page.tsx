@@ -8,7 +8,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function UnmatchedPage({
+export default async function UnassignedPage({
   searchParams,
 }: {
   searchParams: Promise<{ h?: string }>;
@@ -20,7 +20,7 @@ export default async function UnmatchedPage({
   const tags = listTags();
 
   return (
-    <BrowsePageLayout active="/unmatched" tags={tags}>
+    <BrowsePageLayout active="/unassigned" tags={tags}>
       <UnmatchedShell
         handles={handles}
         assignContacts={assignContacts}

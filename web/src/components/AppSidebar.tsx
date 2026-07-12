@@ -718,9 +718,9 @@ export function AppSidebar({
             </span>
           </div>
           <NavLink
-            href="/unmatched"
+            href="/unassigned"
             label="Unassigned"
-            active={active === "/unmatched"}
+            active={active === "/unassigned"}
             icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
           />
           <NavLink
@@ -730,9 +730,9 @@ export function AppSidebar({
             icon={groupIcon}
           />
           <NavLink
-            href="/unmatched/trash"
+            href="/unassigned/trash"
             label="Trash"
-            active={active === "/unmatched/trash"}
+            active={active === "/unassigned/trash"}
             icon={<TrashIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 

@@ -310,7 +310,7 @@ export function GroupsShell({
           : `Moved ${targets.length} to Trash`,
       );
       clearFocusAfterRemoval(targets);
-      router.push("/unmatched/trash?tab=groups");
+      router.push("/unassigned/trash?tab=groups");
     } catch (err) {
       console.error(err);
       setStatus(err instanceof Error ? err.message : "Delete failed");

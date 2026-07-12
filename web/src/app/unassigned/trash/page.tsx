@@ -9,7 +9,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function UnmatchedTrashPage({
+export default async function UnassignedTrashPage({
   searchParams,
 }: {
   searchParams: Promise<{ h?: string; g?: string; y?: string; tab?: string }>;
@@ -27,7 +27,7 @@ export default async function UnmatchedTrashPage({
   const tags = listTags();
 
   return (
-    <BrowsePageLayout active="/unmatched/trash" tags={tags}>
+    <BrowsePageLayout active="/unassigned/trash" tags={tags}>
       <TrashShell
         handles={handles}
         groups={groups}
