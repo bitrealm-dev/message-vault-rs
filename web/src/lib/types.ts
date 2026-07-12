@@ -1,6 +1,7 @@
 export type ContactSection =
   | "all"
   | "excluded"
+  | "no-messages"
   | "untagged"
   | { tag: string };
 
@@ -33,6 +34,7 @@ export type YearThread = {
 
 export type GroupThread = {
   conversationId: number;
+  conversationIds: number[];
   title: string;
   titleFull: string;
   namedTitle: string | null;
@@ -80,6 +82,7 @@ export type MessageRow = {
 export type HomeStats = {
   all: number;
   excluded: number;
+  noMessages: number;
   groups: number;
   messages: number;
   contacts: number;

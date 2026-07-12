@@ -123,6 +123,8 @@ export function GroupsMenu({
     const name = newName.trim();
     if (!name) return;
     if (name.toLowerCase() === "excluded") return;
+    if (name.toLowerCase() === "no messages" || name.toLowerCase() === "no-messages")
+      return;
 
     const existing = localGroups.find(
       (g) => g.toLowerCase() === name.toLowerCase(),

@@ -104,6 +104,24 @@ function ProhibitedIcon({ className }: { className?: string }) {
   );
 }
 
+function EmptyChatIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5.5 18.5 4 21l3.2-1.2A8.5 8.5 0 1 0 5.5 18.5Z" />
+      <path d="M9 11h6M9 14h3.5" opacity="0.45" />
+    </svg>
+  );
+}
+
 function PanelCollapseIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -599,7 +617,7 @@ export function AppSidebar({
               setSource(v === "all" ? null : v);
             }}
           >
-            <option value="all">All (combined)</option>
+            <option value="all">Combined</option>
             {sources.map((id) => (
               <option key={id} value={id}>
                 {id}
@@ -622,6 +640,12 @@ export function AppSidebar({
             label="Excluded"
             active={active === "/excluded"}
             icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+          <NavLink
+            href="/no-messages"
+            label="No messages"
+            active={active === "/no-messages"}
+            icon={<EmptyChatIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 
           <GroupsNav tags={tags} />

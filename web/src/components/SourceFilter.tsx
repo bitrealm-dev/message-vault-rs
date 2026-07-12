@@ -12,7 +12,7 @@ import {
 
 type SourceFilterValue = {
   sources: string[];
-  /** null = combined (all sources) */
+  /** null = combined (all sources, soft-deduped) */
   source: string | null;
   setSource: (source: string | null) => void;
   sourceQuery: string;

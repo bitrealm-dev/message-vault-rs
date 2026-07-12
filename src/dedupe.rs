@@ -16,9 +16,30 @@ pub fn normalize_body(body: Option<&str>) -> String {
         .join(" ")
 }
 
+/// Stable chat identity for content keys.
+///
+/// 1:1 chats use `chat_identifier`. Groups use sorted participant handles so the same
+/// people across exporters (different `chat_identifier`s) share one fingerprint.
+pub fn chat_identity_for_content_key(chat_identifier: &str, group_handles: Option<&[String]>) -> String {
+    match group_handles {
+        Some(handles) if !handles.is_empty() => {
+            let mut sorted: Vec<&str> = handles
+                .iter()
+                .map(|h| h.as_str())
+                .filter(|h| !h.is_empty())
+                .collect();
+            sorted.sort_unstable();
+            sorted.dedup();
+            format!("group:{}", sorted.join("|"))
+        }
+        _ => chat_identifier.to_string(),
+    }
+}
+
 /// Build a content key from chat + UTC epoch seconds + direction + normalized body + attachment hashes.
 ///
 /// Prefers `timestamp_utc`; falls back to local `timestamp` (offsets are applied).
+/// For groups, pass the sorted-participant identity from [`chat_identity_for_content_key`].
 pub fn compute_content_key(
     chat_identifier: &str,
     is_from_me: bool,
@@ -160,7 +181,8 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
     };
     let sql = format!(
         r#"
-        SELECT m.id, c.chat_identifier, m.is_from_me, m.timestamp_utc, m.timestamp, m.body
+        SELECT m.id, m.conversation_id, c.chat_identifier, c.conv_type,
+               m.is_from_me, m.timestamp_utc, m.timestamp, m.body
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         {filter}
@@ -168,7 +190,16 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
         "#
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows: Vec<(i64, String, i64, Option<String>, String, Option<String>)> = stmt
+    let rows: Vec<(
+        i64,
+        i64,
+        String,
+        String,
+        i64,
+        Option<String>,
+        String,
+        Option<String>,
+    )> = stmt
         .query_map([], |row| {
             Ok((
                 row.get(0)?,
@@ -177,6 +208,8 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
                 row.get(3)?,
                 row.get(4)?,
                 row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -184,6 +217,29 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
 
     if rows.is_empty() {
         return Ok(0);
+    }
+
+    // Sorted participant handles per group conversation (canonical cross-source identity).
+    let mut group_handles: HashMap<i64, Vec<String>> = HashMap::new();
+    {
+        let mut p_stmt = conn.prepare(
+            r#"
+            SELECT conversation_id, handle
+            FROM participants
+            WHERE handle IS NOT NULL AND handle != ''
+            ORDER BY conversation_id, handle
+            "#,
+        )?;
+        let p_rows = p_stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in p_rows {
+            let (conversation_id, handle) = row?;
+            group_handles
+                .entry(conversation_id)
+                .or_default()
+                .push(handle);
+        }
     }
 
     // One scan for all attachment hashes instead of per-message queries.
@@ -211,10 +267,18 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
 
     let empty: Vec<String> = Vec::new();
     let mut keys: Vec<(i64, String)> = Vec::with_capacity(rows.len());
-    for (id, chat_id, is_from_me, ts_utc, ts, body) in rows {
+    for (id, conversation_id, chat_id, conv_type, is_from_me, ts_utc, ts, body) in rows {
         let shas = shas_by_msg.get(&id).unwrap_or(&empty);
+        let identity = if conv_type == "group" {
+            chat_identity_for_content_key(
+                &chat_id,
+                group_handles.get(&conversation_id).map(|h| h.as_slice()),
+            )
+        } else {
+            chat_id
+        };
         let key = compute_content_key(
-            &chat_id,
+            &identity,
             is_from_me != 0,
             ts_utc.as_deref(),
             &ts,
@@ -645,6 +709,23 @@ mod tests {
     #[test]
     fn normalize_collapses_whitespace() {
         assert_eq!(normalize_body(Some("  hi   mom \n")), "hi mom");
+    }
+
+    #[test]
+    fn group_chat_identity_is_sorted_handles() {
+        let handles = vec![
+            "+14075550002".to_string(),
+            "+14075550001".to_string(),
+            "+14075550002".to_string(),
+        ];
+        assert_eq!(
+            chat_identity_for_content_key("chat999", Some(&handles)),
+            "group:+14075550001|+14075550002"
+        );
+        assert_eq!(
+            chat_identity_for_content_key("chat999", None),
+            "chat999"
+        );
     }
 
     #[test]

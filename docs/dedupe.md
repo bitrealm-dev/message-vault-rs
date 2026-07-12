@@ -66,13 +66,15 @@ Each message gets a `content_key`:
 
 ```
 hash(
-  chat_identifier
-  + direction (from me / not)
-  + UTC epoch seconds
-  + normalized body text
-  + sorted attachment sha256 hashes
+  chat identity
+    + direction (from me / not)
+    + UTC epoch seconds
+    + normalized body text
+    + sorted attachment sha256 hashes
 )
 ```
+
+Chat identity is `chat_identifier` for 1:1 threads. For groups it is the sorted participant handle list (`group:+1…|+1…`), so the same people across exporters match even when `chat_identifier` differs (e.g. iMessage `chat…` vs Android `chat-group-…`).
 
 UTC epoch seconds come from `timestamp_utc` when present, otherwise from `timestamp` with its offset applied. `2015-03-12T18:04:22Z` and `2015-03-12T14:04:22-04:00` hash the same.
 
@@ -111,7 +113,7 @@ sequenceDiagram
   Dedupe->>DB: recompute all content_key values
   Dedupe->>DB: Pass A exact key → set duplicate_of
   Dedupe->>DB: Pass B ±2s → set duplicate_of
-  UI->>DB: All combined (hide where duplicate_of is set)
+  UI->>DB: Combined (hide where duplicate_of is set)
   UI->>DB: One source (show every row for that source)
 ```
 
@@ -120,13 +122,13 @@ sequenceDiagram
 ```mermaid
 flowchart TB
   rows[(messages in vault.db)]
-  rows --> allView["All combined"]
+  rows --> allView["Combined"]
   rows --> oneView["Source = go-sms-pro"]
   allView --> hide["hide rows with duplicate_of set"]
   oneView --> showAll["show every row for that source"]
 ```
 
-- **All (combined)** — one copy of each matched SMS.
+- **Combined** — one copy of each matched SMS.
 - **Single source** — the full archive, including soft-hidden copies. Useful for checking what one dump actually contained.
 
 ## What matches well / what can miss

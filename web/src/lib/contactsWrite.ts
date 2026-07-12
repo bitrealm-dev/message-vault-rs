@@ -14,11 +14,16 @@ export type ContactPatch = {
   phones?: string[];
 };
 
-const RESERVED_GROUP_NAMES = new Set(["excluded"]);
+const RESERVED_GROUP_NAMES = new Set(["excluded", "no messages", "no-messages"]);
 
 function assertAllowedTagName(name: string): void {
-  if (RESERVED_GROUP_NAMES.has(name.trim().toLowerCase())) {
-    throw new Error("Excluded is a reserved group");
+  const key = name.trim().toLowerCase();
+  if (RESERVED_GROUP_NAMES.has(key)) {
+    throw new Error(
+      key === "excluded"
+        ? "Excluded is a reserved group"
+        : "No messages is a reserved group",
+    );
   }
 }
 

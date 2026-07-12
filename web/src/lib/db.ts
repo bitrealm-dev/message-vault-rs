@@ -83,9 +83,16 @@ function sortFields(row: {
 }
 
 const RESERVED_TAG_LABELS = new Set(
-  ["home", "all", "excluded", "groups", "no-group", "no group"].map((s) =>
-    s.toLowerCase(),
-  ),
+  [
+    "home",
+    "all",
+    "excluded",
+    "no-messages",
+    "no messages",
+    "groups",
+    "no-group",
+    "no group",
+  ].map((s) => s.toLowerCase()),
 );
 
 export function listTags(): string[] {
@@ -110,9 +117,33 @@ export function tagFromSlug(slug: string): string | null {
   return null;
 }
 
+const CONTACT_HAS_MESSAGES_SQL = `
+  EXISTS (
+    SELECT 1
+    FROM contact_phones cp
+    WHERE cp.contact_id = c.id
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM conversations cv
+          JOIN messages m ON m.conversation_id = cv.id
+          WHERE cv.conv_type = 'individual'
+            AND cv.chat_identifier = cp.phone_e164
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM participants p
+          JOIN messages m ON m.conversation_id = p.conversation_id
+          WHERE p.handle = cp.phone_e164
+        )
+      )
+  )
+`;
+
 function sectionSql(section: ContactSection): { sql: string; params: unknown[] } {
   if (typeof section === "object" && "tag" in section) {
-    // Exclude overrides tags: excluded contacts only appear under Excluded.
+    // Exclude and no-messages override tags: those contacts only appear under
+    // their implicit sections.
     return {
       sql: `
         SELECT DISTINCT c.*
@@ -120,6 +151,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
         JOIN contact_tags ct ON ct.contact_id = c.id
         JOIN tags t ON t.id = ct.tag_id AND t.name = ?
         WHERE c.exclude = 0
+          AND ${CONTACT_HAS_MESSAGES_SQL}
       `,
       params: [section.tag],
     };
@@ -131,15 +163,27 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
           SELECT DISTINCT c.*
           FROM contacts c
           WHERE c.exclude = 0
+            AND ${CONTACT_HAS_MESSAGES_SQL}
         `,
         params: [],
       };
     case "excluded":
+      // Excluded overrides no-messages: all excluded contacts live here.
       return {
         sql: `
           SELECT DISTINCT c.*
           FROM contacts c
           WHERE c.exclude = 1
+        `,
+        params: [],
+      };
+    case "no-messages":
+      // Includes excluded contacts with no messages (they also appear under Excluded).
+      return {
+        sql: `
+          SELECT DISTINCT c.*
+          FROM contacts c
+          WHERE NOT (${CONTACT_HAS_MESSAGES_SQL})
         `,
         params: [],
       };
@@ -152,6 +196,7 @@ function sectionSql(section: ContactSection): { sql: string; params: unknown[] }
             AND NOT EXISTS (
               SELECT 1 FROM contact_tags ct WHERE ct.contact_id = c.id
             )
+            AND ${CONTACT_HAS_MESSAGES_SQL}
         `,
         params: [],
       };
@@ -287,19 +332,32 @@ export function contactPhones(contactId: number): string[] {
 
 /** Distinct message sources that have any 1:1 or group thread for this contact. */
 export function contactMessageSources(contactId: number): string[] {
-  const counts = contactMessageSourceCounts(contactId);
+  const phones = contactPhones(contactId);
+  if (!phones.length) return [];
+  const counts = contactMessageSourceCountsForConversations(
+    contactConversationIds(phones),
+  );
   return Object.keys(counts.bySource).sort();
+}
+
+function contactIndividualConversationIds(phones: string[]): number[] {
+  if (!phones.length) return [];
+  const db = getDb();
+  const placeholders = phones.map(() => "?").join(",");
+  return (
+    db
+      .prepare(
+        `SELECT id FROM conversations
+         WHERE conv_type = 'individual' AND chat_identifier IN (${placeholders})`,
+      )
+      .all(...phones) as Array<{ id: number }>
+  ).map((r) => r.id);
 }
 
 function contactConversationIds(phones: string[]): number[] {
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
-  const individual = db
-    .prepare(
-      `SELECT id FROM conversations
-       WHERE conv_type = 'individual' AND chat_identifier IN (${placeholders})`,
-    )
-    .all(...phones) as Array<{ id: number }>;
+  const individual = contactIndividualConversationIds(phones);
   const groups = db
     .prepare(
       `SELECT DISTINCT c.id AS id
@@ -308,16 +366,15 @@ function contactConversationIds(phones: string[]): number[] {
        WHERE c.conv_type = 'group' AND p.handle IN (${placeholders})`,
     )
     .all(...phones) as Array<{ id: number }>;
-  const ids = new Set<number>();
-  for (const r of individual) ids.add(r.id);
+  const ids = new Set<number>(individual);
   for (const r of groups) ids.add(r.id);
   return [...ids];
 }
 
 export type ContactSourceCounts = {
-  /** Soft-deduped total (All / combined view). */
+  /** Soft-deduped 1:1 total (Combined view). Group chats are listed separately. */
   all: number;
-  /** Per-source totals (single-source view; includes soft-hidden copies). */
+  /** Per-source 1:1 totals (single-source view; includes soft-hidden copies). */
   bySource: Record<string, number>;
 };
 
@@ -359,8 +416,9 @@ export function contactMessageSourceCounts(
 ): ContactSourceCounts {
   const phones = contactPhones(contactId);
   if (!phones.length) return { all: 0, bySource: {} };
+  // Person totals are 1:1 only — group volume lives under Group messages.
   return contactMessageSourceCountsForConversations(
-    contactConversationIds(phones),
+    contactIndividualConversationIds(phones),
   );
 }
 
@@ -383,12 +441,17 @@ export function contactThreadsBundle(
       sourceCounts: { all: 0, bySource: {} },
     };
   }
-  const convIds = contactConversationIds(phones);
-  const sourceCounts = contactMessageSourceCountsForConversations(convIds);
+  const allConvIds = contactConversationIds(phones);
+  const individualIds = contactIndividualConversationIds(phones);
+  const sourceCounts =
+    contactMessageSourceCountsForConversations(individualIds);
+  // Enable sources that appear in 1:1 or groups so group-only archives stay selectable.
+  const anySourceCounts =
+    contactMessageSourceCountsForConversations(allConvIds);
   return {
     yearly: contactYearlyThreadsForPhones(phones, source),
     groups: contactGroupThreadsForPhones(phones, source),
-    messageSources: Object.keys(sourceCounts.bySource).sort(),
+    messageSources: Object.keys(anySourceCounts.bySource).sort(),
     sourceCounts,
   };
 }
@@ -611,11 +674,14 @@ function contactGroupThreadsForPhones(
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
               MAX(substr(m.timestamp, 1, 10)) AS date_end
        FROM conversations c
-       JOIN participants p ON p.conversation_id = c.id
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conv_type = 'group'
-         AND p.handle IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
+         AND EXISTS (
+           SELECT 1 FROM participants p
+           WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
+         )${sourceSql}${combinedDedupeSql(source, "m")}
        GROUP BY c.id, year
+       HAVING message_count > 0
        ORDER BY year DESC, c.id`,
     )
     .all(...params) as Array<{
@@ -626,12 +692,11 @@ function contactGroupThreadsForPhones(
     date_end: string;
   }>;
 
-  const titles = groupPeopleTitles(
-    [...new Set(rows.map((r) => r.conversation_id))],
-    phones,
-  );
+  const conversationIds = [...new Set(rows.map((r) => r.conversation_id))];
+  const titles = groupPeopleTitles(conversationIds, phones);
+  const fingerprints = groupParticipantFingerprints(conversationIds);
 
-  return rows.map((r) => {
+  const mapped = rows.map((r) => {
     const t = titles.get(r.conversation_id) ?? {
       title: "Group chat",
       titleFull: "Group chat",
@@ -640,6 +705,7 @@ function contactGroupThreadsForPhones(
     };
     return {
       conversationId: r.conversation_id,
+      conversationIds: [r.conversation_id],
       title: t.title,
       titleFull: t.titleFull,
       namedTitle: t.namedTitle,
@@ -648,8 +714,123 @@ function contactGroupThreadsForPhones(
       messageCount: r.message_count,
       dateStart: r.date_start,
       dateEnd: r.date_end,
+      fingerprint: fingerprints.get(r.conversation_id) ?? `id:${r.conversation_id}`,
     };
   });
+
+  // Combined view: collapse the same people across exporters into one row.
+  if (source) {
+    return mapped.map(({ fingerprint: _fp, ...rest }) => rest);
+  }
+
+  const byKey = new Map<string, (typeof mapped)[number]>();
+  for (const row of mapped) {
+    const key = `${row.year}|${row.fingerprint}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...row, conversationIds: [...row.conversationIds] });
+      continue;
+    }
+    for (const id of row.conversationIds) {
+      if (!existing.conversationIds.includes(id)) {
+        existing.conversationIds.push(id);
+      }
+    }
+    existing.messageCount += row.messageCount;
+    if (row.dateStart < existing.dateStart) existing.dateStart = row.dateStart;
+    if (row.dateEnd > existing.dateEnd) existing.dateEnd = row.dateEnd;
+    if (row.participantCount > existing.participantCount) {
+      existing.participantCount = row.participantCount;
+      existing.title = row.title;
+      existing.titleFull = row.titleFull;
+      existing.namedTitle = row.namedTitle;
+    }
+  }
+
+  // Recount soft-deduped messages across merged conversation ids so we don't
+  // sum pre-dedupe copies when duplicate_of is not yet set / partially set.
+  const merged = [...byKey.values()].map(({ fingerprint: _fp, ...rest }) => {
+    if (rest.conversationIds.length === 1) return rest;
+    const stats = groupYearStatsForConversations(
+      rest.conversationIds,
+      rest.year,
+      source,
+    );
+    return {
+      ...rest,
+      conversationId: rest.conversationIds[0]!,
+      messageCount: stats.messageCount,
+      dateStart: stats.dateStart || rest.dateStart,
+      dateEnd: stats.dateEnd || rest.dateEnd,
+    };
+  });
+
+  merged.sort((a, b) => b.year - a.year || a.conversationId - b.conversationId);
+  return merged;
+}
+
+function groupParticipantFingerprints(
+  conversationIds: number[],
+): Map<number, string> {
+  const out = new Map<number, string>();
+  if (!conversationIds.length) return out;
+  const db = getDb();
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT conversation_id, handle
+       FROM participants
+       WHERE conversation_id IN (${placeholders})
+         AND handle IS NOT NULL AND handle != ''
+       ORDER BY conversation_id, handle`,
+    )
+    .all(...conversationIds) as Array<{ conversation_id: number; handle: string }>;
+  const byConv = new Map<number, string[]>();
+  for (const r of rows) {
+    const list = byConv.get(r.conversation_id) ?? [];
+    list.push(r.handle.trim());
+    byConv.set(r.conversation_id, list);
+  }
+  for (const id of conversationIds) {
+    const handles = [...new Set(byConv.get(id) ?? [])].sort();
+    out.set(id, handles.length ? `group:${handles.join("|")}` : `id:${id}`);
+  }
+  return out;
+}
+
+function groupYearStatsForConversations(
+  conversationIds: number[],
+  year: number,
+  source?: string | null,
+): { messageCount: number; dateStart: string; dateEnd: string } {
+  const db = getDb();
+  const placeholders = conversationIds.map(() => "?").join(",");
+  const sourceSql = source ? " AND source = ?" : "";
+  const params: Array<string | number> = [
+    ...conversationIds,
+    `${year}-`,
+    `${year + 1}-`,
+  ];
+  if (source) params.push(source);
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS message_count,
+              MIN(substr(timestamp, 1, 10)) AS date_start,
+              MAX(substr(timestamp, 1, 10)) AS date_end
+       FROM messages
+       WHERE conversation_id IN (${placeholders})
+         AND timestamp >= ? AND timestamp < ?${sourceSql}${combinedDedupeSql(source)}`,
+    )
+    .get(...params) as {
+    message_count: number;
+    date_start: string | null;
+    date_end: string | null;
+  };
+  return {
+    messageCount: row.message_count,
+    dateStart: row.date_start ?? "",
+    dateEnd: row.date_end ?? "",
+  };
 }
 
 export function listGroups(): GroupListItem[] {
@@ -875,6 +1056,7 @@ export function homeStats(): HomeStats {
   return {
     all: listContacts("all").length,
     excluded: listContacts("excluded").length,
+    noMessages: listContacts("no-messages").length,
     groups: listGroups().length,
     messages: (
       getDb().prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }

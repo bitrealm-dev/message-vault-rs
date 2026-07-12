@@ -28,6 +28,7 @@ type YearThread = {
 
 type GroupThread = {
   conversationId: number;
+  conversationIds: number[];
   title: string;
   titleFull: string;
   namedTitle: string | null;
@@ -49,6 +50,7 @@ type ContactDetail = ContactListItem & {
 type GroupDateFormat = "md" | "mon-d" | "d-mon";
 
 const GROUP_DATE_FORMAT_KEY = "mv-group-date-format";
+const SORT_MODE_KEY = "mv-contact-sort";
 const MONTH_SHORT = [
   "Jan",
   "Feb",
@@ -117,7 +119,16 @@ export function BrowseShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
-  const [sort, setSort] = useState<SortMode>("last");
+  const [sort, setSortState] = useState<SortMode>(() => {
+    if (typeof window === "undefined") return "last";
+    const v = localStorage.getItem(SORT_MODE_KEY);
+    return v === "first" || v === "last" ? v : "last";
+  });
+
+  const setSort = useCallback((next: SortMode) => {
+    setSortState(next);
+    localStorage.setItem(SORT_MODE_KEY, next);
+  }, []);
   const [query, setQuery] = useState("");
   const [contactId, setContactId] = useState<number | null>(initialContactId);
   const [detail, setDetail] = useState<ContactDetail | null>(null);
@@ -202,13 +213,15 @@ export function BrowseShell({
     [excludeOverrides],
   );
 
-  /** Excluded contacts only appear under Excluded — never in All / groups / no-group. */
+  /** Excluded contacts stay out of All / tags; No messages may include them. */
   const visibleContacts = useMemo(() => {
-    const onExcluded = browseSection === "excluded";
-    return contacts.filter((c) => {
-      const excluded = isContactExcluded(c);
-      return onExcluded ? excluded : !excluded;
-    });
+    if (browseSection === "excluded") {
+      return contacts.filter((c) => isContactExcluded(c));
+    }
+    if (browseSection === "no-messages") {
+      return contacts;
+    }
+    return contacts.filter((c) => !isContactExcluded(c));
   }, [contacts, browseSection, isContactExcluded]);
 
   const sorted = useMemo(() => {
@@ -416,14 +429,36 @@ export function BrowseShell({
             const year = Number(prev.slice(2));
             return nextYearly.some((t) => t.year === year) ? prev : null;
           }
-          return nextGroups.some((t) => `g-${t.conversationId}-${t.year}` === prev)
+          return nextGroups.some(
+            (t) =>
+              `g-${(t.conversationIds ?? [t.conversationId]).join("-")}-${t.year}` ===
+                prev || `g-${t.conversationId}-${t.year}` === prev,
+          )
             ? prev
             : null;
         });
 
-        // Reload open thread for the new source; keep prior bubbles until replace.
-        const key = activeThreadRef.current;
-        if (!key) return;
+        // Prefer an already-open thread; otherwise auto-open the sole yearly thread.
+        let key = activeThreadRef.current;
+        if (key?.startsWith("y-")) {
+          const year = Number(key.slice(2));
+          if (!nextYearly.some((t) => t.year === year)) key = null;
+        } else if (key) {
+          const stillThere = nextGroups.some(
+            (t) =>
+              `g-${(t.conversationIds ?? [t.conversationId]).join("-")}-${t.year}` ===
+                key || `g-${t.conversationId}-${t.year}` === key,
+          );
+          if (!stillThere) key = null;
+        }
+        if (nextYearly.length === 1) {
+          key = `y-${nextYearly[0]!.year}`;
+          setActiveThread(key);
+        } else if (!key) {
+          if (switchingContact) setMessages([]);
+          return;
+        }
+
         let convIds: number[] | null = null;
         let year: number | null = null;
         if (key.startsWith("y-")) {
@@ -433,9 +468,15 @@ export function BrowseShell({
             year = y.year;
           }
         } else {
-          const g = nextGroups.find((t) => `g-${t.conversationId}-${t.year}` === key);
+          const g = nextGroups.find(
+            (t) =>
+              `g-${(t.conversationIds ?? [t.conversationId]).join("-")}-${t.year}` ===
+                key || `g-${t.conversationId}-${t.year}` === key,
+          );
           if (g) {
-            convIds = [g.conversationId];
+            convIds = g.conversationIds?.length
+              ? g.conversationIds
+              : [g.conversationId];
             year = g.year;
           }
         }
@@ -1317,21 +1358,16 @@ export function BrowseShell({
                         <div className="text-[11px] tracking-wide text-muted">Groups</div>
                         <div className="mt-0.5">
                           {(() => {
-                            const detailExcluded = detail
-                              ? isContactExcluded(detail)
-                              : false;
                             const shownTags =
                               contactCreating && editDraft
                                 ? editDraft.tags
-                                : detailExcluded
-                                  ? []
-                                  : detail
-                                    ? tagsFor(detail.id, detail.tags)
-                                    : [];
+                                : detail
+                                  ? tagsFor(detail.id, detail.tags)
+                                  : [];
                             if (shownTags.length === 0) {
                               return (
                                 <span className="text-[13px] text-muted">
-                                  {detailExcluded ? "Excluded" : "None"}
+                                  None
                                 </span>
                               );
                             }
@@ -1454,7 +1490,7 @@ export function BrowseShell({
                     {[
                       {
                         id: null as string | null,
-                        label: "All",
+                        label: "Combined",
                         enabled: true,
                         count: sourceCounts.all,
                       },
@@ -1584,16 +1620,19 @@ export function BrowseShell({
                                 }
                                 className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
                               >
-                                <option value="md">02-07</option>
-                                <option value="mon-d">Feb 7</option>
-                                <option value="d-mon">7 Feb</option>
+                                <option value="md">01-31</option>
+                                <option value="mon-d">Jan 31</option>
+                                <option value="d-mon">31 Jan</option>
                               </select>
                             </label>
                           )}
                         </div>
                         <ul className="divide-y divide-border/50 border-y border-border/50">
                           {items.map((g) => {
-                            const key = `g-${g.conversationId}-${g.year}`;
+                            const convIds = g.conversationIds?.length
+                              ? g.conversationIds
+                              : [g.conversationId];
+                            const key = `g-${convIds.join("-")}-${g.year}`;
                             const active = activeThread === key;
                             return (
                               <li key={key}>
@@ -1601,11 +1640,7 @@ export function BrowseShell({
                                   type="button"
                                   title={g.titleFull}
                                   onClick={() =>
-                                    loadMessages(
-                                      [g.conversationId],
-                                      g.year,
-                                      key,
-                                    )
+                                    loadMessages(convIds, g.year, key)
                                   }
                                   className={`flex w-full items-start justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
                                     active
