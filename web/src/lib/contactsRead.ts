@@ -49,7 +49,7 @@ const CONTACT_HAS_MESSAGES_SQL = `
           SELECT 1
           FROM conversations cv
           JOIN messages m ON m.conversation_id = cv.id
-          WHERE cv.conv_type = 'individual'
+          WHERE cv.conversation_type = 'individual'
             AND cv.chat_identifier = cp.handle
         )
         OR EXISTS (
@@ -257,7 +257,7 @@ function contactDateRange(
       `SELECT MIN(substr(m.timestamp, 1, 10)) AS start, MAX(substr(m.timestamp, 1, 10)) AS end
        FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
-       WHERE c.conv_type = 'individual'
+       WHERE c.conversation_type = 'individual'
          AND c.chat_identifier IN (${placeholders})${hideDupes}`,
     )
     .get(...phones) as { start: string | null; end: string | null } | undefined;
@@ -282,7 +282,7 @@ function contactIndividualConversationIds(phones: string[]): number[] {
     db
       .prepare(
         `SELECT id FROM conversations
-         WHERE conv_type = 'individual' AND chat_identifier IN (${placeholders})`,
+         WHERE conversation_type = 'individual' AND chat_identifier IN (${placeholders})`,
       )
       .all(...phones) as Array<{ id: number }>
   ).map((r) => r.id);
@@ -297,7 +297,7 @@ function contactConversationIds(phones: string[]): number[] {
       `SELECT DISTINCT c.id AS id
        FROM conversations c
        JOIN participants p ON p.conversation_id = c.id
-       WHERE c.conv_type = 'group' AND p.handle IN (${placeholders})`,
+       WHERE c.conversation_type = 'group' AND p.handle IN (${placeholders})`,
     )
     .all(...phones) as Array<{ id: number }>;
   const ids = new Set<number>(individual);
@@ -362,7 +362,7 @@ function contactMessageCountsById(
        FROM contact_handles cp
        JOIN conversations c
          ON c.chat_identifier = cp.handle
-        AND c.conv_type = 'individual'
+        AND c.conversation_type = 'individual'
        JOIN messages m ON m.conversation_id = c.id
        WHERE cp.contact_id IN (${placeholders})${hideDupes}
        GROUP BY cp.contact_id`,
@@ -425,7 +425,7 @@ export function contactYearlyThreadsForPhones(
               GROUP_CONCAT(DISTINCT c.id) AS conversation_ids
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
-       WHERE c.conv_type = 'individual'
+       WHERE c.conversation_type = 'individual'
          AND c.chat_identifier IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
        GROUP BY year
        ORDER BY year DESC`,

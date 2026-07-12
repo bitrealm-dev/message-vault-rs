@@ -42,7 +42,7 @@ use sha2::{Digest, Sha256};
 
 /// Who this chat is with, as a stable string (E.164 phone or `chat-…` for groups).
 pub(crate) fn chat_id_for(msg: &ParsedMessage) -> String {
-    if msg.conv_type == "group" {
+    if msg.conversation_type == "group" {
         format!("chat-{}", msg.chat_key)
     } else {
         to_e164(&msg.chat_key)
@@ -200,7 +200,7 @@ mod tests {
     ) -> ParsedMessage {
         ParsedMessage {
             chat_key: chat_key.into(),
-            conv_type: "individual".into(),
+            conversation_type: "individual".into(),
             group_title: None,
             participant_digits: vec![(chat_key.into(), None)],
             timestamp_secs: ts,

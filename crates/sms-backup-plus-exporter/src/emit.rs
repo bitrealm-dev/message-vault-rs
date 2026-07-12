@@ -52,7 +52,7 @@ struct PendingMessage {
 
 #[derive(Debug, Default)]
 struct PendingConversation {
-    conv_type: String,
+    conversation_type: String,
     group_title: Option<String>,
     participants: BTreeMap<String, Option<String>>,
     messages: Vec<PendingMessage>,
@@ -101,12 +101,12 @@ fn write_attachments(
 fn ensure_convo<'a>(
     map: &'a mut BTreeMap<String, PendingConversation>,
     chat_id: &str,
-    conv_type: &str,
+    conversation_type: &str,
     group_title: Option<String>,
 ) -> &'a mut PendingConversation {
     map.entry(chat_id.to_string())
         .or_insert_with(|| PendingConversation {
-            conv_type: conv_type.to_string(),
+            conversation_type: conversation_type.to_string(),
             group_title,
             participants: BTreeMap::new(),
             messages: Vec::new(),
@@ -123,7 +123,7 @@ fn add_message(
     let convo = ensure_convo(
         conversations,
         &chat_id,
-        &msg.conv_type,
+        &msg.conversation_type,
         msg.group_title.clone(),
     );
     for (digits, hint) in &msg.participant_digits {
@@ -179,7 +179,7 @@ fn write_conversation(
             name_hint: hint.clone(),
         })
         .collect();
-    if convo.conv_type == "group"
+    if convo.conversation_type == "group"
         && !participants
             .iter()
             .any(|p| sanitize_number(&p.handle) == sanitize_number(owner_e164))
@@ -193,7 +193,7 @@ fn write_conversation(
 
     let header = ConversationRecord::header(
         chat_id,
-        convo.conv_type.clone(),
+        convo.conversation_type.clone(),
         convo.group_title.clone(),
         participants,
         exported_at,

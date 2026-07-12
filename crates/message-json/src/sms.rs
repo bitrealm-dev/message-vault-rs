@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA_NAME: &str = "sms";
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 pub const RECORD_CONVERSATION: &str = "conversation";
 pub const RECORD_MESSAGE: &str = "message";
@@ -31,8 +31,7 @@ pub struct ConversationRecord {
     pub chat_identifier: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
-    #[serde(rename = "type")]
-    pub conv_type: String,
+    pub conversation_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_title: Option<String>,
     #[serde(default)]
@@ -88,7 +87,7 @@ impl ConversationRecord {
     /// Conversation header for SMS-style exports.
     pub fn header(
         chat_identifier: impl Into<String>,
-        conv_type: impl Into<String>,
+        conversation_type: impl Into<String>,
         group_title: Option<String>,
         participants: Vec<ParticipantRecord>,
         exported_at: impl Into<String>,
@@ -98,7 +97,7 @@ impl ConversationRecord {
             schema_version: SCHEMA_VERSION,
             chat_identifier: chat_identifier.into(),
             service: Some(SERVICE_SMS.to_string()),
-            conv_type: conv_type.into(),
+            conversation_type: conversation_type.into(),
             group_title,
             participants,
             exported_at: Some(exported_at.into()),
@@ -176,8 +175,10 @@ mod tests {
         match back {
             ExportRecord::Conversation(c) => {
                 assert_eq!(c.schema, "sms");
-                assert_eq!(c.schema_version, 1);
+                assert_eq!(c.schema_version, 2);
                 assert_eq!(c.service.as_deref(), Some("SMS"));
+                assert_eq!(c.conversation_type, "individual");
+                assert!(line.contains(r#""conversation_type":"individual""#));
             }
             _ => panic!("expected conversation"),
         }

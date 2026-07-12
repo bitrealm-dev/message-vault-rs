@@ -10,16 +10,20 @@ There are two on-disk NDJSON shapes. Conversation headers carry a `"schema"` dis
 
 | Wire schema | Rust module | Who writes it | Discriminator |
 |-------------|-------------|---------------|---------------|
-| **iMessage NDJSON** | [`message_json::imessage`](src/imessage.rs) | `imessage-exporter-json` | `"schema": "imessage"` (legacy files omit `schema` and use `schema_version` 3) |
-| **SMS NDJSON** | [`message_json::sms`](src/sms.rs) | GO SMS Pro, SMS Backup & Restore, SMS Backup+ exporters | `"schema": "sms"`, `schema_version` 1 |
+| **iMessage NDJSON** | [`message_json::imessage`](src/imessage.rs) | `imessage-exporter-json` | `"schema": "imessage"`, `schema_version` 4 (headers without `schema` still default to imessage) |
+| **SMS NDJSON** | [`message_json::sms`](src/sms.rs) | GO SMS Pro, SMS Backup & Restore, SMS Backup+ exporters | `"schema": "sms"`, `schema_version` 2 |
 
-Vault import auto-detects which schema a file uses from the conversation header (`schema`, or legacy `schema_version`) and maps both into the same SQLite rows.
+Conversation headers use `"conversation_type": "individual" | "group"` (not `"type"`).
+
+Vault import auto-detects which schema a file uses from the conversation header (`schema`, or `schema_version`) and maps both into the same SQLite rows.
+
+**Breaking:** older NDJSON with `"type"` / `schema_version` 1 or 3, and DBs with a `conv_type` column, are not read. Re-export and re-ingest.
 
 ## Modules
 
 | Module | Role |
 |--------|------|
-| [`imessage`](src/imessage.rs) | iOS / iMessage schema (historically imessage-exporter-json **v3**): tapbacks, replies, announcements, stickers, transcription |
+| [`imessage`](src/imessage.rs) | iOS / iMessage schema (`schema_version` **4**): tapbacks, replies, announcements, stickers, transcription |
 | [`sms`](src/sms.rs) | Common SMS/MMS schema for GO SMS Pro, SMS Backup & Restore, and SMS Backup+ |
 
 ## Usage

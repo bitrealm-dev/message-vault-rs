@@ -181,7 +181,7 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
     };
     let sql = format!(
         r#"
-        SELECT m.id, m.conversation_id, c.chat_identifier, c.conv_type,
+        SELECT m.id, m.conversation_id, c.chat_identifier, c.conversation_type,
                m.is_from_me, m.timestamp_utc, m.timestamp, m.body
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
@@ -267,9 +267,9 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
 
     let empty: Vec<String> = Vec::new();
     let mut keys: Vec<(i64, String)> = Vec::with_capacity(rows.len());
-    for (id, conversation_id, chat_id, conv_type, is_from_me, ts_utc, ts, body) in rows {
+    for (id, conversation_id, chat_id, conversation_type, is_from_me, ts_utc, ts, body) in rows {
         let shas = shas_by_msg.get(&id).unwrap_or(&empty);
-        let identity = if conv_type == "group" {
+        let identity = if conversation_type == "group" {
             chat_identity_for_content_key(
                 &chat_id,
                 group_handles.get(&conversation_id).map(|h| h.as_slice()),
@@ -780,7 +780,7 @@ mod tests {
         schema::ensure_messages_schema(&conn).unwrap();
         conn.execute(
             r#"
-            INSERT INTO conversations (chat_identifier, service, conv_type, group_title, exported_at, source_file)
+            INSERT INTO conversations (chat_identifier, service, conversation_type, group_title, exported_at, source_file)
             VALUES ('+14075551212', 'SMS', 'individual', NULL, NULL, 't.json')
             "#,
             [],

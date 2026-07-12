@@ -192,7 +192,7 @@ export function contactGroupChatThreadsForPhones(
               MAX(substr(m.timestamp, 1, 10)) AS date_end
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
-       WHERE c.conv_type = 'group'
+       WHERE c.conversation_type = 'group'
          AND EXISTS (
            SELECT 1 FROM participants p
            WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
@@ -396,7 +396,7 @@ function listGroupYearRowsSection(
               MAX(substr(m.timestamp, 1, 10)) AS date_end
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id${joinDupes}
-       WHERE c.conv_type = 'group'
+       WHERE c.conversation_type = 'group'
          ${trashFilter}
        GROUP BY c.id, year
        HAVING message_count > 0`,
@@ -496,7 +496,7 @@ export function countGroupChats(): number {
          SELECT c.id
          FROM conversations c
          LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
-         WHERE c.conv_type = 'group'
+         WHERE c.conversation_type = 'group'
            ${trashFilter}
          GROUP BY c.id
          HAVING COUNT(m.id) > 0

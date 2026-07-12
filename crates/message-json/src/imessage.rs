@@ -1,9 +1,9 @@
-//! iMessage / iOS NDJSON schema (historically imessage-exporter-json schema v3).
+//! iMessage / iOS NDJSON schema (`schema_version` 4; historically imessage-exporter-json v3).
 
 use serde::{Deserialize, Serialize};
 
 pub const SCHEMA_NAME: &str = "imessage";
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 pub const RECORD_CONVERSATION: &str = "conversation";
 pub const RECORD_MESSAGE: &str = "message";
@@ -26,8 +26,7 @@ pub struct ConversationRecord {
     pub chat_identifier: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
-    #[serde(rename = "type")]
-    pub conv_type: String,
+    pub conversation_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_title: Option<String>,
     #[serde(default)]
@@ -120,7 +119,7 @@ impl ConversationRecord {
     /// Conversation header for iMessage-style exports.
     pub fn header(
         chat_identifier: impl Into<String>,
-        conv_type: impl Into<String>,
+        conversation_type: impl Into<String>,
         group_title: Option<String>,
         participants: Vec<ParticipantRecord>,
         exported_at: impl Into<String>,
@@ -130,7 +129,7 @@ impl ConversationRecord {
             schema_version: SCHEMA_VERSION,
             chat_identifier: chat_identifier.into(),
             service: Some(SERVICE_IMESSAGE.to_string()),
-            conv_type: conv_type.into(),
+            conversation_type: conversation_type.into(),
             group_title,
             participants,
             exported_at: Some(exported_at.into()),
@@ -161,21 +160,24 @@ mod tests {
         match back {
             ExportRecord::Conversation(c) => {
                 assert_eq!(c.schema, "imessage");
-                assert_eq!(c.schema_version, 3);
+                assert_eq!(c.schema_version, 4);
                 assert_eq!(c.service.as_deref(), Some("iMessage"));
+                assert_eq!(c.conversation_type, "individual");
+                assert!(line.contains(r#""conversation_type":"individual""#));
             }
             _ => panic!("expected conversation"),
         }
     }
 
     #[test]
-    fn legacy_without_schema_defaults_to_imessage() {
-        let line = r#"{"record":"conversation","schema_version":3,"chat_identifier":"+1","type":"individual","participants":[]}"#;
+    fn without_schema_defaults_to_imessage() {
+        let line = r#"{"record":"conversation","schema_version":4,"chat_identifier":"+1","conversation_type":"individual","participants":[]}"#;
         let back: ExportRecord = serde_json::from_str(line).unwrap();
         match back {
             ExportRecord::Conversation(c) => {
                 assert_eq!(c.schema, "imessage");
-                assert_eq!(c.schema_version, 3);
+                assert_eq!(c.schema_version, 4);
+                assert_eq!(c.conversation_type, "individual");
             }
             _ => panic!("expected conversation"),
         }

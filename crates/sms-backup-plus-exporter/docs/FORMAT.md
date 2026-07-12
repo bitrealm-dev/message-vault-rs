@@ -34,7 +34,7 @@ Optional MIME attachments are attached to messages in order.
 | Source | SMS NDJSON |
 |--------|------------|
 | counterparty E.164 / group key | `chat_identifier` |
-| — | `service` = `"SMS"`, `"schema": "sms"`, `schema_version` = `1` |
+| — | `service` = `"SMS"`, `"schema": "sms"`, `schema_version` = `2`, `conversation_type` |
 | X-smssync-type / From owner email | `is_from_me` |
 | address / From | `sender` |
 | body | `text` |

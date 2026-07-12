@@ -225,10 +225,10 @@ Schema v3 is **additive**: consumers that ignore unknown fields keep working.
 ```json
 {
   "record": "conversation",
-  "schema_version": 3,
+  "schema_version": 4,
   "chat_identifier": "chat1234567890",
   "service": "iMessage",
-  "type": "group",
+  "conversation_type": "group",
   "group_title": "Weekend Trip",
   "participants": [
     { "handle": "+15551234567", "name_hint": "Jane Doe" },
@@ -238,7 +238,7 @@ Schema v3 is **additive**: consumers that ignore unknown fields keep working.
 }
 ```
 
-- `type` is `"individual"` or `"group"`, derived from the chat's participants.
+- `conversation_type` is `"individual"` or `"group"`, derived from the chat's participants.
 - `group_title` is the custom group name, or `null`.
 - `participants[].handle` is the raw phone/email; `name_hint` is the exporter-resolved name (advisory; may be empty).
 

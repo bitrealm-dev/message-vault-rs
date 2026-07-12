@@ -440,7 +440,7 @@ Jordan Alias,Jordan Alias (SKIP)\n\
 
         let mut msg = ParsedMessage {
             chat_key: "Unknown".into(),
-            conv_type: "individual".into(),
+            conversation_type: "individual".into(),
             group_title: None,
             participant_digits: vec![],
             timestamp_secs: 1.0,
@@ -467,7 +467,7 @@ Jordan Alias,Jordan Alias (SKIP)\n\
         book.insert_first(normalize_name_key("Sam Example"), "5555550122".into());
         let mut msg = ParsedMessage {
             chat_key: "Unknown".into(),
-            conv_type: "individual".into(),
+            conversation_type: "individual".into(),
             group_title: None,
             participant_digits: vec![],
             timestamp_secs: 1.0,

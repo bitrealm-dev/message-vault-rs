@@ -6,7 +6,7 @@ CREATE TABLE conversations (
     id INTEGER PRIMARY KEY,
     chat_identifier TEXT NOT NULL UNIQUE,
     service TEXT,
-    conv_type TEXT NOT NULL,
+    conversation_type TEXT NOT NULL,
     group_title TEXT,
     exported_at TEXT,
     source_file TEXT NOT NULL
@@ -92,7 +92,7 @@ CREATE TABLE staging_conversations (
     id INTEGER PRIMARY KEY,
     chat_identifier TEXT NOT NULL UNIQUE,
     service TEXT,
-    conv_type TEXT NOT NULL,
+    conversation_type TEXT NOT NULL,
     group_title TEXT,
     exported_at TEXT,
     source_file TEXT NOT NULL

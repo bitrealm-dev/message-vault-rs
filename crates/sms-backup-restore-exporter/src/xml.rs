@@ -61,7 +61,7 @@ pub struct AttachmentBlob {
 #[derive(Debug, Clone)]
 pub struct ParsedMessage {
     pub chat_key: String,
-    pub conv_type: ConvType,
+    pub conversation_type: ConvType,
     pub group_title: Option<String>,
     /// digits → optional name hint
     pub participant_digits: Vec<(String, Option<String>)>,
@@ -280,7 +280,7 @@ fn parse_sms(
 
     Some(ParsedMessage {
         chat_key: addr.clone(),
-        conv_type: ConvType::Individual,
+        conversation_type: ConvType::Individual,
         group_title: None,
         participant_digits: vec![(addr, hint)],
         timestamp_secs: ts,
@@ -340,7 +340,7 @@ fn parse_mms(
         };
         return Some(ParsedMessage {
             chat_key: counterparty.clone(),
-            conv_type: ConvType::Individual,
+            conversation_type: ConvType::Individual,
             group_title: None,
             participant_digits: vec![(counterparty, hint)],
             timestamp_secs: ts,
@@ -385,7 +385,7 @@ fn parse_mms(
 
     Some(ParsedMessage {
         chat_key,
-        conv_type: ConvType::Group,
+        conversation_type: ConvType::Group,
         group_title: Some(title),
         participant_digits,
         timestamp_secs: ts,
@@ -520,7 +520,7 @@ mod tests {
         assert!(!msgs[0].is_from_me);
         assert_eq!(msgs[0].text, "hello & hi");
         assert!(msgs[1].is_from_me);
-        assert_eq!(msgs[0].conv_type, ConvType::Individual);
+        assert_eq!(msgs[0].conversation_type, ConvType::Individual);
     }
 
     #[test]
@@ -559,7 +559,7 @@ mod tests {
         let (msgs, stats) = parse_xml_reader(xml.as_slice(), "5555550100").unwrap();
         assert_eq!(stats.mms_count, 1);
         assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].conv_type, ConvType::Group);
+        assert_eq!(msgs[0].conversation_type, ConvType::Group);
         assert_eq!(msgs[0].text, "group hi");
         assert!(!msgs[0].is_from_me);
         assert_eq!(msgs[0].sender_digits.as_deref(), Some("5555550101"));
@@ -588,6 +588,6 @@ mod tests {
         let (msgs, _) = parse_xml_reader(xml.as_slice(), "5555550100").unwrap();
         assert_eq!(msgs.len(), 1);
         assert!(msgs[0].is_from_me);
-        assert_eq!(msgs[0].conv_type, ConvType::Individual);
+        assert_eq!(msgs[0].conversation_type, ConvType::Individual);
     }
 }

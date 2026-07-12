@@ -96,7 +96,7 @@ export function permanentlyDeleteHandle(handle: string): void {
       writeDb
         .prepare(
           `DELETE FROM conversations
-           WHERE conv_type = 'individual' AND chat_identifier = ?`,
+           WHERE conversation_type = 'individual' AND chat_identifier = ?`,
         )
         .run(trimmed);
       writeDb

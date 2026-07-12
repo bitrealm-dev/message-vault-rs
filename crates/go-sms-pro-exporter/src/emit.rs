@@ -53,7 +53,7 @@ struct PendingMessage {
 
 #[derive(Debug, Default)]
 struct PendingConversation {
-    conv_type: String,
+    conversation_type: String,
     group_title: Option<String>,
     /// digits → optional name hint
     participants: BTreeMap<String, Option<String>>,
@@ -150,12 +150,12 @@ fn safe_filename(chat_id: &str) -> String {
 fn ensure_convo<'a>(
     map: &'a mut BTreeMap<String, PendingConversation>,
     chat_id: &str,
-    conv_type: &str,
+    conversation_type: &str,
     group_title: Option<String>,
 ) -> &'a mut PendingConversation {
     map.entry(chat_id.to_string())
         .or_insert_with(|| PendingConversation {
-            conv_type: conv_type.to_string(),
+            conversation_type: conversation_type.to_string(),
             group_title,
             participants: BTreeMap::new(),
             messages: Vec::new(),
@@ -292,9 +292,9 @@ fn add_pdu_message(
         dedupe_key,
     };
 
-    for (chat_id, conv_type, group_title) in targets {
-        let convo = ensure_convo(conversations, &chat_id, &conv_type, group_title);
-        if conv_type == "group" {
+    for (chat_id, conversation_type, group_title) in targets {
+        let convo = ensure_convo(conversations, &chat_id, &conversation_type, group_title);
+        if conversation_type == "group" {
             for p in &parsed.participants {
                 if p != owner {
                     convo.participants.entry(p.clone()).or_insert(None);
@@ -338,7 +338,7 @@ fn write_conversation(
         })
         .collect();
     // Include owner in participant list for groups (imessage style often lists all).
-    if convo.conv_type == "group"
+    if convo.conversation_type == "group"
         && !participants
             .iter()
             .any(|p| sanitize_number(&p.handle) == sanitize_number(owner_e164))
@@ -352,7 +352,7 @@ fn write_conversation(
 
     let header = ConversationRecord::header(
         chat_id,
-        convo.conv_type.clone(),
+        convo.conversation_type.clone(),
         convo.group_title.clone(),
         participants,
         exported_at,

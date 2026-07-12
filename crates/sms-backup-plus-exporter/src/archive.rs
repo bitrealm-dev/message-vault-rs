@@ -240,7 +240,7 @@ pub(crate) fn parse_archive_eml_mail(
         let name = Some(contact_name.clone());
         messages.push(ParsedMessage {
             chat_key: conv_number.clone(),
-            conv_type: "individual".into(),
+            conversation_type: "individual".into(),
             group_title: None,
             participant_digits: if conv_number == "Unknown" {
                 vec![]
@@ -379,7 +379,7 @@ Hi there\r\n",
         let mut messages = vec![
             ParsedMessage {
                 chat_key: "4075551234".into(),
-                conv_type: "individual".into(),
+                conversation_type: "individual".into(),
                 group_title: None,
                 participant_digits: vec![],
                 timestamp_secs: 1.0,
@@ -392,7 +392,7 @@ Hi there\r\n",
             },
             ParsedMessage {
                 chat_key: "4075551234".into(),
-                conv_type: "individual".into(),
+                conversation_type: "individual".into(),
                 group_title: None,
                 participant_digits: vec![],
                 timestamp_secs: 2.0,

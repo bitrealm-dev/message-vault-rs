@@ -11,7 +11,7 @@ pub(crate) struct AttachmentBlob {
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedMessage {
     pub chat_key: String,
-    pub conv_type: String,
+    pub conversation_type: String,
     pub group_title: Option<String>,
     pub participant_digits: Vec<(String, Option<String>)>,
     pub timestamp_secs: f64,

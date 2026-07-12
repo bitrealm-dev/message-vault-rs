@@ -23,7 +23,7 @@ export function trashConversation(conversationId: number): void {
     const row = writeDb
       .prepare(
         `SELECT 1 AS ok FROM conversations
-         WHERE id = ? AND conv_type = 'group'`,
+         WHERE id = ? AND conversation_type = 'group'`,
       )
       .get(conversationId) as { ok: number } | undefined;
     if (!row) {
@@ -86,7 +86,7 @@ export function permanentlyDeleteConversation(conversationId: number): void {
       writeDb
         .prepare(
           `DELETE FROM conversations
-           WHERE id = ? AND conv_type = 'group'`,
+           WHERE id = ? AND conversation_type = 'group'`,
         )
         .run(conversationId);
       writeDb

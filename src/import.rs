@@ -302,7 +302,7 @@ impl<'conn> StagingInserts<'conn> {
             conv: tx.prepare(
                 r#"
                 INSERT INTO staging_conversations (
-                    chat_identifier, service, conv_type, group_title, exported_at, source_file
+                    chat_identifier, service, conversation_type, group_title, exported_at, source_file
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                 "#,
             )?,
@@ -376,7 +376,7 @@ fn import_file_to_staging(
                 conversation = Some((
                     c.chat_identifier,
                     c.service,
-                    c.conv_type,
+                    c.conversation_type,
                     c.group_title,
                     c.exported_at,
                     c.participants
@@ -389,7 +389,7 @@ fn import_file_to_staging(
         }
     }
 
-    let (chat_identifier, service, conv_type, group_title, exported_at, participants) =
+    let (chat_identifier, service, conversation_type, group_title, exported_at, participants) =
         if let Some(c) = conversation {
             c
         } else if source_file == "orphaned.json" {
@@ -420,7 +420,7 @@ fn import_file_to_staging(
         stats.conversations_excluded = 1;
         return Ok(stats);
     }
-    if conv_type == "individual" {
+    if conversation_type == "individual" {
         let peer_excluded = participants
             .iter()
             .any(|(handle, _)| exclude.contains_handle(handle));
@@ -473,7 +473,7 @@ fn import_file_to_staging(
     stmts.conv.execute(params![
         chat_identifier,
         service,
-        conv_type,
+        conversation_type,
         group_title,
         exported_at,
         source_file,
@@ -591,7 +591,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
     let _ = io::stdout().flush();
     let mut staging_convs = tx.prepare(
         r#"
-        SELECT id, chat_identifier, service, conv_type, group_title, exported_at, source_file
+        SELECT id, chat_identifier, service, conversation_type, group_title, exported_at, source_file
         FROM staging_conversations
         ORDER BY id
         "#,
@@ -631,7 +631,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         r#"
         UPDATE conversations SET
             service = COALESCE(?2, service),
-            conv_type = ?3,
+            conversation_type = ?3,
             group_title = COALESCE(?4, group_title),
             exported_at = COALESCE(?5, exported_at),
             source_file = ?6
@@ -641,12 +641,12 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
     let mut insert_conv = tx.prepare(
         r#"
         INSERT INTO conversations (
-            chat_identifier, service, conv_type, group_title, exported_at, source_file
+            chat_identifier, service, conversation_type, group_title, exported_at, source_file
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         "#,
     )?;
 
-    for (staging_id, chat_identifier, service, conv_type, group_title, exported_at, source_file) in
+    for (staging_id, chat_identifier, service, conversation_type, group_title, exported_at, source_file) in
         staging_conv_rows
     {
         let existing: Option<i64> = find_conv
@@ -657,7 +657,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
             update_conv.execute(params![
                 id,
                 service,
-                conv_type,
+                conversation_type,
                 group_title,
                 exported_at,
                 source_file
@@ -667,7 +667,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
             insert_conv.execute(params![
                 chat_identifier,
                 service,
-                conv_type,
+                conversation_type,
                 group_title,
                 exported_at,
                 source_file,

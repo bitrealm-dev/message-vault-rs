@@ -187,7 +187,7 @@ mod tests {
     fn generated_eml_round_trips_through_flat_parser() {
         let msg = ParsedMessage {
             chat_key: "4075551234".into(),
-            conv_type: "individual".into(),
+            conversation_type: "individual".into(),
             group_title: None,
             participant_digits: vec![("4075551234".into(), Some("Alice".into()))],
             timestamp_secs: 1609459200.0,

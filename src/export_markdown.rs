@@ -251,7 +251,7 @@ fn contact_yearly_threads(conn: &Connection, phones: &[String]) -> Result<Vec<Ye
                GROUP_CONCAT(DISTINCT c.id) AS conversation_ids
         FROM conversations c
         JOIN messages m ON m.conversation_id = c.id
-        WHERE c.conv_type = 'individual'
+        WHERE c.conversation_type = 'individual'
           AND c.chat_identifier IN ({placeholders})
           AND m.duplicate_of IS NULL
         GROUP BY year
@@ -892,7 +892,7 @@ mod tests {
         .unwrap();
         conn.execute(
             r#"
-            INSERT INTO conversations (chat_identifier, service, conv_type, group_title, exported_at, source_file)
+            INSERT INTO conversations (chat_identifier, service, conversation_type, group_title, exported_at, source_file)
             VALUES ('+18285532527', 'SMS', 'individual', NULL, NULL, 't.json')
             "#,
             [],

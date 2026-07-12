@@ -49,7 +49,7 @@ struct PendingMessage {
 
 #[derive(Debug, Default)]
 struct PendingConversation {
-    conv_type: ConvType,
+    conversation_type: ConvType,
     group_title: Option<String>,
     participants: BTreeMap<String, Option<String>>,
     messages: Vec<PendingMessage>,
@@ -69,7 +69,7 @@ fn format_local_ts(secs: i64) -> Option<(String, String)> {
 }
 
 fn chat_id_for(msg: &ParsedMessage) -> String {
-    match msg.conv_type {
+    match msg.conversation_type {
         ConvType::Group => format!("chat-{}", msg.chat_key),
         ConvType::Individual => to_e164(&msg.chat_key),
     }
@@ -115,12 +115,12 @@ fn write_attachments(
 fn ensure_convo<'a>(
     map: &'a mut BTreeMap<String, PendingConversation>,
     chat_id: &str,
-    conv_type: ConvType,
+    conversation_type: ConvType,
     group_title: Option<String>,
 ) -> &'a mut PendingConversation {
     map.entry(chat_id.to_string())
         .or_insert_with(|| PendingConversation {
-            conv_type,
+            conversation_type,
             group_title,
             participants: BTreeMap::new(),
             messages: Vec::new(),
@@ -137,7 +137,7 @@ fn add_message(
     let convo = ensure_convo(
         conversations,
         &chat_id,
-        msg.conv_type,
+        msg.conversation_type,
         msg.group_title.clone(),
     );
     for (digits, hint) in &msg.participant_digits {
@@ -208,7 +208,7 @@ fn write_conversation(
             name_hint: hint.clone(),
         })
         .collect();
-    if convo.conv_type == ConvType::Group {
+    if convo.conversation_type == ConvType::Group {
         let owner_digits = sanitize_number(owner_e164);
         let has_owner = participants.iter().any(|p| sanitize_number(&p.handle) == owner_digits);
         if !has_owner {
@@ -222,7 +222,7 @@ fn write_conversation(
 
     let header = ConversationRecord::header(
         chat_id,
-        convo.conv_type.as_str(),
+        convo.conversation_type.as_str(),
         convo.group_title.clone(),
         participants,
         exported_at,

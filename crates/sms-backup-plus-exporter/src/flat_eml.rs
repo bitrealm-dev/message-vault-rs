@@ -238,7 +238,7 @@ pub(crate) fn parse_flat_eml_mail(
         };
         return Ok(Some(ParsedMessage {
             chat_key,
-            conv_type: "group".into(),
+            conversation_type: "group".into(),
             group_title: Some(title),
             participant_digits,
             timestamp_secs: ts,
@@ -272,7 +272,7 @@ pub(crate) fn parse_flat_eml_mail(
     };
     Ok(Some(ParsedMessage {
         chat_key: conv_number.clone(),
-        conv_type: "individual".into(),
+        conversation_type: "individual".into(),
         group_title: None,
         participant_digits: if conv_number == "Unknown" {
             vec![]

@@ -68,7 +68,7 @@ mod data;
 
 /// Version of the emitted JSON schema. Bump on additive or breaking changes to
 /// the record shapes so consumers can detect incompatibilities.
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 /// Parse the body component index from a `thread_originator_part` field.
 ///
@@ -88,8 +88,8 @@ struct ConversationRecord<'a> {
     chat_identifier: &'a str,
     /// Service the chat used, e.g. `iMessage` or `SMS`.
     service: Option<&'a str>,
-    #[serde(rename = "type")]
-    chat_type: &'static str,
+    /// `"individual"` or `"group"`.
+    conversation_type: &'static str,
     /// Custom group name, if one is set.
     group_title: Option<&'a str>,
     /// Raw participant handles plus an advisory resolved name hint.
@@ -248,8 +248,8 @@ impl<'a> JSON<'a> {
             }
         }
         // A 1:1 chat has a single other participant; anything more is a group.
-        let chat_type = if count > 1 { "group" } else { "individual" };
-        (records, chat_type)
+        let conversation_type = if count > 1 { "group" } else { "individual" };
+        (records, conversation_type)
     }
 
     /// Render an announcement message into a human-readable description.
@@ -517,13 +517,13 @@ impl<'a> MessageWriter<'a> for JSON<'a> {
     }
 
     fn conversation_header(&self, chatroom: &Chat) -> Option<String> {
-        let (participants, chat_type) = self.participants_for(chatroom);
+        let (participants, conversation_type) = self.participants_for(chatroom);
         let record = ConversationRecord {
             record: "conversation",
             schema_version: SCHEMA_VERSION,
             chat_identifier: &chatroom.chat_identifier,
             service: chatroom.service_name.as_deref(),
-            chat_type,
+            conversation_type,
             group_title: chatroom.display_name(),
             participants,
             exported_at: &self.exported_at,
@@ -865,7 +865,7 @@ mod tests {
         assert!(header.ends_with('\n'));
         let value: Value = serde_json::from_str(header.trim_end()).unwrap();
         assert_eq!(value["record"], "conversation");
-        assert_eq!(value["type"], "individual");
+        assert_eq!(value["conversation_type"], "individual");
         assert_eq!(value["chat_identifier"], "+15551234567");
         assert_eq!(value["service"], "iMessage");
         assert!(value["group_title"].is_null());
@@ -896,7 +896,7 @@ mod tests {
 
         let header = exporter.conversation_header(&chat).unwrap();
         let value: Value = serde_json::from_str(header.trim_end()).unwrap();
-        assert_eq!(value["type"], "group");
+        assert_eq!(value["conversation_type"], "group");
         assert_eq!(value["group_title"], "Weekend Trip");
         assert_eq!(value["participants"].as_array().unwrap().len(), 2);
     }

@@ -6,7 +6,7 @@ Part of the [message-vault-rs](../..) Cargo workspace. Prefer the vault’s `ing
 
 [SMS Backup & Restore](https://www.synctech.com.au/sms-backup-restore/) (SyncTech) writes a backup like `sms-20210328165031.xml`. This tool reads that XML and writes one JSON file per conversation, plus decoded MMS media under `attachments/`.
 
-The output uses the [`message-json`](../message-json) **SMS** schema (`"schema": "sms"`, version `1`). Each record has `"service": "SMS"`.
+The output uses the [`message-json`](../message-json) **SMS** schema (`"schema": "sms"`, version `2`). Each record has `"service": "SMS"`.
 
 ## Input
 
