@@ -1,15 +1,15 @@
 "use client";
 
-import type { UnmatchedHandle } from "@/lib/types";
+import type { UnassignedHandle } from "@/lib/types";
 import type { MouseEvent, RefObject } from "react";
 import { EllipsisIcon } from "./icons";
 import {
-  UnmatchedSortMenu,
+  UnassignedSortMenu,
   type SortOrder,
-  type UnmatchedSortBy,
+  type UnassignedSortBy,
 } from "./SortByMenu";
 
-export function UnmatchedContactList({
+export function UnassignedContactList({
   sidebarWidth,
   mode,
   selectAllRef,
@@ -30,18 +30,18 @@ export function UnmatchedContactList({
   onOpenTrashMenu,
 }: {
   sidebarWidth: number;
-  mode: "unmatched" | "trash";
+  mode: "unassigned" | "trash";
   selectAllRef: RefObject<HTMLInputElement | null>;
   allHandlesSelected: boolean;
   handleCount: number;
-  sortedHandles: UnmatchedHandle[];
+  sortedHandles: UnassignedHandle[];
   handle: string | null;
   selectedHandles: Set<string>;
   multiSelected: boolean;
   saving: boolean;
-  sortBy: UnmatchedSortBy;
+  sortBy: UnassignedSortBy;
   sortOrder: SortOrder;
-  onSortChange: (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => void;
+  onSortChange: (next: { sortBy: UnassignedSortBy; order: SortOrder }) => void;
   onToggleSelectAll: () => void;
   onSelectColumnClick: (h: string, e: MouseEvent) => void;
   onRowClick: (h: string, e: MouseEvent) => void;
@@ -73,7 +73,7 @@ export function UnmatchedContactList({
           />
           <span className="truncate text-[13px] text-muted">{handleCount}</span>
         </label>
-        <UnmatchedSortMenu
+        <UnassignedSortMenu
           sortBy={sortBy}
           order={sortOrder}
           onChange={onSortChange}

@@ -47,19 +47,6 @@ export type GroupThread = {
   dateEnd: string;
 };
 
-export type GroupListItem = {
-  id: number;
-  title: string;
-  titleFull: string;
-  namedTitle: string | null;
-  participantCount: number;
-  participantNames: string[];
-  participantHandles: string[];
-  messageCount: number;
-  dateStart: string | null;
-  dateEnd: string | null;
-};
-
 /** One group conversation bucketed into a calendar year for the Groups page. */
 export type GroupYearRow = {
   id: number;
@@ -103,7 +90,7 @@ export type MessageRow = {
   attachments: AttachmentRow[];
 };
 
-export type UnmatchedHandle = {
+export type UnassignedHandle = {
   handle: string;
   displayName: string;
   nameHint: string | null;
@@ -118,7 +105,7 @@ export type HomeStats = {
   all: number;
   excluded: number;
   noMessages: number;
-  unmatched: number;
+  unassigned: number;
   groups: number;
   messages: number;
   contacts: number;

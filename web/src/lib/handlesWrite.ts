@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { dbPath } from "./paths";
 import { resetDb } from "./db";
 
-export function ensureTrashedHandlesTable(db: Database.Database): void {
+function ensureTrashedHandlesTable(db: Database.Database): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS trashed_handles (
        handle TEXT PRIMARY KEY,
@@ -25,7 +25,7 @@ export function clearTrashedHandles(
   }
 }
 
-/** Move an unmatched handle into Trash. */
+/** Move an unassigned handle into Trash. */
 export function trashHandle(handle: string): void {
   const trimmed = handle.trim();
   if (!trimmed) throw new Error("handle required");

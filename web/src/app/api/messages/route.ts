@@ -12,10 +12,7 @@ export async function GET(req: Request) {
   const year =
     yearParam != null && yearParam !== "" ? Number(yearParam) : null;
   const source = url.searchParams.get("source");
-  const rawIds =
-    url.searchParams.get("conversationIds") ??
-    url.searchParams.get("conversationId") ??
-    "";
+  const rawIds = url.searchParams.get("conversationIds") ?? "";
   const conversationIds = rawIds
     .split(",")
     .map((s) => Number(s.trim()))
@@ -23,7 +20,7 @@ export async function GET(req: Request) {
 
   if (!conversationIds.length) {
     return NextResponse.json(
-      { error: "conversationId(s) required" },
+      { error: "conversationIds required" },
       { status: 400 },
     );
   }

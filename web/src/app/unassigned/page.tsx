@@ -1,9 +1,9 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
-import { UnmatchedShell } from "@/components/UnmatchedShell";
+import { UnassignedShell } from "@/components/UnassignedShell";
 import {
   listContactsForPicker,
   listTags,
-  listUnmatchedHandles,
+  listUnassignedHandles,
 } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +15,13 @@ export default async function UnassignedPage({
 }) {
   const sp = await searchParams;
   const initialHandle = sp.h?.trim() || null;
-  const handles = listUnmatchedHandles();
+  const handles = listUnassignedHandles();
   const assignContacts = listContactsForPicker();
   const tags = listTags();
 
   return (
     <BrowsePageLayout active="/unassigned" tags={tags}>
-      <UnmatchedShell
+      <UnassignedShell
         handles={handles}
         assignContacts={assignContacts}
         initialHandle={initialHandle}

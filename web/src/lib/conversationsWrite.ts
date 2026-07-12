@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { dbPath } from "./paths";
 import { resetDb } from "./db";
 
-export function ensureTrashedConversationsTable(db: Database.Database): void {
+function ensureTrashedConversationsTable(db: Database.Database): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS trashed_conversations (
        conversation_id INTEGER PRIMARY KEY,

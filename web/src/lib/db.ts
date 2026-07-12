@@ -5,12 +5,11 @@ import type {
   ContactDetail,
   ContactListItem,
   ContactSection,
-  GroupListItem,
   GroupThread,
   GroupYearRow,
   HomeStats,
   MessageRow,
-  UnmatchedHandle,
+  UnassignedHandle,
   YearThread,
 } from "./types";
 import { tagSlug } from "./tagSlug";
@@ -23,7 +22,7 @@ const g = globalThis as unknown as {
   __mvHasDuplicateOf?: boolean | null;
 };
 
-export function getDb(): Database.Database {
+function getDb(): Database.Database {
   if (!g.__mvReadonlyDb) {
     g.__mvReadonlyDb = new Database(dbPath(), {
       readonly: true,
@@ -323,23 +322,13 @@ function contactDateRange(
   return { start: row.start, end: row.end };
 }
 
-export function contactPhones(contactId: number): string[] {
+function contactPhones(contactId: number): string[] {
   const db = getDb();
   return (
     db
       .prepare(`SELECT phone_e164 FROM contact_phones WHERE contact_id = ?`)
       .all(contactId) as Array<{ phone_e164: string }>
   ).map((r) => r.phone_e164);
-}
-
-/** Distinct message sources that have any 1:1 or group thread for this contact. */
-export function contactMessageSources(contactId: number): string[] {
-  const phones = contactPhones(contactId);
-  if (!phones.length) return [];
-  const counts = contactMessageSourceCountsForConversations(
-    contactConversationIds(phones),
-  );
-  return Object.keys(counts.bySource).sort();
 }
 
 function contactIndividualConversationIds(phones: string[]): number[] {
@@ -373,7 +362,7 @@ function contactConversationIds(phones: string[]): number[] {
   return [...ids];
 }
 
-export type ContactSourceCounts = {
+type ContactSourceCounts = {
   /** Soft-deduped 1:1 total (Combined view). Group chats are listed separately. */
   all: number;
   /** Per-source 1:1 totals (single-source view; includes soft-hidden copies). */
@@ -440,17 +429,6 @@ function contactMessageCountsById(
   return counts;
 }
 
-export function contactMessageSourceCounts(
-  contactId: number,
-): ContactSourceCounts {
-  const phones = contactPhones(contactId);
-  if (!phones.length) return { all: 0, bySource: {} };
-  // Person totals are 1:1 only — group volume lives under Group messages.
-  return contactMessageSourceCountsForConversations(
-    contactIndividualConversationIds(phones),
-  );
-}
-
 /** One contact open: yearly + groups + available sources with shared phone/conv lookups. */
 export function contactThreadsBundle(
   contactId: number,
@@ -483,13 +461,6 @@ export function contactThreadsBundle(
     messageSources: Object.keys(anySourceCounts.bySource).sort(),
     sourceCounts,
   };
-}
-
-export function contactYearlyThreads(
-  contactId: number,
-  source?: string | null,
-): YearThread[] {
-  return contactYearlyThreadsForPhones(contactPhones(contactId), source);
 }
 
 function contactYearlyThreadsForPhones(
@@ -715,13 +686,6 @@ function groupPeopleTitles(
   return out;
 }
 
-export function contactGroupThreads(
-  contactId: number,
-  source?: string | null,
-): GroupThread[] {
-  return contactGroupThreadsForPhones(contactPhones(contactId), source);
-}
-
 function contactGroupThreadsForPhones(
   phones: string[],
   source?: string | null,
@@ -907,76 +871,6 @@ function groupYearStatsForConversations(
   };
 }
 
-export function listGroups(): GroupListItem[] {
-  const db = getDb();
-  const joinDupes = hasDuplicateOfColumn()
-    ? " AND m.duplicate_of IS NULL"
-    : "";
-  const hasTrash = hasTrashedConversationsTable(db);
-  const trashFilter = hasTrash
-    ? `AND NOT EXISTS (
-         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
-       )`
-    : "";
-  const rows = db
-    .prepare(
-      `SELECT c.id,
-              COUNT(m.id) AS message_count,
-              MIN(substr(m.timestamp, 1, 10)) AS date_start,
-              MAX(substr(m.timestamp, 1, 10)) AS date_end
-       FROM conversations c
-       LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
-       WHERE c.conv_type = 'group'
-         ${trashFilter}
-       GROUP BY c.id
-       HAVING message_count > 0`,
-    )
-    .all() as Array<{
-    id: number;
-    message_count: number;
-    date_start: string | null;
-    date_end: string | null;
-  }>;
-
-  const titles = groupPeopleTitles(rows.map((r) => r.id));
-
-  const items = rows.map((r) => {
-    const t = titles.get(r.id) ?? {
-      title: "Group chat",
-      titleFull: "Group chat",
-      namedTitle: null,
-      participantCount: 0,
-      participantNames: [] as string[],
-      participantHandles: [] as string[],
-    };
-    return {
-      id: r.id,
-      title: t.title,
-      titleFull: t.titleFull,
-      namedTitle: t.namedTitle,
-      participantCount: t.participantCount,
-      participantNames: t.participantNames,
-      participantHandles: t.participantHandles,
-      messageCount: r.message_count,
-      dateStart: r.date_start,
-      dateEnd: r.date_end,
-    };
-  });
-
-  items.sort((a, b) => {
-    const aEnd = a.dateEnd ?? a.dateStart ?? "";
-    const bEnd = b.dateEnd ?? b.dateStart ?? "";
-    const byEnd = bEnd.localeCompare(aEnd);
-    if (byEnd !== 0) return byEnd;
-    const aStart = a.dateStart ?? "";
-    const bStart = b.dateStart ?? "";
-    const byStart = bStart.localeCompare(aStart);
-    if (byStart !== 0) return byStart;
-    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-  });
-  return items;
-}
-
 /** Group chats split by calendar year for the Groups page list. */
 export function listGroupYearRows(): GroupYearRow[] {
   // Re-open after API writes (trash/restore) so RSC sees committed rows.
@@ -1109,43 +1003,6 @@ function listGroupYearRowsSection(
     return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
   });
   return items;
-}
-
-export function groupYearlyThreads(
-  conversationId: number,
-  source?: string | null,
-): YearThread[] {
-  const db = getDb();
-  const sourceSql = source ? " AND source = ?" : "";
-  const params: Array<string | number> = [conversationId];
-  if (source) params.push(source);
-  const rows = db
-    .prepare(
-      `SELECT conversation_id,
-              CAST(substr(timestamp, 1, 4) AS INTEGER) AS year,
-              COUNT(*) AS message_count,
-              MIN(substr(timestamp, 1, 10)) AS date_start,
-              MAX(substr(timestamp, 1, 10)) AS date_end
-       FROM messages
-       WHERE conversation_id = ?${sourceSql}${combinedDedupeSql(source)}
-       GROUP BY year
-       ORDER BY year DESC`,
-    )
-    .all(...params) as Array<{
-    conversation_id: number;
-    year: number;
-    message_count: number;
-    date_start: string;
-    date_end: string;
-  }>;
-
-  return rows.map((r) => ({
-    conversationIds: [r.conversation_id],
-    year: r.year,
-    messageCount: r.message_count,
-    dateStart: r.date_start,
-    dateEnd: r.date_end,
-  }));
 }
 
 export function messagesForConversationYear(
@@ -1314,28 +1171,52 @@ function loadConversationMessages(
 }
 
 export function homeStats(): HomeStats {
+  const db = getDb();
+  const hasTrash = hasTrashedConversationsTable(db);
+  const trashFilter = hasTrash
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+       )`
+    : "";
+  const joinDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const groupsRow = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT c.id
+         FROM conversations c
+         LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
+         WHERE c.conv_type = 'group'
+           ${trashFilter}
+         GROUP BY c.id
+         HAVING COUNT(m.id) > 0
+       )`,
+    )
+    .get() as { n: number };
+
   return {
     all: listContacts("all").length,
     excluded: listContacts("excluded").length,
     noMessages: listContacts("no-messages").length,
-    unmatched: listUnmatchedHandles().length,
-    groups: listGroups().length,
+    unassigned: listUnassignedHandles().length,
+    groups: groupsRow.n,
     messages: (
-      getDb().prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
+      db.prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
     ).n,
     contacts: (
-      getDb().prepare(`SELECT COUNT(*) AS n FROM contacts`).get() as { n: number }
+      db.prepare(`SELECT COUNT(*) AS n FROM contacts`).get() as { n: number }
     ).n,
   };
 }
 
 /** 1:1 conversations with messages whose handle is not on any contact. */
-export function listUnmatchedHandles(): UnmatchedHandle[] {
-  return listHandleSection("unmatched");
+export function listUnassignedHandles(): UnassignedHandle[] {
+  return listHandleSection("unassigned");
 }
 
-/** Unmatched handles that were moved to Trash. */
-export function listTrashedHandles(): UnmatchedHandle[] {
+/** Unassigned handles that were moved to Trash. */
+export function listTrashedHandles(): UnassignedHandle[] {
   resetDb();
   return listHandleSection("trash");
 }
@@ -1350,7 +1231,7 @@ function hasTrashedHandlesTable(db: Database.Database): boolean {
   return row.n > 0;
 }
 
-function listHandleSection(section: "unmatched" | "trash"): UnmatchedHandle[] {
+function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] {
   const db = getDb();
   const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
   const hasTrash = hasTrashedHandlesTable(db);
@@ -1417,7 +1298,7 @@ function listHandleSection(section: "unmatched" | "trash"): UnmatchedHandle[] {
     );
 }
 
-export function unmatchedThreadsBundle(
+export function unassignedThreadsBundle(
   handle: string,
   source?: string | null,
 ): {

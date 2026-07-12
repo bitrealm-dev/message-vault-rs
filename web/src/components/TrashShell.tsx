@@ -1,10 +1,10 @@
 "use client";
 
-import type { ContactListItem, GroupYearRow, UnmatchedHandle } from "@/lib/types";
+import type { ContactListItem, GroupYearRow, UnassignedHandle } from "@/lib/types";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupsShell } from "./GroupsShell";
-import { UnmatchedShell } from "./UnmatchedShell";
+import { UnassignedShell } from "./UnassignedShell";
 
 type TrashTab = "individuals" | "groups";
 
@@ -17,7 +17,7 @@ export function TrashShell({
   initialYear,
   initialTab,
 }: {
-  handles: UnmatchedHandle[];
+  handles: UnassignedHandle[];
   groups: GroupYearRow[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
@@ -87,7 +87,7 @@ export function TrashShell({
       </div>
       <div className="min-h-0 min-w-0 flex-1">
         {tab === "individuals" ? (
-          <UnmatchedShell
+          <UnassignedShell
             mode="trash"
             handles={handles}
             assignContacts={assignContacts}

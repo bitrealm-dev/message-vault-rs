@@ -1,12 +1,12 @@
 "use client";
 
-import type { UnmatchedHandle, YearThread } from "@/lib/types";
+import type { UnassignedHandle, YearThread } from "@/lib/types";
 import { ContactDetailsCard } from "./ContactDetailsCard";
 import type { ContactEditDraft } from "./ContactEditPane";
 import { MessageSourcePicker } from "./MessageSourcePicker";
 import { YearThreadPicker } from "./YearThreadPicker";
 
-export function UnmatchedDetailPane({
+export function UnassignedDetailPane({
   threadsPct,
   mode,
   multiSelected,
@@ -28,10 +28,10 @@ export function UnmatchedDetailPane({
   onSelectHandle,
 }: {
   threadsPct: number;
-  mode: "unmatched" | "trash";
+  mode: "unassigned" | "trash";
   multiSelected: boolean;
-  selected: UnmatchedHandle | null;
-  selectedItems: UnmatchedHandle[];
+  selected: UnassignedHandle | null;
+  selectedItems: UnassignedHandle[];
   creating: boolean;
   createDraft: ContactEditDraft | null;
   onDraftChange: (draft: ContactEditDraft) => void;

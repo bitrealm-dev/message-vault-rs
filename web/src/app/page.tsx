@@ -12,7 +12,7 @@ export default function HomePage() {
     { href: "/all", label: "All Contacts", value: stats.all },
     { href: "/excluded", label: "Excluded", value: stats.excluded },
     { href: "/no-messages", label: "No Messages", value: stats.noMessages },
-    { href: "/unassigned", label: "Unassigned", value: stats.unmatched },
+    { href: "/unassigned", label: "Unassigned", value: stats.unassigned },
     { href: "/groups", label: "Group Chats", value: stats.groups },
   ];
 

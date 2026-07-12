@@ -1,4 +1,4 @@
-import { unmatchedThreadsBundle } from "@/lib/db";
+import { unassignedThreadsBundle } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "handle required" }, { status: 400 });
   }
   const source = new URL(req.url).searchParams.get("source");
-  const bundle = unmatchedThreadsBundle(handle, source);
+  const bundle = unassignedThreadsBundle(handle, source);
   if (!bundle) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }

@@ -134,10 +134,3 @@ export function loadSources(): SourcePaths[] {
 export function sourceById(id: string): SourcePaths | undefined {
   return loadSources().find((s) => s.id === id);
 }
-
-/** Prefer converted media when present unless MEDIA_VARIANT=hq (or original). */
-export function mediaVariant(): "converted" | "original" {
-  const raw = (process.env.MEDIA_VARIANT ?? "converted").trim().toLowerCase();
-  if (raw === "hq" || raw === "original" || raw === "assets") return "original";
-  return "converted";
-}

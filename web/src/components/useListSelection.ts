@@ -30,7 +30,7 @@ export type UseListSelectionOptions<TId> = {
   rangeMode: ListSelectionRangeMode;
   /**
    * After an anchor-mode range select, move the anchor to the click
-   * (Groups). Unmatched leaves the anchor where it was.
+   * (Groups). Unassigned leaves the anchor where it was.
    */
   rangeUpdatesAnchor?: boolean;
   multiThreshold?: ListSelectionMultiThreshold;
@@ -38,7 +38,7 @@ export type UseListSelectionOptions<TId> = {
   focusedId?: TId | null;
   /**
    * When seeding an empty selection on ctrl-click, skip adding focusedId
-   * if it equals the clicked id (Browse/Unmatched). Groups seeds anyway.
+   * if it equals the clicked id (Browse/Unassigned). Groups seeds anyway.
    */
   ctrlSeedSkipsTarget?: boolean;
   rowClickMode: ListSelectionRowClickMode;
@@ -48,7 +48,7 @@ export type UseListSelectionOptions<TId> = {
   /** Return true to skip Escape clear (e.g. open context menu). */
   escapeBlocked?: () => boolean;
   escapePreventDefault?: boolean;
-  /** When select-all selects everything, set anchor to first id (Unmatched). */
+  /** When select-all selects everything, set anchor to first id (Unassigned). */
   selectAllSetsAnchor?: boolean;
   /** Called when opening a row (plain click with no selection action). */
   onOpen?: (id: TId) => void;

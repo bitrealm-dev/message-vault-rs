@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useDismissible } from "./useDismissible";
 
 export type SortMode = "first" | "last" | "messages";
-export type UnmatchedSortBy = "phone" | "date" | "messages";
+export type UnassignedSortBy = "phone" | "date" | "messages";
 export type SortOrder = "asc" | "desc";
 
 type SortField<T extends string> = { id: T; label: string };
@@ -111,25 +111,25 @@ export function SortByMenu({
   );
 }
 
-const UNMATCHED_SORT_FIELDS: SortField<UnmatchedSortBy>[] = [
+const UNASSIGNED_SORT_FIELDS: SortField<UnassignedSortBy>[] = [
   { id: "phone", label: "Phone number" },
   { id: "date", label: "Date" },
   { id: "messages", label: "Message Count" },
 ];
 
 /** Phone/date/messages + ascending/descending for Unassigned. */
-export function UnmatchedSortMenu({
+export function UnassignedSortMenu({
   sortBy,
   order,
   onChange,
 }: {
-  sortBy: UnmatchedSortBy;
+  sortBy: UnassignedSortBy;
   order: SortOrder;
-  onChange: (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => void;
+  onChange: (next: { sortBy: UnassignedSortBy; order: SortOrder }) => void;
 }) {
   return (
     <SortMenu
-      fields={UNMATCHED_SORT_FIELDS}
+      fields={UNASSIGNED_SORT_FIELDS}
       sort={sortBy}
       order={order}
       onChange={({ sort, order: nextOrder }) =>

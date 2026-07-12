@@ -3,7 +3,7 @@
 import type {
   ContactListItem,
   MessageRow,
-  UnmatchedHandle,
+  UnassignedHandle,
   YearThread,
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
@@ -19,34 +19,36 @@ import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { EllipsisIcon } from "./icons";
 import {
   type SortOrder,
-  type UnmatchedSortBy,
+  type UnassignedSortBy,
 } from "./SortByMenu";
-import { UnmatchedContactList } from "./UnmatchedContactList";
-import { UnmatchedDetailPane } from "./UnmatchedDetailPane";
-import { UnmatchedMessagesPane } from "./UnmatchedMessagesPane";
+import { UnassignedContactList } from "./UnassignedContactList";
+import { UnassignedDetailPane } from "./UnassignedDetailPane";
+import { UnassignedMessagesPane } from "./UnassignedMessagesPane";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
 
-const UNMATCHED_SORT_ORDER_KEY = "mv-unmatched-sort-order";
-const UNMATCHED_SORT_BY_KEY = "mv-unmatched-sort-by";
-const UNMATCHED_SORT_BY_ALLOWED = ["phone", "date", "messages"] as const;
-const UNMATCHED_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
+const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
+const UNASSIGNED_SORT_BY_KEY = "mv-unassigned-sort-by";
+const UNASSIGNED_SORT_BY_ALLOWED = ["phone", "date", "messages"] as const;
+const UNASSIGNED_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
+const LEGACY_SORT_ORDER_KEY = "mv-unmatched-sort-order";
+const LEGACY_SORT_BY_KEY = "mv-unmatched-sort-by";
 
-export function UnmatchedShell({
+export function UnassignedShell({
   handles: initialHandles,
   assignContacts,
   initialHandle,
   tags: allTags = [],
-  mode = "unmatched",
+  mode = "unassigned",
 }: {
-  handles: UnmatchedHandle[];
+  handles: UnassignedHandle[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
   tags?: string[];
-  mode?: "unmatched" | "trash";
+  mode?: "unassigned" | "trash";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -54,17 +56,19 @@ export function UnmatchedShell({
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [handles, setHandles] = useState(initialHandles);
   const [sortBy, setSortBy] = usePersistedEnum(
-    UNMATCHED_SORT_BY_KEY,
-    UNMATCHED_SORT_BY_ALLOWED,
+    UNASSIGNED_SORT_BY_KEY,
+    UNASSIGNED_SORT_BY_ALLOWED,
     "phone",
+    [LEGACY_SORT_BY_KEY],
   );
   const [sortOrder, setSortOrder] = usePersistedEnum(
-    UNMATCHED_SORT_ORDER_KEY,
-    UNMATCHED_SORT_ORDER_ALLOWED,
+    UNASSIGNED_SORT_ORDER_KEY,
+    UNASSIGNED_SORT_ORDER_ALLOWED,
     "asc",
+    [LEGACY_SORT_ORDER_KEY],
   );
-  const setUnmatchedSort = useCallback(
-    (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => {
+  const setUnassignedSort = useCallback(
+    (next: { sortBy: UnassignedSortBy; order: SortOrder }) => {
       setSortBy(next.sortBy);
       setSortOrder(next.order);
     },
@@ -98,7 +102,7 @@ export function UnmatchedShell({
   const assignRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId } =
-    useResizablePanes("browse", { splitId: "unmatched-split" });
+    useResizablePanes("browse", { splitId: "unassigned-split" });
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
 
@@ -200,10 +204,10 @@ export function UnmatchedShell({
   );
   selectHandleRef.current = selectHandle;
 
-  // Default to create/edit when a single unmatched handle is focused.
+  // Default to create/edit when a single unassigned handle is focused.
   const createHandleRef = useRef<string | null>(null);
   useEffect(() => {
-    if (mode !== "unmatched") {
+    if (mode !== "unassigned") {
       createHandleRef.current = null;
       setCreating(false);
       setCreateDraft(null);
@@ -336,7 +340,7 @@ export function UnmatchedShell({
     setLoadingThreads(true);
     const qs = new URLSearchParams({ handle });
     if (source) qs.set("source", source);
-    fetch(`/api/unmatched/threads?${qs.toString()}`)
+    fetch(`/api/unassigned/threads?${qs.toString()}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -520,14 +524,14 @@ export function UnmatchedShell({
   };
 
   const moveToTrash = async () => {
-    if (mode !== "unmatched") return;
+    if (mode !== "unassigned") return;
     const targets = actionTargets;
     if (targets.length === 0) return;
     setSaving(true);
     setCtxMenu(null);
     try {
       for (const phone of targets) {
-        const res = await fetch("/api/unmatched/trash", {
+        const res = await fetch("/api/unassigned/trash", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ handle: phone }),
@@ -560,7 +564,7 @@ export function UnmatchedShell({
     setCtxMenu(null);
     try {
       for (const phone of targets) {
-        const res = await fetch("/api/unmatched/trash", {
+        const res = await fetch("/api/unassigned/trash", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ handle: phone }),
@@ -593,7 +597,7 @@ export function UnmatchedShell({
     setCtxMenu(null);
     try {
       for (const phone of targets) {
-        const res = await fetch("/api/unmatched/trash", {
+        const res = await fetch("/api/unassigned/trash", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ handle: phone, permanent: true }),
@@ -690,7 +694,7 @@ export function UnmatchedShell({
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
-      <UnmatchedContactList
+      <UnassignedContactList
         sidebarWidth={sidebarWidth}
         mode={mode}
         selectAllRef={selectAllRef}
@@ -703,7 +707,7 @@ export function UnmatchedShell({
         saving={saving}
         sortBy={sortBy}
         sortOrder={sortOrder}
-        onSortChange={setUnmatchedSort}
+        onSortChange={setUnassignedSort}
         onToggleSelectAll={toggleSelectAll}
         onSelectColumnClick={onSelectColumnClick}
         onRowClick={onRowClick}
@@ -737,7 +741,7 @@ export function UnmatchedShell({
           </h1>
           {multiSelected && (
             <div className="flex shrink-0 items-center gap-2">
-              {mode === "unmatched" && (
+              {mode === "unassigned" && (
                 <div className="relative">
                   <button
                     type="button"
@@ -757,7 +761,7 @@ export function UnmatchedShell({
                   )}
                 </div>
               )}
-              {mode === "unmatched" ? (
+              {mode === "unassigned" ? (
                 <button
                   type="button"
                   disabled={saving}
@@ -789,7 +793,7 @@ export function UnmatchedShell({
               )}
             </div>
           )}
-          {creating && createDraft && !multiSelected && mode === "unmatched" && (
+          {creating && createDraft && !multiSelected && mode === "unassigned" && (
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
@@ -874,7 +878,7 @@ export function UnmatchedShell({
         )}
 
         <div id={splitId} className="flex min-h-0 flex-1 flex-col">
-        <UnmatchedDetailPane
+        <UnassignedDetailPane
           threadsPct={threadsPct}
           mode={mode}
           multiSelected={multiSelected}
@@ -903,7 +907,7 @@ export function UnmatchedShell({
           className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
         />
 
-        <UnmatchedMessagesPane
+        <UnassignedMessagesPane
           multiSelected={multiSelected}
           activeYear={activeYear}
           loadingMessages={loadingMessages}

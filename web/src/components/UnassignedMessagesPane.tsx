@@ -3,7 +3,7 @@
 import type { MessageRow } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
 
-export function UnmatchedMessagesPane({
+export function UnassignedMessagesPane({
   multiSelected,
   activeYear,
   loadingMessages,
