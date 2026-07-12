@@ -77,12 +77,14 @@ export function useResizablePanes(
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (dragging.current === "side") {
+        e.preventDefault();
         const left = shellRef.current?.getBoundingClientRect().left ?? 0;
         const next = clampSidebar(e.clientX - left);
         sidebarRef.current = next;
         cachedSidebarWidth = next;
         setSidebarWidth(next);
       } else if (dragging.current === "threads") {
+        e.preventDefault();
         const el = document.getElementById(splitId);
         if (!el) return;
         const rect = el.getBoundingClientRect();
@@ -118,16 +120,25 @@ export function useResizablePanes(
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      if (dragging.current) {
+        dragging.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
     };
   }, [storagePrefix, splitId]);
 
-  const startSide = useCallback(() => {
+  const startSide = useCallback((e: { preventDefault(): void; stopPropagation(): void }) => {
+    e.preventDefault();
+    e.stopPropagation();
     dragging.current = "side";
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   }, []);
 
-  const startThreads = useCallback(() => {
+  const startThreads = useCallback((e: { preventDefault(): void; stopPropagation(): void }) => {
+    e.preventDefault();
+    e.stopPropagation();
     dragging.current = "threads";
     document.body.style.cursor = "row-resize";
     document.body.style.userSelect = "none";

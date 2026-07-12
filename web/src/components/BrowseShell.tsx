@@ -940,7 +940,7 @@ export function BrowseShell({
         role="separator"
         aria-orientation="vertical"
         onMouseDown={startSide}
-        className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-accent/60"
+        className="relative z-20 w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-accent/60 before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']"
       />
 
       <div
@@ -1124,7 +1124,7 @@ export function BrowseShell({
               role="separator"
               aria-orientation="horizontal"
               onMouseDown={startThreads}
-              className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
+              className="relative z-20 h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-accent/60 before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']"
             />
 
             <BrowseMessagesPane

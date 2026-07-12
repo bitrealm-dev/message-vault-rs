@@ -458,6 +458,7 @@ export function AppSidebar({
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current) return;
+      e.preventDefault();
       const next = clampNavWidth(e.clientX);
       navWidthRef.current = next;
       cachedNavWidth = next;
@@ -476,6 +477,11 @@ export function AppSidebar({
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      if (dragging.current) {
+        dragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
     };
   }, []);
 
@@ -491,8 +497,10 @@ export function AppSidebar({
     });
   };
 
-  const startResize = () => {
+  const startResize = (e: { preventDefault(): void; stopPropagation(): void }) => {
     if (collapsed) return;
+    e.preventDefault();
+    e.stopPropagation();
     dragging.current = true;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -593,7 +601,7 @@ export function AppSidebar({
           aria-orientation="vertical"
           aria-label="Resize navigation"
           onMouseDown={startResize}
-          className="absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize bg-transparent hover:bg-accent/60"
+          className="absolute top-0 right-0 z-30 h-full w-1.5 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-accent/60 before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']"
         />
       )}
     </aside>

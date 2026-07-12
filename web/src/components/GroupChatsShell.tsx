@@ -435,7 +435,7 @@ export function GroupChatsShell({
           role="separator"
           aria-orientation="horizontal"
           onMouseDown={startThreads}
-          className="h-1 shrink-0 cursor-row-resize bg-border hover:bg-accent/60"
+          className="relative z-20 h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-accent/60 before:absolute before:inset-x-0 before:-top-1 before:-bottom-1 before:content-['']"
         />
 
         <GroupChatsMessagesPane
