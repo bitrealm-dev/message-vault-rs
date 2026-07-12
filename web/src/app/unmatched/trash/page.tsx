@@ -1,8 +1,9 @@
 import { AppSidebar } from "@/components/AppSidebar";
-import { UnmatchedShell } from "@/components/UnmatchedShell";
+import { TrashShell } from "@/components/TrashShell";
 import {
   listContactsForPicker,
   listTags,
+  listTrashedGroupYearRows,
   listTrashedHandles,
 } from "@/lib/db";
 import { Suspense } from "react";
@@ -12,11 +13,17 @@ export const dynamic = "force-dynamic";
 export default async function UnmatchedTrashPage({
   searchParams,
 }: {
-  searchParams: Promise<{ h?: string }>;
+  searchParams: Promise<{ h?: string; g?: string; y?: string; tab?: string }>;
 }) {
   const sp = await searchParams;
   const initialHandle = sp.h?.trim() || null;
+  const rawG = sp.g ? Number(sp.g) : null;
+  const initialGroupId = Number.isFinite(rawG) ? rawG : null;
+  const rawY = sp.y ? Number(sp.y) : null;
+  const initialYear = Number.isFinite(rawY) ? rawY : null;
+  const initialTab = sp.tab === "groups" ? "groups" : "individuals";
   const handles = listTrashedHandles();
+  const groups = listTrashedGroupYearRows();
   const assignContacts = listContactsForPicker();
   const tags = listTags();
 
@@ -27,11 +34,14 @@ export default async function UnmatchedTrashPage({
         <Suspense
           fallback={<div className="p-4 text-sm text-muted">Loading…</div>}
         >
-          <UnmatchedShell
-            mode="trash"
+          <TrashShell
             handles={handles}
+            groups={groups}
             assignContacts={assignContacts}
             initialHandle={initialHandle}
+            initialGroupId={initialGroupId}
+            initialYear={initialYear}
+            initialTab={initialTab}
           />
         </Suspense>
       </div>

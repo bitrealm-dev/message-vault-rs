@@ -2,7 +2,14 @@
 
 import type { GroupYearRow, MessageRow } from "@/lib/types";
 import { searchGroups } from "@/lib/groupSearch";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageBubble } from "./MessageBubble";
 import { useSourceFilter } from "./SourceFilter";
@@ -61,33 +68,59 @@ function readStoredGroupDateFormat(): GroupDateFormat {
 }
 
 export function GroupsShell({
-  groups,
+  groups: initialGroups,
   initialGroupId,
   initialYear,
+  mode = "groups",
 }: {
   groups: GroupYearRow[];
   initialGroupId: number | null;
   initialYear: number | null;
+  mode?: "groups" | "trash";
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { sourceQuery } = useSourceFilter();
+  const [groups, setGroups] = useState(initialGroups);
   const [groupId, setGroupId] = useState<number | null>(initialGroupId);
   const [focusYear, setFocusYear] = useState<number | null>(initialYear);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [groupDateFormat, setGroupDateFormatState] =
     useState<GroupDateFormat>("md");
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    conversationId: number;
+  } | null>(null);
   const { threadsPct, startThreads, shellRef } = useResizablePanes("groups");
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const selectionAnchorRef = useRef<number | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(
     () => searchGroups(groups, query),
     [groups, query],
   );
+
+  /** Unique conversation ids in filtered list order (first appearance). */
+  const uniqueIds = useMemo(() => {
+    const ids: number[] = [];
+    const seen = new Set<number>();
+    for (const g of filtered) {
+      if (seen.has(g.id)) continue;
+      seen.add(g.id);
+      ids.push(g.id);
+    }
+    return ids;
+  }, [filtered]);
 
   const years = useMemo(() => {
     const source = query.trim() ? filtered : groups;
@@ -117,9 +150,61 @@ export function GroupsShell({
     return groups.find((g) => g.id === groupId) ?? null;
   }, [groups, groupId, focusYear]);
 
+  const multiSelected = selectedIds.size >= 1;
+  const allSelected =
+    uniqueIds.length > 0 && uniqueIds.every((id) => selectedIds.has(id));
+  const someSelected =
+    uniqueIds.length > 0 && uniqueIds.some((id) => selectedIds.has(id));
+
+  const actionTargets = useMemo(() => {
+    if (multiSelected) return [...selectedIds];
+    if (groupId != null) return [groupId];
+    return [];
+  }, [multiSelected, selectedIds, groupId]);
+
+  const canAct = actionTargets.length > 0 && !saving;
+
   useEffect(() => {
     setGroupDateFormatState(readStoredGroupDateFormat());
   }, []);
+
+  useEffect(() => {
+    setGroups(initialGroups);
+    if (groupId != null && !initialGroups.some((g) => g.id === groupId)) {
+      setGroupId(null);
+      setFocusYear(null);
+      setMessages([]);
+    }
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (initialGroups.some((g) => g.id === id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [initialGroups, groupId]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = someSelected && !allSelected;
+  }, [someSelected, allSelected]);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDown = (e: globalThis.MouseEvent) => {
+      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCtxMenu(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
 
   const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
     setGroupDateFormatState(next);
@@ -131,8 +216,33 @@ export function GroupsShell({
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  const clearFocusAfterRemoval = useCallback(
+    (removedIds: number[]) => {
+      const removed = new Set(removedIds);
+      setGroups((prev) => prev.filter((g) => !removed.has(g.id)));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of removed) next.delete(id);
+        return next;
+      });
+      if (groupId != null && removed.has(groupId)) {
+        setGroupId(null);
+        setFocusYear(null);
+        setMessages([]);
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("g");
+        params.delete("y");
+        const qs = params.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      }
+    },
+    [groupId, pathname, router, searchParams],
+  );
+
   const selectGroup = useCallback(
     (row: GroupYearRow) => {
+      setSelectedIds(new Set());
+      selectionAnchorRef.current = row.id;
       setGroupId(row.id);
       setFocusYear(row.year);
       setMessages([]);
@@ -145,9 +255,232 @@ export function GroupsShell({
     [pathname, router, searchParams],
   );
 
+  const applyRangeSelect = useCallback(
+    (id: number) => {
+      const clickIndex = uniqueIds.indexOf(id);
+      if (clickIndex < 0) return;
+      const anchor =
+        selectionAnchorRef.current != null
+          ? uniqueIds.indexOf(selectionAnchorRef.current)
+          : -1;
+      const from = anchor >= 0 ? anchor : clickIndex;
+      const lo = Math.min(from, clickIndex);
+      const hi = Math.max(from, clickIndex);
+      const next = new Set<number>();
+      for (let i = lo; i <= hi; i++) next.add(uniqueIds[i]!);
+      setSelectedIds(next);
+      selectionAnchorRef.current = id;
+    },
+    [uniqueIds],
+  );
+
+  const ctrlToggleSelect = useCallback(
+    (id: number) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.size === 0 && groupId != null) next.add(groupId);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      selectionAnchorRef.current = id;
+    },
+    [groupId],
+  );
+
+  const toggleOrRangeSelect = useCallback(
+    (id: number, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+      if (e.shiftKey) {
+        applyRangeSelect(id);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        ctrlToggleSelect(id);
+        return;
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      selectionAnchorRef.current = id;
+    },
+    [applyRangeSelect, ctrlToggleSelect],
+  );
+
+  const onSelectColumnClick = useCallback(
+    (id: number, e: MouseEvent) => {
+      e.stopPropagation();
+      toggleOrRangeSelect(id, e);
+    },
+    [toggleOrRangeSelect],
+  );
+
+  const onRowClick = useCallback(
+    (row: GroupYearRow, e: MouseEvent) => {
+      if (e.shiftKey) {
+        e.preventDefault();
+        applyRangeSelect(row.id);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        ctrlToggleSelect(row.id);
+        return;
+      }
+      if (selectedIds.size >= 1) {
+        toggleOrRangeSelect(row.id, e);
+        return;
+      }
+      selectGroup(row);
+    },
+    [
+      applyRangeSelect,
+      ctrlToggleSelect,
+      selectGroup,
+      selectedIds.size,
+      toggleOrRangeSelect,
+    ],
+  );
+
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(uniqueIds));
+  }, [allSelected, uniqueIds]);
+
+  const clampMenu = (x: number, y: number, w: number, h: number) => ({
+    x: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
+    y: Math.max(8, Math.min(y, window.innerHeight - h - 8)),
+  });
+
+  const openCtxMenu = useCallback(
+    (conversationId: number, clientX: number, clientY: number) => {
+      if (!selectedIds.has(conversationId) && selectedIds.size > 0) {
+        setSelectedIds(new Set([conversationId]));
+      }
+      const pos = clampMenu(clientX, clientY, 200, 120);
+      setCtxMenu({ x: pos.x, y: pos.y, conversationId });
+    },
+    [selectedIds],
+  );
+
+  const moveToTrash = async (forId?: number) => {
+    if (mode !== "groups") return;
+    const targets =
+      forId != null && !multiSelected ? [forId] : actionTargets;
+    if (targets.length === 0) return;
+    const label =
+      targets.length === 1
+        ? "Move this group chat to Trash?"
+        : `Move ${targets.length} group chats to Trash?`;
+    if (!window.confirm(label)) return;
+    setSaving(true);
+    setCtxMenu(null);
+    try {
+      for (const conversationId of targets) {
+        const res = await fetch("/api/groups/trash", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "delete failed");
+      }
+      setStatus(
+        targets.length === 1
+          ? "Moved to Trash"
+          : `Moved ${targets.length} to Trash`,
+      );
+      clearFocusAfterRemoval(targets);
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Delete failed");
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restoreFromTrash = async (forId?: number) => {
+    if (mode !== "trash") return;
+    const targets =
+      forId != null && !multiSelected ? [forId] : actionTargets;
+    if (targets.length === 0) return;
+    setSaving(true);
+    setCtxMenu(null);
+    try {
+      for (const conversationId of targets) {
+        const res = await fetch("/api/groups/trash", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "undelete failed");
+      }
+      setStatus(
+        targets.length === 1
+          ? "Undeleted — back in Group chats"
+          : `Undeleted ${targets.length} group chats`,
+      );
+      clearFocusAfterRemoval(targets);
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Undelete failed");
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const permanentlyDeleteFromTrash = async (forId?: number) => {
+    if (mode !== "trash") return;
+    const targets =
+      forId != null && !multiSelected ? [forId] : actionTargets;
+    if (targets.length === 0) return;
+    const label =
+      targets.length === 1
+        ? "Permanently delete this group chat? This cannot be undone."
+        : `Permanently delete ${targets.length} group chats? This cannot be undone.`;
+    if (!window.confirm(label)) return;
+    setSaving(true);
+    setCtxMenu(null);
+    try {
+      for (const conversationId of targets) {
+        const res = await fetch("/api/groups/trash", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId, permanent: true }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "permanent delete failed");
+      }
+      setStatus(
+        targets.length === 1
+          ? "Permanently deleted"
+          : `Permanently deleted ${targets.length} group chats`,
+      );
+      clearFocusAfterRemoval(targets);
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Permanent delete failed");
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
-    if (!groupId) {
-      setMessages([]);
+    if (multiSelected || !groupId) {
+      if (multiSelected) setMessages([]);
+      if (!groupId) setMessages([]);
       return;
     }
     let cancelled = false;
@@ -163,11 +496,12 @@ export function GroupsShell({
     return () => {
       cancelled = true;
     };
-  }, [groupId, sourceQuery]);
+  }, [groupId, sourceQuery, multiSelected]);
 
   useEffect(() => {
     const year = pendingScrollYearRef.current;
-    if (year == null || loading || messages.length === 0) return;
+    if (year == null || loading || messages.length === 0 || multiSelected)
+      return;
     const pane = messagesPaneRef.current;
     if (!pane) return;
 
@@ -181,10 +515,12 @@ export function GroupsShell({
       });
     }
     pendingScrollYearRef.current = null;
-  }, [loading, messages, focusYear]);
+  }, [loading, messages, focusYear, multiSelected]);
 
   const activeKey =
-    groupId != null && focusYear != null ? `${groupId}-${focusYear}` : null;
+    groupId != null && focusYear != null && !multiSelected
+      ? `${groupId}-${focusYear}`
+      : null;
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0 flex-col bg-bg">
@@ -195,27 +531,81 @@ export function GroupsShell({
         >
           <div className="shrink-0 border-b border-border/60 bg-bg px-5 pt-4 pb-3">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-                Group messages
-                <span className="ml-2 font-normal normal-case tracking-normal">
-                  {query.trim() ? `${filtered.length}/` : ""}
-                  {groups.length}
-                </span>
-              </h2>
-              <label className="flex items-center gap-1.5 text-[11px] text-muted">
-                <span className="sr-only">Date format</span>
-                <select
-                  value={groupDateFormat}
-                  onChange={(e) =>
-                    setGroupDateFormat(e.target.value as GroupDateFormat)
-                  }
-                  className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
-                >
-                  <option value="md">01-31-2025</option>
-                  <option value="mon-d">Jan 31, 2025</option>
-                  <option value="d-mon">31 Jan 2025</option>
-                </select>
-              </label>
+              <div className="flex min-w-0 items-center gap-3">
+                <label className="flex shrink-0 items-center gap-2">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    disabled={uniqueIds.length === 0}
+                    aria-label={
+                      mode === "trash"
+                        ? "Select all trashed groups"
+                        : "Select all group chats"
+                    }
+                    onChange={toggleSelectAll}
+                    className="checkbox-people"
+                  />
+                </label>
+                <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+                  {mode === "trash" ? "Trashed groups" : "Group messages"}
+                  <span className="ml-2 font-normal normal-case tracking-normal">
+                    {query.trim() ? `${filtered.length}/` : ""}
+                    {groups.length}
+                  </span>
+                </h2>
+                {status && (
+                  <span className="truncate text-[12px] text-muted">
+                    {status}
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {mode === "groups" && canAct && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void moveToTrash()}
+                    className="rounded-md border border-border bg-elevated px-2 py-1 text-[12px] text-text hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                )}
+                {mode === "trash" && canAct && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void restoreFromTrash()}
+                      className="rounded-md border border-border bg-elevated px-2 py-1 text-[12px] text-text hover:bg-white/10 disabled:opacity-50"
+                    >
+                      Undelete
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void permanentlyDeleteFromTrash()}
+                      className="rounded-md border border-border bg-elevated px-2 py-1 text-[12px] text-text hover:bg-white/10 disabled:opacity-50"
+                    >
+                      Delete permanently
+                    </button>
+                  </>
+                )}
+                <label className="flex items-center gap-1.5 text-[11px] text-muted">
+                  <span className="sr-only">Date format</span>
+                  <select
+                    value={groupDateFormat}
+                    onChange={(e) =>
+                      setGroupDateFormat(e.target.value as GroupDateFormat)
+                    }
+                    className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
+                  >
+                    <option value="md">01-31-2025</option>
+                    <option value="mon-d">Jan 31, 2025</option>
+                    <option value="d-mon">31 Jan 2025</option>
+                  </select>
+                </label>
+              </div>
             </div>
 
             <div className="mb-3">
@@ -246,9 +636,13 @@ export function GroupsShell({
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg">
             {groups.length === 0 ? (
-              <p className="mt-2 px-5 text-[12px] text-muted">No group messages</p>
+              <p className="mt-2 px-5 text-[12px] text-muted">
+                {mode === "trash" ? "No trashed group chats" : "No group messages"}
+              </p>
             ) : rowsByYear.length === 0 ? (
-              <p className="mt-2 px-5 text-[12px] text-muted">No matching groups</p>
+              <p className="mt-2 px-5 text-[12px] text-muted">
+                No matching groups
+              </p>
             ) : (
               rowsByYear.map(([year, items], yearIdx) => (
                 <div key={year} id={`group-year-${year}`} className="pb-6">
@@ -262,45 +656,94 @@ export function GroupsShell({
                       </span>
                     )}
                   </div>
-                  <ul className="divide-y divide-border/50 border-b border-border/50 px-5">
+                  <ul className="divide-y divide-border/50 border-b border-border/50">
                     {items.map((g) => {
                       const key = `${g.id}-${g.year}`;
-                      const active = activeKey === key;
+                      const checked = selectedIds.has(g.id);
+                      const focused = activeKey === key;
+                      const selectionActive = selectedIds.size >= 1;
                       return (
                         <li key={key}>
-                          <button
-                            type="button"
-                            title={g.titleFull}
-                            onClick={() => selectGroup(g)}
-                            className={`flex w-full items-start justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
-                              active
-                                ? "bg-white/12 text-accent"
-                                : "text-text hover:bg-white/20 hover:text-accent"
+                          <div
+                            className={`group relative flex items-start gap-1.5 py-2 pr-5 pl-0 select-none ${
+                              checked
+                                ? "bg-accent/20 hover:bg-accent/25"
+                                : focused
+                                  ? "bg-elevated hover:bg-white/18"
+                                  : "hover:bg-white/20"
                             }`}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              openCtxMenu(g.id, e.clientX, e.clientY);
+                            }}
                           >
-                            <span className="min-w-0">
-                              <span className="line-clamp-2 font-medium leading-snug">
-                                {g.title}
-                              </span>
-                              <span className="mt-0.5 block truncate text-[11px] text-muted">
-                                {g.participantCount} people
-                                <span className="mx-1.5">·</span>
-                                {g.messageCount} msgs
-                              </span>
-                            </span>
-                            <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-[11px] text-muted tabular-nums">
-                              {g.spansMultipleYears && (
-                                <span
-                                  title="Spans multiple years"
-                                  aria-label="Spans multiple years"
-                                  className="text-muted"
-                                >
-                                  ↔
+                            {(checked || (focused && !selectionActive)) && (
+                              <span
+                                aria-hidden
+                                className={`absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full ${
+                                  checked ? "bg-accent" : "bg-[#c8c8c8]"
+                                }`}
+                              />
+                            )}
+                            <button
+                              type="button"
+                              aria-pressed={checked}
+                              aria-label={`Select ${g.title}`}
+                              onClick={(e) => onSelectColumnClick(g.id, e)}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                if (e.shiftKey) e.preventDefault();
+                              }}
+                              className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                readOnly
+                                tabIndex={-1}
+                                aria-hidden
+                                className="checkbox-people pointer-events-none"
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              title={g.titleFull}
+                              onClick={(e) => onRowClick(g, e)}
+                              onMouseDown={(e) => {
+                                if (e.shiftKey) e.preventDefault();
+                              }}
+                              className={`flex min-w-0 flex-1 items-start justify-between gap-4 text-left text-[13px] ${
+                                focused && !selectionActive
+                                  ? "text-accent"
+                                  : "text-text"
+                              }`}
+                            >
+                              <span className="min-w-0">
+                                <span className="line-clamp-2 font-medium leading-snug">
+                                  {g.title}
                                 </span>
-                              )}
-                              <span>{groupDateMeta(g, groupDateFormat)}</span>
-                            </span>
-                          </button>
+                                <span className="mt-0.5 block truncate text-[11px] text-muted">
+                                  {g.participantCount} people
+                                  <span className="mx-1.5">·</span>
+                                  {g.messageCount} msgs
+                                </span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-[11px] text-muted tabular-nums">
+                                {g.spansMultipleYears && (
+                                  <span
+                                    title="Spans multiple years"
+                                    aria-label="Spans multiple years"
+                                    className="text-muted"
+                                  >
+                                    ↔
+                                  </span>
+                                )}
+                                <span>
+                                  {groupDateMeta(g, groupDateFormat)}
+                                </span>
+                              </span>
+                            </button>
+                          </div>
                         </li>
                       );
                     })}
@@ -322,20 +765,31 @@ export function GroupsShell({
           ref={messagesPaneRef}
           className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4"
         >
-          {!selectedRow && (
+          {multiSelected && (
+            <p className="pt-8 text-center text-[13px] text-muted">
+              {selectedIds.size} group
+              {selectedIds.size === 1 ? "" : "s"} selected
+            </p>
+          )}
+          {!multiSelected && !selectedRow && (
             <p className="pt-8 text-center text-[13px] text-muted">
               Select a group to read messages.
             </p>
           )}
-          {selectedRow && loading && messages.length === 0 && (
+          {!multiSelected && selectedRow && loading && messages.length === 0 && (
             <p className="pt-8 text-center text-[13px] text-muted">
               Loading messages…
             </p>
           )}
-          {selectedRow && !loading && messages.length === 0 && (
-            <p className="pt-8 text-center text-[13px] text-muted">No messages</p>
-          )}
-          {selectedRow && messages.length > 0 && (
+          {!multiSelected &&
+            selectedRow &&
+            !loading &&
+            messages.length === 0 && (
+              <p className="pt-8 text-center text-[13px] text-muted">
+                No messages
+              </p>
+            )}
+          {!multiSelected && selectedRow && messages.length > 0 && (
             <div
               className={`mx-auto flex max-w-2xl flex-col gap-2 ${
                 loading ? "opacity-60" : ""
@@ -344,7 +798,9 @@ export function GroupsShell({
               <div className="mb-2 border-b border-border/60 pb-2 text-center">
                 <div className="text-[13px] font-medium text-text">
                   {selectedRow.participantNames.length > 0
-                    ? selectedRow.participantNames.join("\u00a0\u00a0·\u00a0\u00a0")
+                    ? selectedRow.participantNames.join(
+                        "\u00a0\u00a0·\u00a0\u00a0",
+                      )
                     : selectedRow.title}
                 </div>
                 {selectedRow.namedTitle ? (
@@ -373,6 +829,43 @@ export function GroupsShell({
           )}
         </section>
       </div>
+
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className="fixed z-50 min-w-[180px] rounded-md border border-border bg-elevated py-1 shadow-lg"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          {mode === "groups" ? (
+            <button
+              type="button"
+              className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+              onClick={() => void moveToTrash(ctxMenu.conversationId)}
+            >
+              Delete
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+                onClick={() => void restoreFromTrash(ctxMenu.conversationId)}
+              >
+                Undelete
+              </button>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/10"
+                onClick={() =>
+                  void permanentlyDeleteFromTrash(ctxMenu.conversationId)
+                }
+              >
+                Delete permanently
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

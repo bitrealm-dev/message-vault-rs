@@ -362,6 +362,11 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
             handle TEXT PRIMARY KEY,
             trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS trashed_conversations (
+            conversation_id INTEGER PRIMARY KEY,
+            trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         "#,
     )?;
     Ok(())

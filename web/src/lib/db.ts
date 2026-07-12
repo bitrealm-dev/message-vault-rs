@@ -707,6 +707,12 @@ function contactGroupThreadsForPhones(
   const sourceSql = source ? " AND m.source = ?" : "";
   const params: Array<string | number> = [...phones];
   if (source) params.push(source);
+  const hasTrash = hasTrashedConversationsTable(db);
+  const trashFilter = hasTrash
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+       )`
+    : "";
   const rows = db
     .prepare(
       `SELECT c.id AS conversation_id,
@@ -720,7 +726,7 @@ function contactGroupThreadsForPhones(
          AND EXISTS (
            SELECT 1 FROM participants p
            WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
-         )${sourceSql}${combinedDedupeSql(source, "m")}
+         )${trashFilter}${sourceSql}${combinedDedupeSql(source, "m")}
        GROUP BY c.id, year
        HAVING message_count > 0
        ORDER BY year DESC, c.id`,
@@ -881,6 +887,12 @@ export function listGroups(): GroupListItem[] {
   const joinDupes = hasDuplicateOfColumn()
     ? " AND m.duplicate_of IS NULL"
     : "";
+  const hasTrash = hasTrashedConversationsTable(db);
+  const trashFilter = hasTrash
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+       )`
+    : "";
   const rows = db
     .prepare(
       `SELECT c.id,
@@ -890,6 +902,7 @@ export function listGroups(): GroupListItem[] {
        FROM conversations c
        LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
        WHERE c.conv_type = 'group'
+         ${trashFilter}
        GROUP BY c.id
        HAVING message_count > 0`,
     )
@@ -941,10 +954,44 @@ export function listGroups(): GroupListItem[] {
 
 /** Group chats split by calendar year for the Groups page list. */
 export function listGroupYearRows(): GroupYearRow[] {
+  return listGroupYearRowsSection("active");
+}
+
+/** Trashed group chats split by calendar year. */
+export function listTrashedGroupYearRows(): GroupYearRow[] {
+  return listGroupYearRowsSection("trash");
+}
+
+function hasTrashedConversationsTable(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM sqlite_master
+       WHERE type = 'table' AND name = 'trashed_conversations'`,
+    )
+    .get() as { n: number };
+  return row.n > 0;
+}
+
+function listGroupYearRowsSection(
+  section: "active" | "trash",
+): GroupYearRow[] {
   const db = getDb();
   const joinDupes = hasDuplicateOfColumn()
     ? " AND m.duplicate_of IS NULL"
     : "";
+  const hasTrash = hasTrashedConversationsTable(db);
+  if (section === "trash" && !hasTrash) return [];
+
+  const trashFilter = !hasTrash
+    ? ""
+    : section === "trash"
+      ? `AND EXISTS (
+           SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+         )`
+      : `AND NOT EXISTS (
+           SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+         )`;
+
   const rows = db
     .prepare(
       `SELECT c.id,
@@ -955,6 +1002,7 @@ export function listGroupYearRows(): GroupYearRow[] {
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id${joinDupes}
        WHERE c.conv_type = 'group'
+         ${trashFilter}
        GROUP BY c.id, year
        HAVING message_count > 0`,
     )
