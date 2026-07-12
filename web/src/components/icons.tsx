@@ -38,24 +38,6 @@ export function PersonDetailIcon({ className }: { className?: string }) {
   );
 }
 
-export function RangeIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
-      <path d="M8 3.5v4M16 3.5v4M3.5 10.5h17" />
-    </svg>
-  );
-}
-
 export function PhoneIcon({ className }: { className?: string }) {
   return (
     <svg

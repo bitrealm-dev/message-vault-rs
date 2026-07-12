@@ -7,7 +7,7 @@ import type {
   YearThread,
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   draftHasName,
@@ -25,10 +25,15 @@ import { UnmatchedContactList } from "./UnmatchedContactList";
 import { UnmatchedDetailPane } from "./UnmatchedDetailPane";
 import { UnmatchedMessagesPane } from "./UnmatchedMessagesPane";
 import { useSourceFilter } from "./SourceFilter";
+import { useDismissible } from "./useDismissible";
+import { useListSelection } from "./useListSelection";
+import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
 
 const UNMATCHED_SORT_ORDER_KEY = "mv-unmatched-sort-order";
 const UNMATCHED_SORT_BY_KEY = "mv-unmatched-sort-by";
+const UNMATCHED_SORT_BY_ALLOWED = ["phone", "date", "messages"] as const;
+const UNMATCHED_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 
 export function UnmatchedShell({
   handles: initialHandles,
@@ -48,24 +53,22 @@ export function UnmatchedShell({
   const searchParams = useSearchParams();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [handles, setHandles] = useState(initialHandles);
-  const [sortBy, setSortByState] = useState<UnmatchedSortBy>(() => {
-    if (typeof window === "undefined") return "phone";
-    const v = localStorage.getItem(UNMATCHED_SORT_BY_KEY);
-    return v === "phone" || v === "date" || v === "messages" ? v : "phone";
-  });
-  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => {
-    if (typeof window === "undefined") return "asc";
-    const v = localStorage.getItem(UNMATCHED_SORT_ORDER_KEY);
-    return v === "asc" || v === "desc" ? v : "asc";
-  });
+  const [sortBy, setSortBy] = usePersistedEnum(
+    UNMATCHED_SORT_BY_KEY,
+    UNMATCHED_SORT_BY_ALLOWED,
+    "phone",
+  );
+  const [sortOrder, setSortOrder] = usePersistedEnum(
+    UNMATCHED_SORT_ORDER_KEY,
+    UNMATCHED_SORT_ORDER_ALLOWED,
+    "asc",
+  );
   const setUnmatchedSort = useCallback(
     (next: { sortBy: UnmatchedSortBy; order: SortOrder }) => {
-      setSortByState(next.sortBy);
-      setSortOrderState(next.order);
-      localStorage.setItem(UNMATCHED_SORT_BY_KEY, next.sortBy);
-      localStorage.setItem(UNMATCHED_SORT_ORDER_KEY, next.order);
+      setSortBy(next.sortBy);
+      setSortOrder(next.order);
     },
-    [],
+    [setSortBy, setSortOrder],
   );
   const [handle, setHandle] = useState<string | null>(initialHandle);
   const [yearly, setYearly] = useState<YearThread[]>([]);
@@ -91,18 +94,13 @@ export function UnmatchedShell({
     y: number;
     handle?: string;
   } | null>(null);
-  const [selectedHandles, setSelectedHandles] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [status, setStatus] = useState<string | null>(null);
   const assignRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
-  const selectionAnchorRef = useRef<string | null>(null);
   const { sidebarWidth, threadsPct, startSide, startThreads, shellRef, splitId } =
     useResizablePanes("browse", { splitId: "unmatched-split" });
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
-  const multiSelected = selectedHandles.size > 1;
 
   const sortedHandles = useMemo(() => {
     const copy = [...handles];
@@ -134,54 +132,56 @@ export function UnmatchedShell({
     return copy;
   }, [handles, sortBy, sortOrder]);
 
+  const orderedIds = useMemo(
+    () => sortedHandles.map((h) => h.handle),
+    [sortedHandles],
+  );
+  const validIds = useMemo(() => handles.map((h) => h.handle), [handles]);
+
+  const selectHandleRef = useRef<(next: string) => void>(() => {});
+  const dismissSelectionUi = useCallback(() => {
+    setCreating(false);
+    setCreateDraft(null);
+    setAssignMode(null);
+    setCtxMenu(null);
+  }, []);
+
+  const {
+    selectedIds: selectedHandles,
+    setSelectedIds: setSelectedHandles,
+    selectionAnchorRef,
+    multiSelected,
+    allSelected: allHandlesSelected,
+    selectAllRef,
+    clearSelection,
+    toggleSelectAll,
+    onSelectColumnClick,
+    onRowClick,
+  } = useListSelection<string>({
+    orderedIds,
+    validIds,
+    rangeMode: "anchor",
+    multiThreshold: "any",
+    focusedId: handle,
+    rowClickMode: "alwaysOpen",
+    checkboxEvents: "preventAndStop",
+    escapeToClear: true,
+    escapeBlocked: () => ctxMenu != null || assignMode != null,
+    selectAllSetsAnchor: true,
+    onOpen: (id) => selectHandleRef.current(id),
+    onSelectionMutation: dismissSelectionUi,
+  });
+
   const selectedItems = useMemo(
     () => sortedHandles.filter((h) => selectedHandles.has(h.handle)),
     [sortedHandles, selectedHandles],
   );
-
-  const clearSelection = useCallback(() => {
-    setSelectedHandles(new Set());
-    selectionAnchorRef.current = null;
-  }, []);
-
-  const allHandlesSelected = useMemo(() => {
-    if (sortedHandles.length === 0) return false;
-    return sortedHandles.every((h) => selectedHandles.has(h.handle));
-  }, [sortedHandles, selectedHandles]);
-
-  const someHandlesSelected = useMemo(() => {
-    if (sortedHandles.length === 0) return false;
-    return sortedHandles.some((h) => selectedHandles.has(h.handle));
-  }, [sortedHandles, selectedHandles]);
-
-  const selectAllRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!selectAllRef.current) return;
-    selectAllRef.current.indeterminate =
-      someHandlesSelected && !allHandlesSelected;
-  }, [someHandlesSelected, allHandlesSelected]);
-
-  const toggleSelectAll = useCallback(() => {
-    if (allHandlesSelected) {
-      clearSelection();
-      return;
-    }
-    setSelectedHandles(new Set(sortedHandles.map((h) => h.handle)));
-    selectionAnchorRef.current = sortedHandles[0]?.handle ?? null;
-  }, [allHandlesSelected, clearSelection, sortedHandles]);
 
   const actionTargets = useMemo(() => {
     if (multiSelected) return selectedItems.map((h) => h.handle);
     if (handle) return [handle];
     return [] as string[];
   }, [multiSelected, selectedItems, handle]);
-
-  const sortedIndexByHandle = useMemo(() => {
-    const map = new Map<string, number>();
-    sortedHandles.forEach((h, i) => map.set(h.handle, i));
-    return map;
-  }, [sortedHandles]);
 
   const selectHandle = useCallback(
     (next: string) => {
@@ -196,8 +196,9 @@ export function UnmatchedShell({
       params.set("h", next);
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [pathname, router, searchParams, setSelectedHandles, selectionAnchorRef],
   );
+  selectHandleRef.current = selectHandle;
 
   // Default to create/edit when a single unmatched handle is focused.
   const createHandleRef = useRef<string | null>(null);
@@ -299,112 +300,6 @@ export function UnmatchedShell({
     );
   }, []);
 
-  const applyRangeSelect = useCallback(
-    (target: string) => {
-      const clickIndex = sortedIndexByHandle.get(target);
-      if (clickIndex === undefined) return;
-      const anchor = selectionAnchorRef.current;
-      const anchorIndex =
-        anchor != null ? sortedIndexByHandle.get(anchor) : undefined;
-      if (anchorIndex === undefined) {
-        setSelectedHandles(new Set([target]));
-        selectionAnchorRef.current = target;
-        return;
-      }
-      const from = Math.min(anchorIndex, clickIndex);
-      const to = Math.max(anchorIndex, clickIndex);
-      const next = new Set<string>();
-      for (let i = from; i <= to; i++) {
-        const row = sortedHandles[i];
-        if (row) next.add(row.handle);
-      }
-      setSelectedHandles(next);
-    },
-    [sortedHandles, sortedIndexByHandle],
-  );
-
-  const toggleOrRangeSelect = useCallback(
-    (target: string, shiftKey: boolean) => {
-      if (shiftKey) {
-        applyRangeSelect(target);
-        return;
-      }
-      setSelectedHandles((prev) => {
-        const next = new Set(prev);
-        if (next.has(target)) next.delete(target);
-        else next.add(target);
-        return next;
-      });
-      selectionAnchorRef.current = target;
-      setCreating(false);
-      setCreateDraft(null);
-      setAssignMode(null);
-      setCtxMenu(null);
-    },
-    [applyRangeSelect],
-  );
-
-  const ctrlToggleSelect = useCallback(
-    (target: string) => {
-      setSelectedHandles((prev) => {
-        const n = new Set(prev);
-        // Seed with focused handle so ctrl-clicking a second row selects both.
-        if (n.size === 0 && handle && handle !== target) n.add(handle);
-        if (n.has(target)) n.delete(target);
-        else n.add(target);
-        return n;
-      });
-      selectionAnchorRef.current = target;
-      setCreating(false);
-      setCreateDraft(null);
-      setAssignMode(null);
-      setCtxMenu(null);
-    },
-    [handle],
-  );
-
-  const onSelectColumnClick = useCallback(
-    (target: string, e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.shiftKey) {
-        applyRangeSelect(target);
-        setCreating(false);
-        setCreateDraft(null);
-        setAssignMode(null);
-        setCtxMenu(null);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        ctrlToggleSelect(target);
-        return;
-      }
-      toggleOrRangeSelect(target, false);
-    },
-    [applyRangeSelect, ctrlToggleSelect, toggleOrRangeSelect],
-  );
-
-  const onRowClick = useCallback(
-    (next: string, e: MouseEvent) => {
-      if (e.shiftKey) {
-        e.preventDefault();
-        applyRangeSelect(next);
-        setCreating(false);
-        setCreateDraft(null);
-        setAssignMode(null);
-        setCtxMenu(null);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        e.preventDefault();
-        ctrlToggleSelect(next);
-        return;
-      }
-      selectHandle(next);
-    },
-    [applyRangeSelect, ctrlToggleSelect, selectHandle],
-  );
-
   const clampMenu = (x: number, y: number, w: number, h: number) => ({
     x: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
     y: Math.max(8, Math.min(y, window.innerHeight - h - 8)),
@@ -418,14 +313,6 @@ export function UnmatchedShell({
       setMessages([]);
       setActiveYear(null);
     }
-    setSelectedHandles((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set<string>();
-      for (const h of prev) {
-        if (initialHandles.some((row) => row.handle === h)) next.add(h);
-      }
-      return next.size === prev.size ? prev : next;
-    });
   }, [initialHandles, handle]);
 
   useEffect(() => {
@@ -516,23 +403,6 @@ export function UnmatchedShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle, source, sourceQuery, setSource, multiSelected]);
 
-  useEffect(() => {
-    if (!multiSelected && selectedHandles.size === 0) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (ctxMenu || assignMode) return;
-      clearSelection();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [
-    multiSelected,
-    selectedHandles.size,
-    ctxMenu,
-    assignMode,
-    clearSelection,
-  ]);
-
   const loadYear = (year: number, conversationIds: number[]) => {
     setActiveYear(year);
     setLoadingMessages(true);
@@ -603,37 +473,17 @@ export function UnmatchedShell({
     return searchContacts(assignContacts, q).slice(0, 40);
   }, [assignContacts, assignQuery]);
 
-  useEffect(() => {
-    if (!assignMode) return;
-    const onDoc = (e: globalThis.MouseEvent) => {
-      if (!assignRef.current?.contains(e.target as Node)) setAssignMode(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAssignMode(null);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [assignMode]);
+  useDismissible({
+    open: assignMode != null,
+    onDismiss: () => setAssignMode(null),
+    refs: [assignRef],
+  });
 
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const onDoc = (e: globalThis.MouseEvent) => {
-      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setCtxMenu(null);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [ctxMenu]);
+  useDismissible({
+    open: ctxMenu != null,
+    onDismiss: () => setCtxMenu(null),
+    refs: [ctxMenuRef],
+  });
 
   const assignToContact = async (contactId: number) => {
     const targets = actionTargets;
@@ -827,6 +677,17 @@ export function UnmatchedShell({
     </div>
   );
 
+  const activeYearMeta = useMemo(() => {
+    if (activeYear == null) return null;
+    const y = yearly.find((t) => t.year === activeYear);
+    if (!y) return null;
+    return {
+      messageCount: y.messageCount,
+      dateStart: y.dateStart,
+      dateEnd: y.dateEnd,
+    };
+  }, [activeYear, yearly]);
+
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
       <UnmatchedContactList
@@ -861,7 +722,9 @@ export function UnmatchedShell({
         <div className="flex h-[45px] shrink-0 items-center justify-between gap-3 border-b border-border bg-panel px-4">
           <h1 className="truncate text-xl font-semibold tracking-tight text-text">
             {multiSelected
-              ? `${selectedHandles.size} selected`
+              ? `${selectedHandles.size} contact${
+                  selectedHandles.size === 1 ? "" : "s"
+                } selected`
               : creating && createDraft
                 ? [createDraft.firstName, createDraft.lastName]
                     .map((p) => p.trim())
@@ -1045,6 +908,7 @@ export function UnmatchedShell({
           activeYear={activeYear}
           loadingMessages={loadingMessages}
           messages={messages}
+          activeYearMeta={activeYearMeta}
         />
 
         </div>

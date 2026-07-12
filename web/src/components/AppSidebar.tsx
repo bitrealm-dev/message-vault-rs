@@ -14,6 +14,7 @@ import {
   EllipsisIcon,
   PeopleGroupIcon,
 } from "./icons";
+import { useDismissible } from "./useDismissible";
 
 function PlusIcon({ className }: { className?: string }) {
   return (
@@ -323,29 +324,21 @@ function GroupsNav({ tags }: { tags: string[] }) {
   const createPanelRef = useRef<HTMLDivElement>(null);
   const renamePanelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!create && !menuFor && !rename) return;
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (create && !createPanelRef.current?.contains(t) && !headerRef.current?.contains(t)) {
-        setCreate(null);
-      }
-      if (menuFor && !menuRef.current?.contains(t)) setMenuFor(null);
-      if (rename && !renamePanelRef.current?.contains(t)) setRename(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setCreate(null);
-      setMenuFor(null);
-      setRename(null);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [create, menuFor, rename]);
+  useDismissible({
+    open: create != null,
+    onDismiss: () => setCreate(null),
+    refs: [createPanelRef, headerRef],
+  });
+  useDismissible({
+    open: menuFor != null,
+    onDismiss: () => setMenuFor(null),
+    refs: [menuRef],
+  });
+  useDismissible({
+    open: rename != null,
+    onDismiss: () => setRename(null),
+    refs: [renamePanelRef],
+  });
 
   const createGroup = async (name: string) => {
     setBusy(true);

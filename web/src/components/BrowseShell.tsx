@@ -9,12 +9,8 @@ import type {
   YearThread,
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
-import {
-  readStoredGroupDateFormat,
-  writeStoredGroupDateFormat,
-  type GroupDateFormat,
-} from "@/lib/groupDateFormat";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   draftHasName,
@@ -29,11 +25,15 @@ import { BrowseMessagesPane } from "./BrowseMessagesPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { type SortMode, type SortOrder } from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
+import { useListSelection } from "./useListSelection";
+import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
 
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
-
+const SORT_MODE_ALLOWED = ["first", "last", "messages"] as const;
+const SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
+const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 export function BrowseShell({
   section,
   sectionLabel,
@@ -53,23 +53,24 @@ export function BrowseShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
-  const [sort, setSortState] = useState<SortMode>(() => {
-    if (typeof window === "undefined") return "last";
-    const v = localStorage.getItem(SORT_MODE_KEY);
-    return v === "first" || v === "last" || v === "messages" ? v : "last";
-  });
-  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => {
-    if (typeof window === "undefined") return "asc";
-    const v = localStorage.getItem(SORT_ORDER_KEY);
-    return v === "asc" || v === "desc" ? v : "asc";
-  });
-
-  const setSort = useCallback((next: { sort: SortMode; order: SortOrder }) => {
-    setSortState(next.sort);
-    setSortOrderState(next.order);
-    localStorage.setItem(SORT_MODE_KEY, next.sort);
-    localStorage.setItem(SORT_ORDER_KEY, next.order);
-  }, []);
+  const [sortMode, setSortMode] = usePersistedEnum(
+    SORT_MODE_KEY,
+    SORT_MODE_ALLOWED,
+    "last",
+  );
+  const [sortOrder, setSortOrder] = usePersistedEnum(
+    SORT_ORDER_KEY,
+    SORT_ORDER_ALLOWED,
+    "asc",
+  );
+  const setSort = useCallback(
+    (next: { sort: SortMode; order: SortOrder }) => {
+      setSortMode(next.sort);
+      setSortOrder(next.order);
+    },
+    [setSortMode, setSortOrder],
+  );
+  const sort = sortMode;
   const [query, setQuery] = useState("");
   const [contactId, setContactId] = useState<number | null>(initialContactId);
   const [detail, setDetail] = useState<ContactDetail | null>(null);
@@ -80,8 +81,11 @@ export function BrowseShell({
     all: number;
     bySource: Record<string, number>;
   }>({ all: 0, bySource: {} });
-  const [groupDateFormat, setGroupDateFormatState] =
-    useState<GroupDateFormat>("md");
+  const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
+    GROUP_DATE_FORMAT_KEY,
+    GROUP_DATE_ALLOWED,
+    "md",
+  );
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
@@ -92,19 +96,10 @@ export function BrowseShell({
   const activeSourceRef = useRef<string | null>(null);
   activeSourceRef.current = source;
 
-  useEffect(() => {
-    setGroupDateFormatState(readStoredGroupDateFormat());
-  }, []);
-
-  const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
-    setGroupDateFormatState(next);
-    writeStoredGroupDateFormat(next);
-  }, []);
   const [contactEditing, setContactEditing] = useState(false);
   const [contactCreating, setContactCreating] = useState(false);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
   const [saving, setSaving] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [tagOverrides, setTagOverrides] = useState<Map<number, string[]>>(
     () => new Map(),
   );
@@ -229,6 +224,39 @@ export function BrowseShell({
     });
   }, [sorted, sort]);
 
+  const selectContactRef = useRef<(id: number) => void>(() => {});
+
+  const orderedIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
+  const selectAllIds = useMemo(
+    () => visibleContacts.map((c) => c.id),
+    [visibleContacts],
+  );
+  const validIds = useMemo(() => contacts.map((c) => c.id), [contacts]);
+
+  const {
+    selectedIds,
+    setSelectedIds,
+    hasSelection,
+    allSelected: allGroupSelected,
+    selectAllRef,
+    clearSelection: clearSelectionBase,
+    toggleSelectAll: toggleSelectAllInGroup,
+    onSelectColumnClick,
+    onRowClick: onNamePhoneClick,
+  } = useListSelection<number>({
+    orderedIds,
+    selectAllIds,
+    validIds,
+    rangeMode: "selectionSpan",
+    multiThreshold: "any",
+    focusedId: contactId,
+    rowClickMode: "openWhenEmptyElseToggle",
+    checkboxEvents: "preventAndStop",
+    escapeToClear: false,
+    selectAllSetsAnchor: false,
+    onOpen: (id) => selectContactRef.current(id),
+  });
+
   const selectContact = useCallback(
     (id: number) => {
       setContactId(id);
@@ -245,6 +273,7 @@ export function BrowseShell({
     },
     [pathname, router, searchParams],
   );
+  selectContactRef.current = selectContact;
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -254,21 +283,7 @@ export function BrowseShell({
     setContactEditing(false);
     setContactCreating(false);
     setEditDraft(null);
-  }, [section, query]);
-
-  // Drop selection ids that disappeared after a server refresh (e.g. left this tag).
-  useEffect(() => {
-    const valid = new Set(contacts.map((c) => c.id));
-    setSelectedIds((prev) => {
-      let changed = false;
-      const next = new Set<number>();
-      for (const id of prev) {
-        if (valid.has(id)) next.add(id);
-        else changed = true;
-      }
-      return changed ? next : prev;
-    });
-  }, [contacts]);
+  }, [section, query, setSelectedIds]);
 
   useEffect(() => {
     return () => {
@@ -289,123 +304,6 @@ export function BrowseShell({
       statusShowTimerRef.current = null;
     }, 300);
   }, []);
-
-  const sortedIndexById = useMemo(() => {
-    const map = new Map<number, number>();
-    sorted.forEach((c, i) => map.set(c.id, i));
-    return map;
-  }, [sorted]);
-
-  const applyRangeSelect = useCallback(
-    (id: number) => {
-      const clickIndex = sortedIndexById.get(id);
-      if (clickIndex === undefined) return;
-
-      const selectedIndices: number[] = [];
-      for (const sid of selectedIds) {
-        const idx = sortedIndexById.get(sid);
-        if (idx !== undefined) selectedIndices.push(idx);
-      }
-
-      if (selectedIndices.length === 0) {
-        setSelectedIds(new Set([id]));
-        return;
-      }
-
-      const minSel = Math.min(...selectedIndices);
-      const maxSel = Math.max(...selectedIndices);
-      const from = Math.min(minSel, clickIndex);
-      const to = Math.max(maxSel, clickIndex);
-      const next = new Set<number>();
-      for (let i = from; i <= to; i++) {
-        const c = sorted[i];
-        if (c) next.add(c.id);
-      }
-      setSelectedIds(next);
-    },
-    [selectedIds, sorted, sortedIndexById],
-  );
-
-  /** Checkbox: toggle, or shift-range. */
-  const toggleOrRangeSelect = useCallback(
-    (id: number, shiftKey: boolean) => {
-      if (shiftKey) {
-        applyRangeSelect(id);
-        return;
-      }
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-    },
-    [applyRangeSelect],
-  );
-
-  const ctrlToggleSelect = useCallback(
-    (id: number) => {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.size === 0 && contactId != null && contactId !== id) {
-          next.add(contactId);
-        }
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-    },
-    [contactId],
-  );
-
-  const onSelectColumnClick = useCallback(
-    (id: number, e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.shiftKey) {
-        applyRangeSelect(id);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        ctrlToggleSelect(id);
-        return;
-      }
-      toggleOrRangeSelect(id, false);
-    },
-    [applyRangeSelect, ctrlToggleSelect, toggleOrRangeSelect],
-  );
-
-  /**
-   * Name/phone (or whole row when selection active):
-   * - plain, no selection → open detail
-   * - shift → range select
-   * - ctrl/cmd → toggle (seed focused contact when starting)
-   * - plain, selection active → toggle
-   */
-  const onNamePhoneClick = useCallback(
-    (id: number, e: MouseEvent | { shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
-      if (e.shiftKey) {
-        applyRangeSelect(id);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        ctrlToggleSelect(id);
-        return;
-      }
-      if (selectedIds.size === 0) {
-        selectContact(id);
-        return;
-      }
-      toggleOrRangeSelect(id, false);
-    },
-    [
-      applyRangeSelect,
-      ctrlToggleSelect,
-      selectContact,
-      selectedIds.size,
-      toggleOrRangeSelect,
-    ],
-  );
 
   useEffect(() => {
     if (!contactId) {
@@ -566,12 +464,11 @@ export function BrowseShell({
     }
     return [...fromSorted, ...extras];
   }, [sorted, selectedIds, contacts]);
-  const hasSelection = selectedIds.size > 0;
   const canEditGroups =
     !contactEditing && !contactCreating && (hasSelection || !!detail);
 
   const clearSelection = useCallback(() => {
-    setSelectedIds(new Set());
+    clearSelectionBase();
     if (selectionDirtyRef.current) {
       selectionDirtyRef.current = false;
       setTagOverrides(new Map());
@@ -581,7 +478,7 @@ export function BrowseShell({
       setTagOverrides(new Map());
       setExcludeOverrides(new Map());
     }
-  }, [router]);
+  }, [clearSelectionBase, router]);
 
   useEffect(() => {
     if (!hasSelection) return;
@@ -1022,32 +919,6 @@ export function BrowseShell({
     };
   }, [activeThread, yearly, groups]);
 
-  const selectAllRef = useRef<HTMLInputElement>(null);
-
-  const allGroupSelected = useMemo(() => {
-    if (visibleContacts.length === 0) return false;
-    return visibleContacts.every((c) => selectedIds.has(c.id));
-  }, [visibleContacts, selectedIds]);
-
-  const someGroupSelected = useMemo(() => {
-    if (visibleContacts.length === 0) return false;
-    return visibleContacts.some((c) => selectedIds.has(c.id));
-  }, [visibleContacts, selectedIds]);
-
-  useEffect(() => {
-    if (!selectAllRef.current) return;
-    selectAllRef.current.indeterminate =
-      someGroupSelected && !allGroupSelected;
-  }, [someGroupSelected, allGroupSelected]);
-
-  const toggleSelectAllInGroup = useCallback(() => {
-    if (allGroupSelected) {
-      setSelectedIds(new Set());
-      return;
-    }
-    setSelectedIds(new Set(visibleContacts.map((c) => c.id)));
-  }, [allGroupSelected, visibleContacts]);
-
   return (
     <div ref={shellRef} className="flex h-full min-h-0">
       <BrowseContactList
@@ -1154,7 +1025,12 @@ export function BrowseShell({
         </div>
 
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
-          {hasSelection ? null : contactCreating && editDraft ? (
+          {hasSelection ? (
+            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+              {selectedIds.size} contact
+              {selectedIds.size === 1 ? "" : "s"} selected
+            </h1>
+          ) : contactCreating && editDraft ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
               {[editDraft.firstName, editDraft.lastName]
                 .map((p) => p.trim())
@@ -1186,8 +1062,8 @@ export function BrowseShell({
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
                 <h2 className="text-[14px] font-semibold text-text">
-                  {selectedContacts.length} contact
-                  {selectedContacts.length === 1 ? "" : "s"} selected
+                  {selectedIds.size} contact
+                  {selectedIds.size === 1 ? "" : "s"} selected
                 </h2>
                 <button
                   type="button"

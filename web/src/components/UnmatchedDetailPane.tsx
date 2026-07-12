@@ -56,8 +56,7 @@ export function UnmatchedDetailPane({
         <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
           <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
             <h2 className="text-[14px] font-semibold text-text">
-              {selectedItems.length}{" "}
-              {mode === "trash" ? "trashed" : "unassigned"} handle
+              {selectedItems.length} contact
               {selectedItems.length === 1 ? "" : "s"} selected
             </h2>
             <button
@@ -107,8 +106,6 @@ export function UnmatchedDetailPane({
             tags={creating ? (createDraft?.tags ?? []) : []}
             excluded={creating ? Boolean(createDraft?.exclude) : false}
             phonesView={[selected.handle]}
-            dateStart={selected.dateStart}
-            dateEnd={selected.dateEnd}
           />
 
           <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
@@ -125,7 +122,6 @@ export function UnmatchedDetailPane({
               onSelect={onLoadYear}
               emptyLabel="No messages for this source"
               loading={loadingThreads}
-              showCounts
             />
           </div>
         </>

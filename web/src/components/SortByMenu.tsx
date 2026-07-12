@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useDismissible } from "./useDismissible";
 
 export type SortMode = "first" | "last" | "messages";
 export type UnmatchedSortBy = "phone" | "date" | "messages";
@@ -25,21 +26,11 @@ export function SortMenu<T extends string>({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismissible({
+    open,
+    onDismiss: () => setOpen(false),
+    refs: [rootRef],
+  });
 
   return (
     <div className="relative" ref={rootRef}>

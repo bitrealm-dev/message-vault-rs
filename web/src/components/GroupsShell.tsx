@@ -2,11 +2,7 @@
 
 import type { GroupYearRow, MessageRow } from "@/lib/types";
 import { searchGroups } from "@/lib/groupSearch";
-import {
-  readStoredGroupDateFormat,
-  writeStoredGroupDateFormat,
-  type GroupDateFormat,
-} from "@/lib/groupDateFormat";
+import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import {
   useCallback,
   useEffect,
@@ -19,8 +15,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupsListPane } from "./GroupsListPane";
 import { GroupsMessagesPane } from "./GroupsMessagesPane";
 import { useSourceFilter } from "./SourceFilter";
+import { useDismissible } from "./useDismissible";
+import { useListSelection } from "./useListSelection";
+import { usePersistedEnum } from "./usePersistedEnum";
 import { useResizablePanes } from "./useResizablePanes";
 
+const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 export function GroupsShell({
   groups: initialGroups,
   initialGroupId,
@@ -46,9 +46,11 @@ export function GroupsShell({
   const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [listYear, setListYear] = useState<number | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const [groupDateFormat, setGroupDateFormatState] =
-    useState<GroupDateFormat>("md");
+  const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
+    GROUP_DATE_FORMAT_KEY,
+    GROUP_DATE_ALLOWED,
+    "md",
+  );
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -57,8 +59,6 @@ export function GroupsShell({
   const { threadsPct, startThreads, shellRef } = useResizablePanes("groups");
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);
-  const selectAllRef = useRef<HTMLInputElement>(null);
-  const selectionAnchorRef = useRef<number | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(
@@ -77,6 +77,33 @@ export function GroupsShell({
     }
     return ids;
   }, [filtered]);
+
+  const validIds = useMemo(() => groups.map((g) => g.id), [groups]);
+
+  const {
+    selectedIds,
+    setSelectedIds,
+    selectionAnchorRef,
+    multiSelected,
+    allSelected,
+    selectAllRef,
+    toggleSelectAll,
+    onSelectColumnClick,
+    onRowClick: onRowClickId,
+  } = useListSelection<number>({
+    orderedIds: uniqueIds,
+    validIds,
+    rangeMode: "anchor",
+    rangeUpdatesAnchor: true,
+    multiThreshold: "any",
+    focusedId: groupId,
+    ctrlSeedSkipsTarget: false,
+    rowClickMode: "openWhenEmptyElseToggleIfSelected",
+    checkboxEvents: "stopOnly",
+    escapeToClear: true,
+    escapeBlocked: () => ctxMenu != null,
+    selectAllSetsAnchor: false,
+  });
 
   const years = useMemo(() => {
     const source = query.trim() ? filtered : groups;
@@ -117,12 +144,6 @@ export function GroupsShell({
     return groups.find((g) => g.id === groupId) ?? null;
   }, [groups, groupId, focusYear]);
 
-  const multiSelected = selectedIds.size >= 1;
-  const allSelected =
-    uniqueIds.length > 0 && uniqueIds.every((id) => selectedIds.has(id));
-  const someSelected =
-    uniqueIds.length > 0 && uniqueIds.some((id) => selectedIds.has(id));
-
   const actionTargets = useMemo(() => {
     if (multiSelected) return [...selectedIds];
     if (groupId != null) return [groupId];
@@ -132,67 +153,20 @@ export function GroupsShell({
   const canAct = actionTargets.length > 0 && !saving;
 
   useEffect(() => {
-    setGroupDateFormatState(readStoredGroupDateFormat());
-  }, []);
-
-  useEffect(() => {
     setGroups(initialGroups);
     if (groupId != null && !initialGroups.some((g) => g.id === groupId)) {
       setGroupId(null);
       setFocusYear(null);
       setMessages([]);
     }
-    setSelectedIds((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set<number>();
-      for (const id of prev) {
-        if (initialGroups.some((g) => g.id === id)) next.add(id);
-      }
-      return next.size === prev.size ? prev : next;
-    });
   }, [initialGroups, groupId]);
 
-  useEffect(() => {
-    if (!selectAllRef.current) return;
-    selectAllRef.current.indeterminate = someSelected && !allSelected;
-  }, [someSelected, allSelected]);
-
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const onDown = (e: globalThis.MouseEvent) => {
-      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setCtxMenu(null);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [ctxMenu]);
-
-  const clearSelection = useCallback(() => {
-    setSelectedIds(new Set());
-    selectionAnchorRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    if (selectedIds.size === 0) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (ctxMenu) return;
-      clearSelection();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [selectedIds.size, ctxMenu, clearSelection]);
-
-  const setGroupDateFormat = useCallback((next: GroupDateFormat) => {
-    setGroupDateFormatState(next);
-    writeStoredGroupDateFormat(next);
-  }, []);
+  useDismissible({
+    open: ctxMenu != null,
+    onDismiss: () => setCtxMenu(null),
+    refs: [ctxMenuRef],
+    eventTarget: typeof window !== "undefined" ? window : undefined,
+  });
 
   const jumpToYearSection = useCallback((year: number) => {
     setListYear(year);
@@ -261,105 +235,32 @@ export function GroupsShell({
       params.set("y", String(row.year));
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [focusYear, groupId, pathname, router, searchParams],
-  );
-
-  const applyRangeSelect = useCallback(
-    (id: number) => {
-      const clickIndex = uniqueIds.indexOf(id);
-      if (clickIndex < 0) return;
-      const anchor =
-        selectionAnchorRef.current != null
-          ? uniqueIds.indexOf(selectionAnchorRef.current)
-          : -1;
-      const from = anchor >= 0 ? anchor : clickIndex;
-      const lo = Math.min(from, clickIndex);
-      const hi = Math.max(from, clickIndex);
-      const next = new Set<number>();
-      for (let i = lo; i <= hi; i++) next.add(uniqueIds[i]!);
-      setSelectedIds(next);
-      selectionAnchorRef.current = id;
-    },
-    [uniqueIds],
-  );
-
-  const ctrlToggleSelect = useCallback(
-    (id: number) => {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.size === 0 && groupId != null) next.add(groupId);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-      selectionAnchorRef.current = id;
-    },
-    [groupId],
-  );
-
-  const toggleOrRangeSelect = useCallback(
-    (id: number, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
-      if (e.shiftKey) {
-        applyRangeSelect(id);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        ctrlToggleSelect(id);
-        return;
-      }
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-      selectionAnchorRef.current = id;
-    },
-    [applyRangeSelect, ctrlToggleSelect],
-  );
-
-  const onSelectColumnClick = useCallback(
-    (id: number, e: MouseEvent) => {
-      e.stopPropagation();
-      toggleOrRangeSelect(id, e);
-    },
-    [toggleOrRangeSelect],
+    [
+      focusYear,
+      groupId,
+      pathname,
+      router,
+      searchParams,
+      setSelectedIds,
+      selectionAnchorRef,
+    ],
   );
 
   const onRowClick = useCallback(
     (row: GroupYearRow, e: MouseEvent) => {
-      if (e.shiftKey) {
-        e.preventDefault();
-        applyRangeSelect(row.id);
+      if (
+        !e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        selectedIds.size === 0
+      ) {
+        selectGroup(row);
         return;
       }
-      if (e.metaKey || e.ctrlKey) {
-        e.preventDefault();
-        ctrlToggleSelect(row.id);
-        return;
-      }
-      if (selectedIds.size >= 1) {
-        toggleOrRangeSelect(row.id, e);
-        return;
-      }
-      selectGroup(row);
+      onRowClickId(row.id, e);
     },
-    [
-      applyRangeSelect,
-      ctrlToggleSelect,
-      selectGroup,
-      selectedIds.size,
-      toggleOrRangeSelect,
-    ],
+    [onRowClickId, selectGroup, selectedIds.size],
   );
-
-  const toggleSelectAll = useCallback(() => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-      return;
-    }
-    setSelectedIds(new Set(uniqueIds));
-  }, [allSelected, uniqueIds]);
 
   const clampMenu = (x: number, y: number, w: number, h: number) => ({
     x: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
@@ -374,7 +275,7 @@ export function GroupsShell({
       const pos = clampMenu(clientX, clientY, 200, 120);
       setCtxMenu({ x: pos.x, y: pos.y, conversationId });
     },
-    [selectedIds],
+    [selectedIds, setSelectedIds],
   );
 
   const moveToTrash = async (forId?: number) => {

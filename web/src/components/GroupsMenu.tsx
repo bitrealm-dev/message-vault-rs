@@ -1,8 +1,9 @@
 "use client";
 
 import { isReservedGroupName } from "@/lib/reservedGroups";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PeopleGroupIcon } from "./icons";
+import { useDismissible } from "./useDismissible";
 
 export type GroupCheckState = "on" | "off" | "mixed";
 
@@ -40,11 +41,11 @@ export function GroupsMenu({
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
 
-  const closeMenu = () => {
+  const closeMenu = useCallback(() => {
     setOpen(false);
     setMode("list");
     onOpenChangeRef.current?.(false);
-  };
+  }, []);
 
   const openMenu = () => {
     setOpen(true);
@@ -67,31 +68,21 @@ export function GroupsMenu({
     return localGroups.filter((g) => g.toLowerCase().includes(q));
   }, [localGroups, query]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        closeMenu();
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+  useDismissible({
+    open,
+    onDismiss: closeMenu,
+    refs: [rootRef],
+    escape: "capture",
+    onEscape: (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (mode === "create") {
         setMode("list");
         setNewName("");
-      } else {
-        closeMenu();
+        return false;
       }
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [open, mode]);
+    },
+  });
 
   useEffect(() => {
     if (!open) return;

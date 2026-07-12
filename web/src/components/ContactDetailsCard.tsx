@@ -9,7 +9,6 @@ import {
   PeopleGroupIcon,
   PersonDetailIcon,
   PhoneIcon,
-  RangeIcon,
 } from "./icons";
 
 export function ContactDetailsCard({
@@ -19,8 +18,6 @@ export function ContactDetailsCard({
   tags,
   excluded,
   phonesView,
-  dateStart,
-  dateEnd,
 }: {
   formOpen: boolean;
   draft: ContactEditDraft | null;
@@ -29,8 +26,6 @@ export function ContactDetailsCard({
   excluded: boolean;
   /** Phones shown in view mode (when form is closed). */
   phonesView: string[];
-  dateStart: string | null;
-  dateEnd: string | null;
 }) {
   const shownTags = displayGroupNames(tags, excluded);
   const phoneCount =
@@ -136,24 +131,6 @@ export function ContactDetailsCard({
             </div>
           </div>
         </div>
-
-        {dateStart && dateEnd && (
-          <div className="mt-3 flex gap-3 border-t border-border/60 pt-2.5">
-            <div className="pt-0.5">
-              <RangeIcon className="size-4 shrink-0 text-muted" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] tracking-wide text-muted">
-                Message range
-              </div>
-              <div className="mt-0.5 text-[13px] text-text">
-                {dateStart === dateEnd
-                  ? dateStart
-                  : `${dateStart} — ${dateEnd}`}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

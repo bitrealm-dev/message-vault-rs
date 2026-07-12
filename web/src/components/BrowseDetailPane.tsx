@@ -89,8 +89,6 @@ export function BrowseDetailPane({
                   : false
             }
             phonesView={detail?.phones ?? []}
-            dateStart={detail?.dateStart ?? null}
-            dateEnd={detail?.dateEnd ?? null}
           />
 
           {!contactCreating && (
