@@ -4,27 +4,34 @@ The `imessage-exporter-json` binary exports iMessage data to `txt`, `html`, or `
 
 > This is a fork of [`imessage-exporter`](https://github.com/ReagentX/imessage-exporter) that adds the `json` export format. The installed command is `imessage-exporter-json`. The upstream project (without `json`) is what is published to crates.io and Homebrew as `imessage-exporter`.
 
+Vendored in the [message-vault-rs](../..) workspace under `crates/imessage-exporter`. For vault imports, prefer:
+
+```bash
+cargo run --release -- ingest imessage --from /path/to/iphone_backup
+# or: ./scripts/ingest-staging.sh imessage
+```
+
 ## Installation
 
 This fork is installed from source.
 
 ### Cargo (recommended)
 
-From a checkout of the repository:
+From the **message-vault-rs** repo root:
 
 ```zsh
-cargo install --path imessage-exporter
+cargo build --release -p imessage-exporter
+# optional: cargo install --path crates/imessage-exporter
 ```
 
-This builds and installs the `imessage-exporter-json` command.
+This builds the `imessage-exporter-json` binary (`target/release/imessage-exporter-json`).
 
 <details><summary>Uninstall steps</summary><p><pre>$ cargo uninstall imessage-exporter</pre></p><p>Optional: uninstall Rust<pre>$ rustup self uninstall</pre></p></details>
 
 ### Installing manually
 
-- `clone` the repository
-- `cd` to the repository
-- `cargo run --release` to compile (produces the `imessage-exporter-json` binary in `target/release`)
+- `clone` the message-vault-rs repository
+- `cargo build --release -p imessage-exporter` (binary under `target/release`)
 
 ## How To Use
 

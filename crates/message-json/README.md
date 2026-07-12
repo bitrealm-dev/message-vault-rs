@@ -2,7 +2,7 @@
 
 Shared **NDJSON interchange** schemas for message archives.
 
-Exporters produce these records; importers such as [message-vault-rs](https://github.com/bitrealm-dev/message-vault-rs) consume them.
+Exporters in this workspace produce these records; the vault binary imports them.
 
 ## Modules
 
@@ -15,9 +15,10 @@ Conversation headers include a `"schema"` discriminator (`"imessage"` or `"sms"`
 
 ## Usage
 
+Workspace members depend on this crate via the root `Cargo.toml` workspace. From another crate in the same repo:
+
 ```toml
 message_json = { path = "../message-json" }
-# or: message_json = { git = "https://github.com/bitrealm-dev/message-json" }
 ```
 
 ```rust

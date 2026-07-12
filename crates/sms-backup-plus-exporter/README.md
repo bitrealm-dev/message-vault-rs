@@ -1,6 +1,8 @@
 # sms-backup-plus-exporter
 
-This tool turns **[SMS Backup+](https://github.com/jberkel/sms-backup-plus)** email dumps (`.eml` files) into a clean set of one-message-per-file emails, or into line-by-line JSON (NDJSON) for [`message-vault-rs`](../message-vault-rs).
+This tool turns **[SMS Backup+](https://github.com/jberkel/sms-backup-plus)** email dumps (`.eml` files) into a clean set of one-message-per-file emails, or into [`message-json`](../message-json) **SMS** NDJSON for this vault.
+
+Part of the [message-vault-rs](../..) Cargo workspace. Prefer the vault’s `ingest` command for a full export→import→dedupe pass; use the subcommands below when cleaning a messy EML tree by hand.
 
 ## Two kinds of input files
 
@@ -14,12 +16,22 @@ An export usually mixes two shapes of `.eml`:
 
 A messy backup often has the same flat message copied under several folders, plus archive files that repeat some of those texts. See [docs/FORMAT.md](docs/FORMAT.md) for header details.
 
-## Typical workflow
+## Preferred: vault ingest
+
+When the EML tree is already clean enough, from the repo root:
+
+```bash
+cargo run --release -- ingest sms-backup-plus --from /path/to/eml-tree
+```
+
+Or with the archive helper: `./scripts/ingest-staging.sh sms-backup-plus`.
+
+## Typical workflow (manual cleanup)
 
 1. Run `dedupe-eml` on the messy export → `./clean-eml` (one clean copy per text, by year).
 2. Optional: open `junk/unresolved_names.txt`, fix contacts / name mapping, re-run.
 3. Run `convert` on the clean tree → NDJSON + attachments.
-4. Import that folder into message-vault-rs.
+4. Import that folder into the vault (or point `ingest --from` at the clean tree).
 
 ## `dedupe-eml` — messy tree → one clean copy per message
 
@@ -85,7 +97,7 @@ Start from the example files:
 Real CSVs under `config/` are gitignored.
 
 ```bash
-cargo run --release -- -v dedupe-eml \
+cargo run --release -p sms-backup-plus-exporter -- -v dedupe-eml \
   --input /path/to/messy/exports \
   --output ./clean-eml \
   --owner-phone +15555550100 \
@@ -104,22 +116,20 @@ Global flags (before or after the subcommand):
 `convert` reads a tree of flat `.eml` files (ideally the output of `dedupe-eml`) and writes the JSON format message-vault-rs expects (NDJSON), plus an `attachments/` folder for pictures and other media.
 
 ```bash
-cargo run --release -- convert \
+cargo run --release -p sms-backup-plus-exporter -- convert \
   --input ./clean-eml \
-  --output ./export \
+  --output ./staging/sms-backup-plus-eml \
   --owner-phone +15555550100 \
   --owner-email owner@example.com
 ```
 
-## Import into message-vault-rs
+## Import into the vault
 
 ```bash
-cd ../message-vault-rs
-cargo run --release -- import \
-  --export-dir ../sms-backup-plus-exporter/export \
-  --mode append
+cargo run --release -- import --source sms-backup-plus --mode append
+cargo run --release -- dedupe-cross-source
 ```
 
 ## Related tools
 
-[message-vault](../message-vault)’s Python `sms_eml_master` pipeline turns the same kind of dump into per-contact conversation JSON for Obsidian and related views. This crate focuses on cleaning EML files and writing NDJSON for message-vault-rs.
+The older Python `sms_eml_master` pipeline in the personal `message-vault` repo turns the same kind of dump into per-contact conversation JSON for Obsidian. This crate focuses on cleaning EML files and writing NDJSON for this vault.

@@ -1,6 +1,8 @@
 # sms-backup-restore-exporter
 
-Turn an Android **SMS Backup & Restore** XML file into NDJSON that [`message-vault-rs`](../message-vault-rs) can import.
+Turn an Android **SMS Backup & Restore** XML file into [`message-json`](../message-json) **SMS** NDJSON for this vault.
+
+Part of the [message-vault-rs](../..) Cargo workspace. Prefer the vault’s `ingest` command unless you are debugging the exporter alone.
 
 [SMS Backup & Restore](https://www.synctech.com.au/sms-backup-restore/) (SyncTech) writes a backup like `sms-20210328165031.xml`. This tool reads that XML and writes one JSON file per conversation, plus decoded MMS media under `attachments/`.
 
@@ -19,12 +21,24 @@ Field meanings: [docs/FIELDS.md](docs/FIELDS.md) (from SyncTech’s [fields page
 
 Encrypted `.zip` backups are not unlocked here. Unzip the archive first, then point `--input` at the XML inside.
 
-## Usage
+## Preferred: vault ingest
+
+From the repo root:
 
 ```bash
-cargo run --release -- \
+cargo run --release -- ingest sms-backup-restore --from /path/to/sms-20210328165031.xml
+```
+
+Or with the archive helper: `./scripts/ingest-staging.sh sms-backup-restore`.
+
+## Standalone usage
+
+From the repo root:
+
+```bash
+cargo run --release -p sms-backup-restore-exporter -- \
   --input /path/to/sms-20210328165031.xml \
-  --output ./export \
+  --output ./staging/sms-backup-restore \
   --owner-phone +15555550100
 ```
 
@@ -79,20 +93,16 @@ If the same message appears twice (same time, direction, text, and attachment pa
 
 Phone numbers are normalized in a US-centric way: non-digits stripped, a leading US `1` removed, then formatted as `+1` + 10 digits when possible.
 
-## Import into message-vault-rs
+## Import into the vault
 
-Point a vault source `export_dir` at this tool’s `--output` folder, then import that source:
+Point a vault source `export_dir` at this tool’s `--output` folder (see `config/config.toml`), then from the repo root:
 
 ```bash
-cd ../message-vault-rs
-cargo run --release -- import \
-  --source sms-backup-restore \
-  --mode append
+cargo run --release -- import --source sms-backup-restore --mode append
+cargo run --release -- dedupe-cross-source
 ```
 
 `--mode append` keeps existing rows and skips duplicates by `(source, guid)`. Use `--mode replace` to wipe that source and re-import.
-
-Configure the source id and `export_dir` in the vault’s `config/config.toml` so they match the folder you just wrote.
 
 ## What this tool does not do
 

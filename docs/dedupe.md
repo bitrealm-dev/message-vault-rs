@@ -35,7 +35,7 @@ flowchart TB
 
 ## 1. Per-source dedupe (import)
 
-Happens during `import` / `import-staging.sh`.
+Happens during `import`, `ingest`, or `./scripts/import-staging.sh`.
 
 | Mode | Behavior |
 |------|----------|
@@ -57,7 +57,7 @@ Runs after import:
 
 ```bash
 cargo run --release -- dedupe-cross-source
-# also run automatically by ./scripts/import-staging.sh
+# also run automatically by ingest and ./scripts/import-staging.sh
 ```
 
 ### Content key

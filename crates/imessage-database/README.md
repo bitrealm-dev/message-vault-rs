@@ -2,9 +2,11 @@
 
 This library provides interfaces to interact with iMessage Databases.
 
+Vendored in the [message-vault-rs](../..) workspace under `crates/imessage-database` (used by `imessage-exporter`). Upstream releases remain on crates.io.
+
 ## Installation
 
-This library is available on [crates.io](https://crates.io/crates/imessage-database).
+This library is available on [crates.io](https://crates.io/crates/imessage-database). In this workspace, depend on the local path via the root `Cargo.toml`.
 
 ## Documentation
 

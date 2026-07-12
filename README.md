@@ -2,7 +2,7 @@
 
 Import NDJSON message archives into SQLite and browse them in a local web UI.
 
-This repo is a **Cargo workspace**: the vault binary plus the NDJSON schema crate and per-source exporters live under [`crates/`](crates/). One clone is enough — no sibling exporter checkouts.
+This repo is a **Cargo workspace**: the vault binary, shared NDJSON schema, and per-source exporters live under [`crates/`](crates/). Helper shell scripts live under [`scripts/`](scripts/). One clone is enough — no sibling exporter checkouts.
 
 ```text
 crates/
@@ -12,6 +12,11 @@ crates/
   sms-backup-plus-exporter/
   imessage-database/            # iMessage SQLite parsers
   imessage-exporter/            # bin: imessage-exporter-json
+scripts/
+  ingest-staging.sh             # archive-path wrapper around `ingest`
+  build-staging.sh              # export only (debug)
+  import-staging.sh             # import + dedupe only (debug)
+web/                            # Next.js browser UI
 ```
 
 ```bash
@@ -36,6 +41,14 @@ export_dir = "staging/imessage"
 [[sources]]
 id = "sms-backup-plus"
 export_dir = "staging/sms-backup-plus-eml"
+
+[[sources]]
+id = "go-sms-pro"
+export_dir = "staging/go-sms-pro"
+
+[[sources]]
+id = "sms-backup-restore"
+export_dir = "staging/sms-backup-restore"
 ```
 
 Resolved asset roots default to `data/<source_id>/assets` and `data/<source_id>/assets_converted`. Override with full paths on a source if needed.
@@ -109,8 +122,10 @@ cargo run --release -- dedupe-cross-source
 
 ## Web
 
+See [`web/README.md`](web/README.md). Quick start:
+
 ```bash
-cd web && npm run dev
+cd web && npm run process-assets && npm run dev
 ```
 
 Use the **Source** dropdown in the sidebar for a single source or **All (combined)** person threads.
