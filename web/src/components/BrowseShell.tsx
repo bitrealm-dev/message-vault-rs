@@ -2,7 +2,7 @@
 
 import type { ContactListItem, ContactSection, MessageRow } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SortByMenu, type SortMode } from "./SortByMenu";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
@@ -365,20 +365,68 @@ export function BrowseShell({
     [applyRangeSelect],
   );
 
+  const ctrlToggleSelect = useCallback(
+    (id: number) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.size === 0 && contactId != null && contactId !== id) {
+          next.add(contactId);
+        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    },
+    [contactId],
+  );
+
+  const onSelectColumnClick = useCallback(
+    (id: number, e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) {
+        applyRangeSelect(id);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        ctrlToggleSelect(id);
+        return;
+      }
+      toggleOrRangeSelect(id, false);
+    },
+    [applyRangeSelect, ctrlToggleSelect, toggleOrRangeSelect],
+  );
+
   /**
    * Name/phone (or whole row when selection active):
-   * - no selection → open detail only
-   * - selection active → toggle that contact (shift = range)
+   * - plain, no selection → open detail
+   * - shift → range select
+   * - ctrl/cmd → toggle (seed focused contact when starting)
+   * - plain, selection active → toggle
    */
   const onNamePhoneClick = useCallback(
-    (id: number, shiftKey: boolean) => {
+    (id: number, e: MouseEvent | { shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
+      if (e.shiftKey) {
+        applyRangeSelect(id);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        ctrlToggleSelect(id);
+        return;
+      }
       if (selectedIds.size === 0) {
         selectContact(id);
         return;
       }
-      toggleOrRangeSelect(id, shiftKey);
+      toggleOrRangeSelect(id, false);
     },
-    [selectContact, selectedIds.size, toggleOrRangeSelect],
+    [
+      applyRangeSelect,
+      ctrlToggleSelect,
+      selectContact,
+      selectedIds.size,
+      toggleOrRangeSelect,
+    ],
   );
 
   useEffect(() => {
@@ -1054,7 +1102,7 @@ export function BrowseShell({
                     tabIndex={selectionActive ? 0 : undefined}
                     onClick={
                       selectionActive
-                        ? (e) => onNamePhoneClick(c.id, e.shiftKey)
+                        ? (e) => onNamePhoneClick(c.id, e)
                         : undefined
                     }
                     onKeyDown={
@@ -1062,7 +1110,11 @@ export function BrowseShell({
                         ? (e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              onNamePhoneClick(c.id, e.shiftKey);
+                              onNamePhoneClick(c.id, {
+                                shiftKey: e.shiftKey,
+                                metaKey: e.metaKey,
+                                ctrlKey: e.ctrlKey,
+                              });
                             }
                           }
                         : undefined
@@ -1070,12 +1122,14 @@ export function BrowseShell({
                     onMouseDown={(e) => {
                       if (e.shiftKey) e.preventDefault();
                     }}
-                    className={`relative flex w-full items-start gap-2.5 px-3 py-2 select-none ${
+                    className={`relative flex w-full items-start gap-1.5 py-2 pr-3 pl-0 select-none ${
                       selectionActive ? "cursor-pointer" : ""
                     } ${
-                      checked || active
-                        ? "bg-elevated hover:bg-white/18"
-                        : "hover:bg-white/20"
+                      checked
+                        ? "bg-accent/20 hover:bg-accent/25"
+                        : active
+                          ? "bg-elevated hover:bg-white/18"
+                          : "hover:bg-white/20"
                     }`}
                   >
                     {active && !selectionActive && (
@@ -1084,30 +1138,37 @@ export function BrowseShell({
                         className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
                       />
                     )}
-                    <input
-                      type="checkbox"
-                      checked={checked}
+                    {checked && (
+                      <span
+                        aria-hidden
+                        className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-accent"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      aria-pressed={checked}
                       aria-label={`Select ${c.displayName}`}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const shiftKey =
-                          "shiftKey" in e.nativeEvent &&
-                          Boolean(
-                            (e.nativeEvent as MouseEvent).shiftKey,
-                          );
-                        toggleOrRangeSelect(c.id, shiftKey);
-                      }}
+                      onClick={(e) => onSelectColumnClick(c.id, e)}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         if (e.shiftKey) e.preventDefault();
                       }}
-                      className="checkbox-people mt-0.5"
-                    />
+                      className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden
+                        className="checkbox-people pointer-events-none"
+                      />
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onNamePhoneClick(c.id, e.shiftKey);
+                        onNamePhoneClick(c.id, e);
                       }}
                       onMouseDown={(e) => {
                         if (e.shiftKey) e.preventDefault();

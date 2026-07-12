@@ -4,6 +4,7 @@ import path from "path";
 import { parse } from "smol-toml";
 import { configTomlPath, dbPath, repoRoot } from "./paths";
 import { getContact, resetDb } from "./db";
+import { clearTrashedHandles } from "./handlesWrite";
 import type { ContactDetail } from "./types";
 
 export type ContactPatch = {
@@ -19,6 +20,7 @@ const RESERVED_GROUP_NAMES = new Set([
   "no messages",
   "no-messages",
   "unmatched",
+  "trash",
 ]);
 
 function assertAllowedTagName(name: string): void {
@@ -29,7 +31,9 @@ function assertAllowedTagName(name: string): void {
         ? "Excluded is a reserved group"
         : key === "unmatched"
           ? "Unmatched is a reserved group"
-          : "No messages is a reserved group",
+          : key === "trash"
+            ? "Trash is a reserved group"
+            : "No messages is a reserved group",
     );
   }
 }
@@ -292,6 +296,7 @@ export function createContact(input: ContactCreate): ContactDetail {
       for (const phone of phones) {
         insertPhone.run(phone, newId);
       }
+      clearTrashedHandles(writeDb, phones);
 
       if (tags.length > 0) {
         const insertTag = writeDb.prepare(
@@ -565,6 +570,7 @@ export function patchContact(
     const tx = writeDb.transaction(() => {
       if (patch.phones) {
         syncContactPhones(writeDb, id, existing.phones, phones);
+        clearTrashedHandles(writeDb, phones);
       }
 
       writeDb

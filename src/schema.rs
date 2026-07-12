@@ -357,6 +357,11 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
             tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
             PRIMARY KEY (contact_id, tag_id)
         );
+
+        CREATE TABLE IF NOT EXISTS trashed_handles (
+            handle TEXT PRIMARY KEY,
+            trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         "#,
     )?;
     Ok(())

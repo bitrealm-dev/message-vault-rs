@@ -141,6 +141,26 @@ function QuestionHandleIcon({ className }: { className?: string }) {
   );
 }
 
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4.5 7.5h15" />
+      <path d="M9.5 7.5V5.75A1.25 1.25 0 0 1 10.75 4.5h2.5A1.25 1.25 0 0 1 14.5 5.75V7.5" />
+      <path d="M6.75 7.5l.75 11.25A1.5 1.5 0 0 0 9 20h6a1.5 1.5 0 0 0 1.5-1.25L17.25 7.5" />
+      <path d="M10 11v5.5M14 11v5.5" />
+    </svg>
+  );
+}
+
 function PanelCollapseIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -671,6 +691,12 @@ export function AppSidebar({
             label="Unmatched"
             active={active === "/unmatched"}
             icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
+          />
+          <NavLink
+            href="/unmatched/trash"
+            label="Trash"
+            active={active === "/unmatched/trash"}
+            icon={<TrashIcon className="size-3.5 shrink-0 opacity-80" />}
           />
 
           <GroupsNav tags={tags} />

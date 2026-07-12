@@ -91,6 +91,7 @@ const RESERVED_TAG_LABELS = new Set(
     "no-messages",
     "no messages",
     "unmatched",
+    "trash",
     "groups",
     "no-group",
     "no group",
@@ -1086,8 +1087,40 @@ export function homeStats(): HomeStats {
 
 /** 1:1 conversations with messages whose handle is not on any contact. */
 export function listUnmatchedHandles(): UnmatchedHandle[] {
+  return listHandleSection("unmatched");
+}
+
+/** Unmatched handles that were moved to Trash. */
+export function listTrashedHandles(): UnmatchedHandle[] {
+  return listHandleSection("trash");
+}
+
+function hasTrashedHandlesTable(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM sqlite_master
+       WHERE type = 'table' AND name = 'trashed_handles'`,
+    )
+    .get() as { n: number };
+  return row.n > 0;
+}
+
+function listHandleSection(section: "unmatched" | "trash"): UnmatchedHandle[] {
   const db = getDb();
   const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const hasTrash = hasTrashedHandlesTable(db);
+  if (section === "trash" && !hasTrash) return [];
+
+  const trashFilter = !hasTrash
+    ? ""
+    : section === "trash"
+      ? `AND EXISTS (
+           SELECT 1 FROM trashed_handles th WHERE th.handle = c.chat_identifier
+         )`
+      : `AND NOT EXISTS (
+           SELECT 1 FROM trashed_handles th WHERE th.handle = c.chat_identifier
+         )`;
+
   const rows = db
     .prepare(
       `SELECT c.chat_identifier AS handle,
@@ -1102,7 +1135,8 @@ export function listUnmatchedHandles(): UnmatchedHandle[] {
        WHERE c.conv_type = 'individual'
          AND NOT EXISTS (
            SELECT 1 FROM contact_phones cp WHERE cp.phone_e164 = c.chat_identifier
-         )${hideDupes}
+         )
+         ${trashFilter}${hideDupes}
        GROUP BY c.id
        HAVING message_count > 0
        ORDER BY handle COLLATE NOCASE`,
