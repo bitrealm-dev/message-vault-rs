@@ -10,6 +10,10 @@ import type {
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
+import {
+  isGroupThreadKey,
+  yearThreadKey,
+} from "@/lib/threadKeys";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -353,11 +357,7 @@ export function BrowseShell({
             const year = Number(prev.slice(2));
             return nextYearly.some((t) => t.year === year) ? prev : null;
           }
-          return nextGroups.some(
-            (t) =>
-              `g-${(t.conversationIds ?? [t.conversationId]).join("-")}-${t.year}` ===
-                prev || `g-${t.conversationId}-${t.year}` === prev,
-          )
+          return nextGroups.some((t) => isGroupThreadKey(t, prev))
             ? prev
             : null;
         });
@@ -368,15 +368,10 @@ export function BrowseShell({
           const year = Number(key.slice(2));
           if (!nextYearly.some((t) => t.year === year)) key = null;
         } else if (key) {
-          const stillThere = nextGroups.some(
-            (t) =>
-              `g-${(t.conversationIds ?? [t.conversationId]).join("-")}-${t.year}` ===
-                key || `g-${t.conversationId}-${t.year}` === key,
-          );
-          if (!stillThere) key = null;
+          if (!nextGroups.some((t) => isGroupThreadKey(t, key!))) key = null;
         }
         if (nextYearly.length === 1) {
-          key = `y-${nextYearly[0]!.year}`;
+          key = yearThreadKey(nextYearly[0]!.year);
           setActiveThread(key);
         } else if (!key) {
           if (switchingContact) setMessages([]);
@@ -386,17 +381,13 @@ export function BrowseShell({
         let convIds: number[] | null = null;
         let year: number | null = null;
         if (key.startsWith("y-")) {
-          const y = nextYearly.find((t) => `y-${t.year}` === key);
+          const y = nextYearly.find((t) => yearThreadKey(t.year) === key);
           if (y) {
             convIds = y.conversationIds;
             year = y.year;
           }
         } else {
-          const g = nextGroups.find(
-            (t) =>
-              `g-${(t.conversationIds ?? [t.conversationId]).join("-")}-${t.year}` ===
-                key || `g-${t.conversationId}-${t.year}` === key,
-          );
+          const g = nextGroups.find((t) => isGroupThreadKey(t, key!));
           if (g) {
             convIds = g.conversationIds?.length
               ? g.conversationIds
@@ -898,7 +889,7 @@ export function BrowseShell({
   const activeThreadMeta = useMemo(() => {
     if (!activeThread) return null;
     if (activeThread.startsWith("y-")) {
-      const y = yearly.find((t) => `y-${t.year}` === activeThread);
+      const y = yearly.find((t) => yearThreadKey(t.year) === activeThread);
       if (!y) return null;
       return {
         title: String(y.year),
@@ -907,9 +898,7 @@ export function BrowseShell({
         messageCount: y.messageCount,
       };
     }
-    const g = groups.find(
-      (t) => `g-${t.conversationId}-${t.year}` === activeThread,
-    );
+    const g = groups.find((t) => isGroupThreadKey(t, activeThread));
     if (!g) return null;
     return {
       title: g.title,
@@ -1118,7 +1107,7 @@ export function BrowseShell({
               yearly={yearly}
               activeThread={activeThread}
               onLoadYear={(y) =>
-                loadMessages(y.conversationIds, y.year, `y-${y.year}`)
+                loadMessages(y.conversationIds, y.year, yearThreadKey(y.year))
               }
               groupsByYear={groupsByYear}
               groupDateFormat={groupDateFormat}

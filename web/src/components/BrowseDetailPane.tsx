@@ -9,6 +9,7 @@ import {
   groupDateMeta,
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
+import { groupThreadKey } from "@/lib/threadKeys";
 import { ContactDetailsCard } from "./ContactDetailsCard";
 import type { ContactEditDraft } from "./contactEdit";
 import { MessageSourcePicker } from "./MessageSourcePicker";
@@ -149,7 +150,7 @@ export function BrowseDetailPane({
                             const convIds = g.conversationIds?.length
                               ? g.conversationIds
                               : [g.conversationId];
-                            const key = `g-${convIds.join("-")}-${g.year}`;
+                            const key = groupThreadKey(g);
                             const active = activeThread === key;
                             return (
                               <li key={key}>

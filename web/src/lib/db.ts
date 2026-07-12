@@ -1197,10 +1197,10 @@ export function homeStats(): HomeStats {
     .get() as { n: number };
 
   return {
-    all: listContacts("all").length,
-    excluded: listContacts("excluded").length,
-    noMessages: listContacts("no-messages").length,
-    unassigned: listUnassignedHandles().length,
+    all: countContacts("all"),
+    excluded: countContacts("excluded"),
+    noMessages: countContacts("no-messages"),
+    unassigned: countUnassignedHandles(),
     groupChats: groupsRow.n,
     messages: (
       db.prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
@@ -1209,6 +1209,45 @@ export function homeStats(): HomeStats {
       db.prepare(`SELECT COUNT(*) AS n FROM contacts`).get() as { n: number }
     ).n,
   };
+}
+
+function countContacts(section: ContactSection): number {
+  const db = getDb();
+  const { sql, params } = sectionSql(section);
+  const countSql = sql.replace(
+    /SELECT DISTINCT c\.\*/,
+    "SELECT COUNT(DISTINCT c.id) AS n",
+  );
+  const row = db.prepare(countSql).get(...params) as { n: number };
+  return row.n;
+}
+
+function countUnassignedHandles(): number {
+  const db = getDb();
+  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const hasTrash = hasTrashedHandlesTable(db);
+  const trashFilter = !hasTrash
+    ? ""
+    : `AND NOT EXISTS (
+         SELECT 1 FROM trashed_handles th WHERE th.handle = c.chat_identifier
+       )`;
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT c.id
+         FROM conversations c
+         JOIN messages m ON m.conversation_id = c.id
+         WHERE c.conv_type = 'individual'
+           AND NOT EXISTS (
+             SELECT 1 FROM contact_phones cp WHERE cp.phone_e164 = c.chat_identifier
+           )
+           ${trashFilter}${hideDupes}
+         GROUP BY c.id
+         HAVING COUNT(m.id) > 0
+       )`,
+    )
+    .get() as { n: number };
+  return row.n;
 }
 
 /** 1:1 conversations with messages whose handle is not on any contact. */

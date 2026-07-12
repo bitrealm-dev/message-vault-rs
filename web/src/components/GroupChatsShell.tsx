@@ -395,14 +395,15 @@ export function GroupChatsShell({
   };
 
   useEffect(() => {
-    if (multiSelected || !groupId) {
-      if (multiSelected) setMessages([]);
-      if (!groupId) setMessages([]);
+    if (multiSelected || !groupId || focusYear == null) {
+      setMessages([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/messages?conversationIds=${groupId}${sourceQuery}`)
+    fetch(
+      `/api/messages?conversationIds=${groupId}&year=${focusYear}${sourceQuery}`,
+    )
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setMessages(data.messages ?? []);
@@ -413,7 +414,7 @@ export function GroupChatsShell({
     return () => {
       cancelled = true;
     };
-  }, [groupId, sourceQuery, multiSelected]);
+  }, [groupId, focusYear, sourceQuery, multiSelected]);
 
   useEffect(() => {
     const year = pendingScrollYearRef.current;
