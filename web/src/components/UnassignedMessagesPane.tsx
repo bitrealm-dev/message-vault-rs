@@ -2,6 +2,7 @@
 
 import type { MessageRow } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
+import { ThreadMessagesHeader } from "./ThreadMessagesHeader";
 
 export function UnassignedMessagesPane({
   multiSelected,
@@ -18,6 +19,7 @@ export function UnassignedMessagesPane({
     messageCount: number;
     dateStart: string;
     dateEnd: string;
+    attachmentCount?: number;
   } | null;
 }) {
   return (
@@ -44,18 +46,14 @@ export function UnassignedMessagesPane({
                   loadingMessages ? "opacity-60" : ""
                 }`}
               >
-                <div className="mb-2 border-y border-border/60 py-2 text-center">
-                  <div className="text-[13px] font-medium text-text">
-                    {activeYear}
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-muted">
-                    {activeYearMeta.messageCount} msgs
-                    <span className="mx-1.5">·</span>
-                    {activeYearMeta.dateStart === activeYearMeta.dateEnd
-                      ? activeYearMeta.dateStart
-                      : `${activeYearMeta.dateStart} — ${activeYearMeta.dateEnd}`}
-                  </div>
-                </div>
+                <ThreadMessagesHeader
+                  title={String(activeYear)}
+                  messageCount={activeYearMeta.messageCount}
+                  dateStart={activeYearMeta.dateStart}
+                  dateEnd={activeYearMeta.dateEnd}
+                  attachmentCount={activeYearMeta.attachmentCount ?? 0}
+                  largeTitle
+                />
                 {messages.map((m) => (
                   <MessageBubble key={m.id} message={m} />
                 ))}

@@ -2,6 +2,7 @@
 
 import type { MessageRow } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
+import { ThreadMessagesHeader } from "./ThreadMessagesHeader";
 
 export function BrowseMessagesPane({
   activeThread,
@@ -17,8 +18,11 @@ export function BrowseMessagesPane({
     messageCount: number;
     dateStart: string;
     dateEnd: string;
+    attachmentCount?: number;
   } | null;
 }) {
+  const isYearThread = activeThread?.startsWith("y-") ?? false;
+
   return (
     <section className="h-full min-h-0 overflow-y-auto bg-bg px-4 py-4">
       {!activeThread && (
@@ -37,18 +41,16 @@ export function BrowseMessagesPane({
             loadingMessages ? "opacity-60" : ""
           }`}
         >
-          <div className="mb-2 border-b border-border/60 pb-2 text-center">
-            <div className="text-[13px] font-medium text-text">
-              {activeThreadMeta.title}
-            </div>
-            <div className="mt-0.5 text-[12px] text-muted">
-              {activeThreadMeta.messageCount} msgs
-              <span className="mx-1.5">·</span>
-              {activeThreadMeta.dateStart === activeThreadMeta.dateEnd
-                ? activeThreadMeta.dateStart
-                : `${activeThreadMeta.dateStart} — ${activeThreadMeta.dateEnd}`}
-            </div>
-          </div>
+          <ThreadMessagesHeader
+            title={activeThreadMeta.title}
+            messageCount={activeThreadMeta.messageCount}
+            dateStart={activeThreadMeta.dateStart}
+            dateEnd={activeThreadMeta.dateEnd}
+            attachmentCount={
+              isYearThread ? (activeThreadMeta.attachmentCount ?? 0) : undefined
+            }
+            largeTitle={isYearThread}
+          />
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}

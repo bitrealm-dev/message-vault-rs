@@ -36,7 +36,7 @@ export function ContactDetailsCard({
 
   return (
     <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-      <h2 className="text-[13px] font-semibold text-text">Contact details</h2>
+      <h2 className="text-[15px] font-semibold text-text">Contact details</h2>
       <div className="mt-3">
         {formOpen && draft && onDraftChange && (
           <div className="mb-3 flex gap-3">

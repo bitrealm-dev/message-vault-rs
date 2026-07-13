@@ -138,6 +138,23 @@ export function EmptyChatIcon({ className }: { className?: string }) {
   );
 }
 
+export function MessageIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5.5 18.5 4 21l3.2-1.2A8.5 8.5 0 1 0 5.5 18.5Z" />
+    </svg>
+  );
+}
+
 export function QuestionHandleIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -190,6 +207,23 @@ export function XIcon({ className }: { className?: string }) {
       aria-hidden
     >
       <path d="M6 6 18 18M18 6 6 18" />
+    </svg>
+  );
+}
+
+export function PaperclipIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m21.44 11.05-8.49 8.49a5.25 5.25 0 0 1-7.43-7.43l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.49 8.49a1.75 1.75 0 0 1-2.47-2.47l7.78-7.78" />
     </svg>
   );
 }

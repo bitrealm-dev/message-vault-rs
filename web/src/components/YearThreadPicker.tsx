@@ -20,7 +20,7 @@ export function YearThreadPicker({
 }) {
   return (
     <div>
-      <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+      <h3 className="text-[15px] font-semibold text-text">
         Yearly messages
       </h3>
       {loading ? (

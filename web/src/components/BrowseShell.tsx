@@ -603,6 +603,35 @@ export function BrowseShell({
     setEditDraft(null);
   }, []);
 
+  useEffect(() => {
+    if (!contactEditing && !contactCreating) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (
+        deleteDialogOpen ||
+        trashConfirm != null ||
+        ctxMenu != null ||
+        groupsPanelPos != null ||
+        moreMenuOpen
+      ) {
+        return;
+      }
+      e.preventDefault();
+      cancelContactEdit();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [
+    contactEditing,
+    contactCreating,
+    deleteDialogOpen,
+    trashConfirm,
+    ctxMenu,
+    groupsPanelPos,
+    moreMenuOpen,
+    cancelContactEdit,
+  ]);
+
   const saveContactEdit = useCallback(async () => {
     if (!editDraft || !contactId) return;
     const ok = await saveContactPatch({
@@ -1262,6 +1291,7 @@ export function BrowseShell({
         dateStart: y.dateStart,
         dateEnd: y.dateEnd,
         messageCount: y.messageCount,
+        attachmentCount: y.attachmentCount,
       };
     }
     const g = groupChats.find((t) => isGroupChatThreadKey(t, activeThread));
@@ -1356,16 +1386,6 @@ export function BrowseShell({
               >
                 Cancel
               </button>
-              {canDelete && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => setDeleteDialogOpen(true)}
-                  className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              )}
             </>
           ) : (
             <>

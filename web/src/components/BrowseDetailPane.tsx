@@ -109,7 +109,7 @@ export function BrowseDetailPane({
               />
 
               <div className="mt-5">
-                <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+                <h3 className="text-[15px] font-semibold text-text">
                   Group chats
                 </h3>
                 {groupChatsByYear.length === 0 ? (

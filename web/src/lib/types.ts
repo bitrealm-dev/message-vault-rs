@@ -30,6 +30,8 @@ export type ContactDetail = ContactListItem & {
 export type YearThread = {
   year: number;
   messageCount: number;
+  /** Attachments on messages in this year thread. */
+  attachmentCount: number;
   dateStart: string;
   dateEnd: string;
   conversationIds: number[];

@@ -34,7 +34,7 @@ export function MessageSourcePicker({
 
   return (
     <div className="mb-5">
-      <h3 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+      <h3 className="text-[15px] font-semibold text-text">
         Message Sources
       </h3>
       <div className="mt-2 flex flex-wrap items-start gap-x-0 gap-y-2">

@@ -126,8 +126,8 @@ function sectionQueryBody(
       return {
         fromWhere: `
           FROM contacts c
-          WHERE ${notTrashed}
-            AND (c.exclude = 1 OR (${hasMsgs}))
+          WHERE (c.exclude = 1 OR (${hasMsgs}))
+            ${notTrashed}
         `,
         params: [],
       };
@@ -459,12 +459,14 @@ export function contactYearlyThreadsForPhones(
   const rows = db
     .prepare(
       `SELECT CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
-              COUNT(*) AS message_count,
+              COUNT(DISTINCT m.id) AS message_count,
+              COUNT(a.id) AS attachment_count,
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
               MAX(substr(m.timestamp, 1, 10)) AS date_end,
               GROUP_CONCAT(DISTINCT c.id) AS conversation_ids
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
+       LEFT JOIN attachments a ON a.message_id = m.id
        WHERE c.conversation_type = 'individual'
          AND c.chat_identifier IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
          ${notTrashedHandleSql("c.chat_identifier")}
@@ -474,6 +476,7 @@ export function contactYearlyThreadsForPhones(
     .all(...params) as Array<{
     year: number;
     message_count: number;
+    attachment_count: number;
     date_start: string;
     date_end: string;
     conversation_ids: string;
@@ -482,6 +485,7 @@ export function contactYearlyThreadsForPhones(
   return rows.map((r) => ({
     year: r.year,
     messageCount: r.message_count,
+    attachmentCount: r.attachment_count,
     dateStart: r.date_start,
     dateEnd: r.date_end,
     conversationIds: r.conversation_ids

@@ -661,6 +661,7 @@ export function UnassignedShell({
       messageCount: y.messageCount,
       dateStart: y.dateStart,
       dateEnd: y.dateEnd,
+      attachmentCount: y.attachmentCount,
     };
   }, [activeYear, yearly]);
 
