@@ -13,7 +13,6 @@ export function UnassignedContactList({
   mode,
   selectAllRef,
   allHandlesSelected,
-  handleCount,
   sortedHandles,
   handle,
   selectedHandles,
@@ -31,7 +30,7 @@ export function UnassignedContactList({
   mode: "unassigned" | "trash";
   selectAllRef: RefObject<HTMLInputElement | null>;
   allHandlesSelected: boolean;
-  handleCount: number;
+  handleCount?: number;
   sortedHandles: UnassignedHandle[];
   handle: string | null;
   selectedHandles: Set<string>;
@@ -66,7 +65,9 @@ export function UnassignedContactList({
             onChange={onToggleSelectAll}
             className="checkbox-list"
           />
-          <span className="truncate text-[13px] text-muted">{handleCount}</span>
+          <span className="truncate text-[13px] text-muted tabular-nums">
+            {selectedHandles.size > 0 ? selectedHandles.size : ""}
+          </span>
         </label>
         <UnassignedSortMenu
           sortBy={sortBy}

@@ -57,9 +57,8 @@ export function BrowseContactList({
             onChange={onToggleSelectAll}
             className="checkbox-list"
           />
-          <span className="truncate text-[13px] text-muted">
-            {query.trim() ? `${sortedCount}/` : ""}
-            {visibleCount}
+          <span className="truncate text-[13px] text-muted tabular-nums">
+            {selectedIds.size > 0 ? selectedIds.size : ""}
           </span>
         </label>
         <div className="flex shrink-0 items-center gap-1.5">

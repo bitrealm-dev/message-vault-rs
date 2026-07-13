@@ -29,6 +29,7 @@ import { BrowseDetailPane } from "./BrowseDetailPane";
 import { BrowseMessagesPane } from "./BrowseMessagesPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import {
+  ChevronDownIcon,
   ChevronRightIcon,
   PencilIcon,
   PeopleGroupIcon,
@@ -127,6 +128,12 @@ export function BrowseShell({
   excludeOverridesRef.current = excludeOverrides;
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [trashConfirm, setTrashConfirm] = useState<{
+    mode: "contact_and_messages" | "messages_only";
+    ids: number[];
+  } | null>(null);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const [threadsEpoch, setThreadsEpoch] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<{
     id: number;
@@ -333,6 +340,7 @@ export function BrowseShell({
     setContactEditing(false);
     setContactCreating(false);
     setEditDraft(null);
+    setMoreMenuOpen(false);
   }, [paneStorageKey, query, setSelectedIds]);
 
   useEffect(() => {
@@ -542,6 +550,7 @@ export function BrowseShell({
 
   const beginContactEdit = useCallback(() => {
     if (!detail || hasSelection || contactCreating) return;
+    setMoreMenuOpen(false);
     setEditDraft(seedContactEditDraft(detail));
     setContactEditing(true);
   }, [detail, hasSelection, contactCreating]);
@@ -661,7 +670,9 @@ export function BrowseShell({
       const ids = idsOverride ?? deleteTargetIds();
       if (ids.length === 0) return;
       setDeleteDialogOpen(false);
+      setTrashConfirm(null);
       setCtxMenu(null);
+      setMoreMenuOpen(false);
       setSaving(true);
       try {
         const res = await fetch("/api/contacts/trash", {
@@ -689,12 +700,19 @@ export function BrowseShell({
           setMessages([]);
           setActiveThread(null);
           setContactId(null);
+          loadedContactIdRef.current = null;
           queueStatusMessage(
             ids.length === 1
               ? "Moved contact & messages to Trash"
               : `Moved ${ids.length} contacts to Trash`,
           );
-          router.push("/trash?tab=contacts");
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("c");
+          params.delete("y");
+          params.delete("conv");
+          const qs = params.toString();
+          router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+          router.refresh();
           return;
         }
 
@@ -718,7 +736,14 @@ export function BrowseShell({
         setSaving(false);
       }
     },
-    [deleteTargetIds, queueStatusMessage, router, setSelectedIds],
+    [
+      deleteTargetIds,
+      queueStatusMessage,
+      router,
+      setSelectedIds,
+      pathname,
+      searchParams,
+    ],
   );
 
   const trashIdsForContext = useCallback(
@@ -768,26 +793,26 @@ export function BrowseShell({
     setSelectedIds,
   ]);
 
+  const requestTrash = useCallback(
+    (
+      mode: "contact_and_messages" | "messages_only",
+      idsOverride?: number[],
+    ) => {
+      const ids = idsOverride ?? deleteTargetIds();
+      if (ids.length === 0) return;
+      setCtxMenu(null);
+      setMoreMenuOpen(false);
+      setTrashConfirm({ mode, ids });
+    },
+    [deleteTargetIds],
+  );
+
   const onCtxDelete = useCallback(
     (mode: "contact_and_messages" | "messages_only") => {
       if (!ctxMenu) return;
-      const ids = trashIdsForContext(ctxMenu.id);
-      if (ids.length === 0) return;
-      const label =
-        mode === "contact_and_messages"
-          ? ids.length === 1
-            ? "Move this contact and its 1:1 messages to Trash?"
-            : `Move ${ids.length} contacts and their 1:1 messages to Trash?`
-          : ids.length === 1
-            ? "Move this contact's 1:1 messages to Trash?"
-            : `Move 1:1 messages for ${ids.length} contacts to Trash?`;
-      if (!window.confirm(label)) {
-        setCtxMenu(null);
-        return;
-      }
-      void confirmTrashMode(mode, ids);
+      requestTrash(mode, trashIdsForContext(ctxMenu.id));
     },
-    [ctxMenu, trashIdsForContext, confirmTrashMode],
+    [ctxMenu, trashIdsForContext, requestTrash],
   );
 
   const closeGroupsPanel = useCallback(() => {
@@ -883,10 +908,23 @@ export function BrowseShell({
     },
   });
 
+  useDismissible({
+    open: moreMenuOpen,
+    onDismiss: () => setMoreMenuOpen(false),
+    refs: [moreMenuRef],
+  });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (deleteDialogOpen || ctxMenu != null || groupsPanelPos != null) return;
+      if (
+        deleteDialogOpen ||
+        trashConfirm != null ||
+        ctxMenu != null ||
+        groupsPanelPos != null
+      ) {
+        return;
+      }
       if (contactCreating || contactEditing) return;
       if (!canDelete) return;
       const t = e.target;
@@ -904,24 +942,19 @@ export function BrowseShell({
       const ids = deleteTargetIds();
       if (ids.length === 0) return;
       e.preventDefault();
-      const label =
-        ids.length === 1
-          ? "Move this contact and its 1:1 messages to Trash?"
-          : `Move ${ids.length} contacts and their 1:1 messages to Trash?`;
-      if (!window.confirm(label)) return;
-      void confirmTrashMode("contact_and_messages", ids);
+      setTrashConfirm({ mode: "contact_and_messages", ids });
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [
     deleteDialogOpen,
+    trashConfirm,
     ctxMenu,
     groupsPanelPos,
     contactCreating,
     contactEditing,
     canDelete,
     deleteTargetIds,
-    confirmTrashMode,
   ]);
   const groupsFor = useCallback(
     (id: number, fallback: string[]) => groupOverrides.get(id) ?? fallback,
@@ -1241,9 +1274,21 @@ export function BrowseShell({
     };
   }, [activeThread, yearly, groupChats]);
 
-  const deleteCount = deleteTargetIds().length;
-  const deleteNoun =
-    deleteCount === 1 ? "this contact" : `${deleteCount} contacts`;
+  const trashConfirmCopy = useMemo(() => {
+    if (!trashConfirm) return null;
+    const n = trashConfirm.ids.length;
+    if (trashConfirm.mode === "contact_and_messages") {
+      return {
+        title:
+          n === 1
+            ? "Delete contact and messages?"
+            : `Delete ${n} contacts and messages?`,
+      };
+    }
+    return {
+      title: n === 1 ? "Delete messages?" : `Delete messages for ${n} contacts?`,
+    };
+  }, [trashConfirm]);
 
   return (
     <>
@@ -1328,9 +1373,9 @@ export function BrowseShell({
                 type="button"
                 disabled={!detail || hasSelection}
                 onClick={beginContactEdit}
-                className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2.5 py-1 text-[12px] text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-elevated px-2.5 text-[12px] leading-none text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <PencilIcon className="size-5" />
+                <PencilIcon className="size-4 shrink-0" />
                 Edit
               </button>
               <GroupsMenu
@@ -1344,14 +1389,46 @@ export function BrowseShell({
                 onOpenChange={onSelectionMenuOpenChange}
               />
               {canDelete && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => setDeleteDialogOpen(true)}
-                  className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-                >
-                  Delete
-                </button>
+                <div ref={moreMenuRef} className="relative inline-flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    aria-expanded={moreMenuOpen}
+                    onClick={() => setMoreMenuOpen((v) => !v)}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:opacity-50 ${
+                      moreMenuOpen
+                        ? "bg-accent/20 text-accent"
+                        : "bg-elevated text-muted hover:text-text"
+                    }`}
+                  >
+                    More
+                    <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+                  </button>
+                  {moreMenuOpen && (
+                    <div className="absolute top-full left-0 z-50 mt-1 min-w-[180px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                        onClick={() =>
+                          requestTrash("contact_and_messages")
+                        }
+                      >
+                        <XIcon className="size-5 shrink-0 opacity-80" />
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                        onClick={() => requestTrash("messages_only")}
+                      >
+                        <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />
+                        Delete messages
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               <span className="min-w-0 flex-1" aria-hidden />
               {statusMsg && (
@@ -1572,6 +1649,48 @@ export function BrowseShell({
         />
       </div>
     )}
+    {trashConfirm && trashConfirmCopy && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4"
+        role="presentation"
+        onClick={() => !saving && setTrashConfirm(null)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mv-trash-confirm-title"
+          className="w-full max-w-md rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2
+            id="mv-trash-confirm-title"
+            className="text-[16px] font-semibold text-text"
+          >
+            {trashConfirmCopy.title}
+          </h2>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setTrashConfirm(null)}
+              className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() =>
+                void confirmTrashMode(trashConfirm.mode, trashConfirm.ids)
+              }
+              className="rounded-md bg-red-500/25 px-3 py-1.5 text-[13px] font-medium text-red-100 transition-colors hover:bg-red-500/35 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {deleteDialogOpen && (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4"
@@ -1589,36 +1708,24 @@ export function BrowseShell({
             id="mv-delete-contact-title"
             className="text-[16px] font-semibold text-text"
           >
-            Move to Trash
+            Delete?
           </h2>
-          <p className="mt-2 text-[13px] text-muted">
-            Choose what to remove for {deleteNoun}. Items can be restored from
-            Trash.
-          </p>
           <div className="mt-4 flex flex-col gap-2">
             <button
               type="button"
               disabled={saving}
               onClick={() => void confirmTrashMode("contact_and_messages")}
-              className="rounded-md bg-red-500/20 px-3 py-2 text-left text-[13px] text-red-200 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+              className="rounded-md bg-red-500/20 px-3 py-2 text-left text-[13px] font-medium text-red-100 transition-colors hover:bg-red-500/30 disabled:opacity-50"
             >
-              <span className="font-medium text-red-100">
-                Delete contact &amp; messages
-              </span>
-              <span className="mt-0.5 block text-[12px] text-red-200/70">
-                Soft-trash the contact and all 1:1 threads
-              </span>
+              Delete contact and messages
             </button>
             <button
               type="button"
               disabled={saving}
               onClick={() => void confirmTrashMode("messages_only")}
-              className="rounded-md bg-white/8 px-3 py-2 text-left text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+              className="rounded-md bg-white/8 px-3 py-2 text-left text-[13px] font-medium text-text transition-colors hover:bg-white/14 disabled:opacity-50"
             >
-              <span className="font-medium">Delete messages only</span>
-              <span className="mt-0.5 block text-[12px] text-muted">
-                Keep the contact; move 1:1 threads to Trash
-              </span>
+              Delete messages
             </button>
             <button
               type="button"

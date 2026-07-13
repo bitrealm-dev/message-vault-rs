@@ -211,6 +211,23 @@ export function ChevronRightIcon({ className }: { className?: string }) {
   );
 }
 
+export function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 4.5 6 7.5 9 4.5" />
+    </svg>
+  );
+}
+
 export function PencilIcon({ className }: { className?: string }) {
   return (
     <svg

@@ -181,7 +181,7 @@ export function GroupsMenu({
   return (
     <div
       ref={rootRef}
-      className={isFixed ? "fixed z-50" : "relative"}
+      className={isFixed ? "fixed z-50" : "relative inline-flex shrink-0 items-center"}
       style={
         isFixed
           ? { left: fixedPosition!.x, top: fixedPosition!.y }
@@ -192,19 +192,21 @@ export function GroupsMenu({
         <button
           type="button"
           aria-expanded={open}
+          disabled={disabled}
           onClick={() => {
+            if (disabled) return;
             if (open) closeMenu();
             else openMenu();
           }}
-          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
+          className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             open
               ? "bg-accent/20 text-accent"
               : "bg-elevated text-muted hover:text-text"
           }`}
         >
-          <PeopleGroupIcon className="size-5" />
+          <PeopleGroupIcon className="size-4 shrink-0" />
           Groups
-          <ChevronIcon className="size-4 opacity-70" />
+          <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
         </button>
       )}
 

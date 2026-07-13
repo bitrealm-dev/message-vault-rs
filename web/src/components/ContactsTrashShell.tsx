@@ -216,12 +216,12 @@ export function ContactsTrashShell({
                 onChange={toggleSelectAll}
                 className="checkbox-list"
               />
+              <span className="text-[13px] text-muted tabular-nums">
+                {selectedIds.size > 0 ? selectedIds.size : ""}
+              </span>
             </label>
             <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
               Trashed contacts
-              <span className="ml-2 font-normal normal-case tracking-normal">
-                {sorted.length}
-              </span>
             </h2>
             {status && (
               <span className="truncate text-[12px] text-muted">{status}</span>

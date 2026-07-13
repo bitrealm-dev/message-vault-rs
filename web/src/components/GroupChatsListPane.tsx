@@ -104,7 +104,6 @@ export function GroupChatsListPane({
   query,
   onQueryChange,
   onToggleSelectAll,
-  filteredCount,
   groupsCount,
   status,
   canAct,
@@ -130,7 +129,7 @@ export function GroupChatsListPane({
   query: string;
   onQueryChange: (q: string) => void;
   onToggleSelectAll: () => void;
-  filteredCount: number;
+  filteredCount?: number;
   groupsCount: number;
   status: string | null;
   canAct: boolean;
@@ -168,13 +167,12 @@ export function GroupChatsListPane({
                     onChange={onToggleSelectAll}
                     className="checkbox-list"
                   />
+                  <span className="text-[13px] text-muted tabular-nums">
+                    {selectedIds.size > 0 ? selectedIds.size : ""}
+                  </span>
                 </label>
                 <h2 className="text-[11px] font-semibold tracking-wider text-muted uppercase">
                   {mode === "trash" ? "Trashed groups" : "Group chats"}
-                  <span className="ml-2 font-normal normal-case tracking-normal">
-                    {query.trim() ? `${filteredCount}/` : ""}
-                    {groupsCount}
-                  </span>
                 </h2>
                 {status && (
                   <span className="truncate text-[12px] text-muted">
