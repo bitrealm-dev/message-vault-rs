@@ -93,6 +93,16 @@ export function hasTrashedHandlesTable(db: Database.Database): boolean {
   return row.n > 0;
 }
 
+export function hasTrashedContactsTable(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM sqlite_master
+       WHERE type = 'table' AND name = 'trashed_contacts'`,
+    )
+    .get() as { n: number };
+  return row.n > 0;
+}
+
 function looksLikePhone(value: string): boolean {
   const t = value.trim();
   if (!t) return false;

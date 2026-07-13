@@ -1,0 +1,115 @@
+import {
+  permanentlyDeleteTrashedContacts,
+  restoreTrashedContacts,
+  trashContactMessagesOnly,
+  trashContactWithMessages,
+} from "@/lib/contactsTrash";
+import {
+  permanentlyDeleteHandle,
+  restoreHandle,
+} from "@/lib/handlesWrite";
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
+function parseIds(body: Record<string, unknown>): number[] | null {
+  if (
+    !Array.isArray(body.ids) ||
+    !body.ids.every((id) => typeof id === "number" && Number.isFinite(id))
+  ) {
+    return null;
+  }
+  return body.ids as number[];
+}
+
+export async function POST(req: Request) {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid json" }, { status: 400 });
+  }
+
+  const ids = parseIds(body);
+  if (!ids || ids.length === 0) {
+    return NextResponse.json({ error: "ids required" }, { status: 400 });
+  }
+
+  const mode = body.mode;
+  if (mode !== "contact_and_messages" && mode !== "messages_only") {
+    return NextResponse.json(
+      { error: "mode must be contact_and_messages or messages_only" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const count =
+      mode === "contact_and_messages"
+        ? trashContactWithMessages(ids)
+        : trashContactMessagesOnly(ids);
+    return NextResponse.json({ ok: true, count, mode });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "trash failed";
+    const status = message.includes("not found") ? 404 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function DELETE(req: Request) {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid json" }, { status: 400 });
+  }
+
+  const permanent = body.permanent === true;
+  const ids = parseIds(body);
+  const handle =
+    typeof body.handle === "string" ? body.handle.trim() : "";
+
+  if (handle) {
+    try {
+      if (permanent) {
+        permanentlyDeleteHandle(handle);
+        return NextResponse.json({ ok: true, handle, permanent: true });
+      }
+      restoreHandle(handle);
+      return NextResponse.json({ ok: true, handle });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : permanent
+            ? "permanent delete failed"
+            : "restore failed";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
+  if (!ids || ids.length === 0) {
+    return NextResponse.json(
+      { error: "ids or handle required" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    if (permanent) {
+      const count = permanentlyDeleteTrashedContacts(ids);
+      return NextResponse.json({ ok: true, count, permanent: true });
+    }
+    const count = restoreTrashedContacts(ids);
+    return NextResponse.json({ ok: true, count });
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : permanent
+          ? "permanent delete failed"
+          : "restore failed";
+    const status = message.includes("not in trash") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
+}

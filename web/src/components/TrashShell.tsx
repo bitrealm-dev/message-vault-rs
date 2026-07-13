@@ -1,46 +1,67 @@
 "use client";
 
-import type { ContactListItem, GroupYearRow, UnassignedHandle } from "@/lib/types";
-import { useCallback, useEffect, useState } from "react";
+import type {
+  ContactListItem,
+  GroupYearRow,
+  TrashedContactItem,
+  TrashedContactMessagesItem,
+  UnassignedHandle,
+} from "@/lib/types";
+import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ContactsTrashShell } from "./ContactsTrashShell";
 import { GroupChatsShell } from "./GroupChatsShell";
 import { UnassignedShell } from "./UnassignedShell";
 
-type TrashTab = "unassigned" | "group-chats";
+type TrashTab = "unassigned" | "group-chats" | "contacts";
 
 export function TrashShell({
   handles,
   groupChats,
+  trashedContacts,
+  trashedContactMessages,
   assignContacts,
   initialHandle,
   initialConversationId,
   initialYear,
-  initialTab,
 }: {
   handles: UnassignedHandle[];
   groupChats: GroupYearRow[];
+  trashedContacts: TrashedContactItem[];
+  trashedContactMessages: TrashedContactMessagesItem[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
   initialConversationId: number | null;
   initialYear: number | null;
-  initialTab: TrashTab;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<TrashTab>(initialTab);
+
+  const tab: TrashTab = (() => {
+    const raw = searchParams.get("tab");
+    if (raw === "group-chats") return "group-chats";
+    if (raw === "contacts") return "contacts";
+    return "unassigned";
+  })();
 
   const switchTab = useCallback(
     (next: TrashTab) => {
-      setTab(next);
       const params = new URLSearchParams(searchParams.toString());
       if (next === "group-chats") {
         params.set("tab", "group-chats");
         params.delete("h");
+        params.delete("c");
+      } else if (next === "contacts") {
+        params.set("tab", "contacts");
+        params.delete("h");
+        params.delete("g");
+        params.delete("y");
       } else {
         params.delete("tab");
         params.delete("g");
         params.delete("y");
+        params.delete("c");
       }
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -48,12 +69,7 @@ export function TrashShell({
     [pathname, router, searchParams],
   );
 
-  // Keep tab in sync when landing via ?tab=group-chats (e.g. after Delete).
-  useEffect(() => {
-    const next: TrashTab =
-      searchParams.get("tab") === "group-chats" ? "group-chats" : "unassigned";
-    setTab(next);
-  }, [searchParams]);
+  const contactsCount = trashedContacts.length + trashedContactMessages.length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -69,6 +85,18 @@ export function TrashShell({
         >
           Unassigned
           <span className="ml-1.5 text-muted">{handles.length}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => switchTab("contacts")}
+          className={`rounded-md px-3 py-1.5 text-[13px] ${
+            tab === "contacts"
+              ? "bg-elevated text-text"
+              : "text-muted hover:text-text"
+          }`}
+        >
+          Contacts
+          <span className="ml-1.5 text-muted">{contactsCount}</span>
         </button>
         <button
           type="button"
@@ -92,6 +120,11 @@ export function TrashShell({
             handles={handles}
             assignContacts={assignContacts}
             initialHandle={initialHandle}
+          />
+        ) : tab === "contacts" ? (
+          <ContactsTrashShell
+            contacts={trashedContacts}
+            messagesOnly={trashedContactMessages}
           />
         ) : (
           <GroupChatsShell

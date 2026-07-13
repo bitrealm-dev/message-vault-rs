@@ -22,6 +22,7 @@ export function BrowseContactList({
   selectedIds,
   onSelectColumnClick,
   onNamePhoneClick,
+  onContextMenu,
 }: {
   sectionLabel: string;
   selectAllRef: RefObject<HTMLInputElement | null>;
@@ -40,6 +41,7 @@ export function BrowseContactList({
   selectedIds: Set<number>;
   onSelectColumnClick: (id: number, e: MouseEvent) => void;
   onNamePhoneClick: (id: number, e: MouseEvent | { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
+  onContextMenu: (id: number, x: number, y: number) => void;
 }) {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
@@ -68,7 +70,7 @@ export function BrowseContactList({
             onClick={onNewContact}
             className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
           >
-            <NewContactIcon className="size-4" />
+            <NewContactIcon className="size-5" />
           </button>
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
         </div>
@@ -122,6 +124,10 @@ export function BrowseContactList({
                         }
                       : undefined
                   }
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onContextMenu(c.id, e.clientX, e.clientY);
+                  }}
                   onMouseDown={(e) => {
                     if (e.shiftKey) e.preventDefault();
                   }}

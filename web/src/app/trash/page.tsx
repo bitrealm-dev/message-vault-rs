@@ -3,6 +3,8 @@ import { TrashShell } from "@/components/TrashShell";
 import {
   listContactsForPicker,
   listGroups,
+  listTrashedContactMessages,
+  listTrashedContacts,
   listTrashedGroupYearRows,
   listTrashedHandles,
 } from "@/lib/db";
@@ -20,9 +22,10 @@ export default async function TrashPage({
   const initialConversationId = Number.isFinite(rawG) ? rawG : null;
   const rawY = sp.y ? Number(sp.y) : null;
   const initialYear = Number.isFinite(rawY) ? rawY : null;
-  const initialTab = sp.tab === "group-chats" ? "group-chats" : "unassigned";
   const handles = listTrashedHandles();
   const groupChats = listTrashedGroupYearRows();
+  const trashedContacts = listTrashedContacts();
+  const trashedContactMessages = listTrashedContactMessages();
   const assignContacts = listContactsForPicker();
   const contactGroups = listGroups();
 
@@ -31,11 +34,12 @@ export default async function TrashPage({
       <TrashShell
         handles={handles}
         groupChats={groupChats}
+        trashedContacts={trashedContacts}
+        trashedContactMessages={trashedContactMessages}
         assignContacts={assignContacts}
         initialHandle={initialHandle}
         initialConversationId={initialConversationId}
         initialYear={initialYear}
-        initialTab={initialTab}
       />
     </BrowsePageLayout>
   );

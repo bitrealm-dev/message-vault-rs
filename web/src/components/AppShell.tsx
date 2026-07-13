@@ -2,6 +2,7 @@
 
 import { AppSidebar } from "@/components/AppSidebar";
 import { PaneSeparator } from "@/components/PaneSeparator";
+import { usePanelLayoutStorage } from "@/components/panelLayoutStorage";
 import { useCallback, useState, type ReactNode } from "react";
 import {
   Group,
@@ -25,11 +26,12 @@ export function AppShell({
   const onCollapsedChange = useCallback((c: boolean) => {
     setNavCollapsed(c);
   }, []);
+  const storage = usePanelLayoutStorage();
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "mv-nav",
     panelIds: ["nav", "main"],
-    storage: typeof window !== "undefined" ? localStorage : undefined,
+    storage,
   });
 
   return (

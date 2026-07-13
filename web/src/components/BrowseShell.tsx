@@ -28,11 +28,20 @@ import { BrowseContactList } from "./BrowseContactList";
 import { BrowseDetailPane } from "./BrowseDetailPane";
 import { BrowseMessagesPane } from "./BrowseMessagesPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import {
+  ChevronRightIcon,
+  PencilIcon,
+  PeopleGroupIcon,
+  TrashMessagesIcon,
+  XIcon,
+} from "./icons";
 import { type SortMode, type SortOrder } from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useListSelection } from "./useListSelection";
+import { useDismissible } from "./useDismissible";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
+import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const SORT_MODE_KEY = "mv-contact-sort";
@@ -112,19 +121,46 @@ export function BrowseShell({
   const [excludeOverrides, setExcludeOverrides] = useState<Map<number, boolean>>(
     () => new Map(),
   );
+  const groupOverridesRef = useRef(groupOverrides);
+  groupOverridesRef.current = groupOverrides;
+  const excludeOverridesRef = useRef(excludeOverrides);
+  excludeOverridesRef.current = excludeOverrides;
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [threadsEpoch, setThreadsEpoch] = useState(0);
+  const [ctxMenu, setCtxMenu] = useState<{
+    id: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const groupsPanelWrapRef = useRef<HTMLDivElement>(null);
+  const groupsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  /** Keep the groups flyout open while the create form is showing. */
+  const groupsCreatePinnedRef = useRef(false);
+  const pendingEditIdRef = useRef<number | null>(null);
+  const [groupTargetOverrideIds, setGroupTargetOverrideIds] = useState<
+    number[] | null
+  >(null);
+  const [groupsPanelPos, setGroupsPanelPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const selectionDirtyRef = useRef(false);
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const storage = usePanelLayoutStorage();
   const sideLayout = useDefaultLayout({
     id: "mv-browse-side",
     panelIds: ["list", "right"],
-    storage: typeof window !== "undefined" ? localStorage : undefined,
+    storage,
   });
   const threadsLayout = useDefaultLayout({
     id: "mv-browse-threads",
     panelIds: ["detail", "messages"],
-    storage: typeof window !== "undefined" ? localStorage : undefined,
+    storage,
   });
 
   const saveContactPatch = useCallback(
@@ -343,7 +379,11 @@ export function BrowseShell({
         // Contact fields don't depend on source — only replace detail when the person changes
         // so the top card shell/content don't flash on source filter updates.
         if (switchingContact) {
-          setDetail(data.contact);
+          const contact = data.contact as ContactDetail;
+          const ov = groupOverridesRef.current.get(contact.id);
+          setDetail(
+            ov ? { ...contact, contactGroups: ov } : contact,
+          );
         }
         const nextYearly: YearThread[] = data.yearly ?? [];
         const nextGroupChats: GroupChatThread[] = data.groupChats ?? [];
@@ -426,7 +466,7 @@ export function BrowseShell({
     return () => {
       cancelled = true;
     };
-  }, [contactId, sourceQuery, setSource]);
+  }, [contactId, sourceQuery, setSource, threadsEpoch]);
 
   const loadMessages = useCallback(
     (conversationIds: number[], year: number, key: string) => {
@@ -485,12 +525,13 @@ export function BrowseShell({
     if (!hasSelection) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (ctxMenu != null || groupsPanelPos != null) return;
       e.preventDefault();
       clearSelection();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [hasSelection, clearSelection]);
+  }, [hasSelection, clearSelection, ctxMenu, groupsPanelPos]);
 
   useEffect(() => {
     if (!hasSelection) return;
@@ -505,6 +546,15 @@ export function BrowseShell({
     setContactEditing(true);
   }, [detail, hasSelection, contactCreating]);
 
+  // Finish Edit from context menu once the contact detail has loaded.
+  useEffect(() => {
+    const pending = pendingEditIdRef.current;
+    if (pending == null || !detail || detail.id !== pending) return;
+    if (hasSelection || contactCreating) return;
+    pendingEditIdRef.current = null;
+    setEditDraft(seedContactEditDraft(detail));
+    setContactEditing(true);
+  }, [detail, hasSelection, contactCreating]);
   const createDefaults = useMemo(() => {
     if (typeof contactSection === "object") {
       return { contactGroups: [contactSection.group], exclude: false };
@@ -597,72 +647,303 @@ export function BrowseShell({
     phoneHandlesOnly(phonesForSave(editDraft.phones)).length > 0;
   const canDelete = !contactCreating && (hasSelection || contactId != null);
 
-  const deleteSelectedContacts = useCallback(async () => {
-    const ids = hasSelection
-      ? selectedContacts.map((c) => c.id)
-      : contactId != null
-        ? [contactId]
-        : [];
-    if (ids.length === 0) return;
-    const label =
-      ids.length === 1
-        ? "Delete this contact?"
-        : `Delete ${ids.length} contacts?`;
-    if (!window.confirm(label)) return;
+  const deleteTargetIds = useCallback((): number[] => {
+    if (hasSelection) return selectedContacts.map((c) => c.id);
+    if (contactId != null) return [contactId];
+    return [];
+  }, [hasSelection, selectedContacts, contactId]);
 
-    setSaving(true);
-    try {
-      const res = await fetch("/api/contacts", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "delete failed");
+  const confirmTrashMode = useCallback(
+    async (
+      mode: "contact_and_messages" | "messages_only",
+      idsOverride?: number[],
+    ) => {
+      const ids = idsOverride ?? deleteTargetIds();
+      if (ids.length === 0) return;
+      setDeleteDialogOpen(false);
+      setCtxMenu(null);
+      setSaving(true);
+      try {
+        const res = await fetch("/api/contacts/trash", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, mode }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "delete failed");
 
-      setSelectedIds(new Set());
-      setGroupOverrides(new Map());
-      setExcludeOverrides(new Map());
-      selectionDirtyRef.current = false;
-      setContactEditing(false);
-      setContactCreating(false);
-      setEditDraft(null);
-      setDetail(null);
-      setYearly([]);
-      setGroupChats([]);
-      setMessageSources([]);
-      setSourceCounts({ all: 0, bySource: {} });
-      setMessages([]);
-      setActiveThread(null);
-      setContactId(null);
+        setSelectedIds(new Set());
+        setGroupOverrides(new Map());
+        setExcludeOverrides(new Map());
+        selectionDirtyRef.current = false;
+        setContactEditing(false);
+        setContactCreating(false);
+        setEditDraft(null);
 
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("c");
-      params.delete("y");
-      params.delete("conv");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
+        if (mode === "contact_and_messages") {
+          setDetail(null);
+          setYearly([]);
+          setGroupChats([]);
+          setMessageSources([]);
+          setSourceCounts({ all: 0, bySource: {} });
+          setMessages([]);
+          setActiveThread(null);
+          setContactId(null);
+          queueStatusMessage(
+            ids.length === 1
+              ? "Moved contact & messages to Trash"
+              : `Moved ${ids.length} contacts to Trash`,
+          );
+          router.push("/trash?tab=contacts");
+          return;
+        }
+
+        queueStatusMessage(
+          ids.length === 1
+            ? "Moved messages to Trash"
+            : `Moved messages for ${ids.length} contacts to Trash`,
+        );
+        setMessages([]);
+        setActiveThread(null);
+        loadedContactIdRef.current = null;
+        setThreadsEpoch((n) => n + 1);
+        router.refresh();
+      } catch (err) {
+        console.error(err);
+        queueStatusMessage(
+          err instanceof Error ? err.message : "delete failed",
+        );
+        router.refresh();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [deleteTargetIds, queueStatusMessage, router, setSelectedIds],
+  );
+
+  const trashIdsForContext = useCallback(
+    (ctxId: number): number[] => {
+      if (hasSelection && selectedIds.has(ctxId)) {
+        return selectedContacts.map((c) => c.id);
+      }
+      return [ctxId];
+    },
+    [hasSelection, selectedIds, selectedContacts],
+  );
+
+  const openContactCtxMenu = useCallback(
+    (id: number, x: number, y: number) => {
+      if (groupsCloseTimerRef.current) {
+        clearTimeout(groupsCloseTimerRef.current);
+        groupsCloseTimerRef.current = null;
+      }
+      groupsCreatePinnedRef.current = false;
+      setGroupsPanelPos(null);
+      setGroupTargetOverrideIds(null);
+      setCtxMenu({ id, x, y });
+    },
+    [],
+  );
+
+  const onCtxEdit = useCallback(() => {
+    if (!ctxMenu || hasSelection || contactCreating || contactEditing) return;
+    const id = ctxMenu.id;
+    setCtxMenu(null);
+    if (contactId === id && detail?.id === id) {
+      beginContactEdit();
+      return;
     }
+    pendingEditIdRef.current = id;
+    setSelectedIds(new Set());
+    selectContact(id);
   }, [
+    ctxMenu,
     hasSelection,
-    selectedContacts,
+    contactCreating,
+    contactEditing,
     contactId,
-    pathname,
-    router,
-    searchParams,
+    detail,
+    beginContactEdit,
+    selectContact,
+    setSelectedIds,
   ]);
 
+  const onCtxDelete = useCallback(
+    (mode: "contact_and_messages" | "messages_only") => {
+      if (!ctxMenu) return;
+      const ids = trashIdsForContext(ctxMenu.id);
+      if (ids.length === 0) return;
+      const label =
+        mode === "contact_and_messages"
+          ? ids.length === 1
+            ? "Move this contact and its 1:1 messages to Trash?"
+            : `Move ${ids.length} contacts and their 1:1 messages to Trash?`
+          : ids.length === 1
+            ? "Move this contact's 1:1 messages to Trash?"
+            : `Move 1:1 messages for ${ids.length} contacts to Trash?`;
+      if (!window.confirm(label)) {
+        setCtxMenu(null);
+        return;
+      }
+      void confirmTrashMode(mode, ids);
+    },
+    [ctxMenu, trashIdsForContext, confirmTrashMode],
+  );
+
+  const closeGroupsPanel = useCallback(() => {
+    if (groupsCloseTimerRef.current) {
+      clearTimeout(groupsCloseTimerRef.current);
+      groupsCloseTimerRef.current = null;
+    }
+    groupsCreatePinnedRef.current = false;
+    setGroupsPanelPos(null);
+    setGroupTargetOverrideIds(null);
+  }, []);
+
+  const flushSelectionDirty = useCallback(() => {
+    if (!selectionDirtyRef.current) return;
+    selectionDirtyRef.current = false;
+    const groupOv = groupOverridesRef.current;
+    const excludeOv = excludeOverridesRef.current;
+    // Keep the open contact card in sync — overrides are cleared next, and
+    // router.refresh() only updates the list props, not client `detail`.
+    setDetail((prev) => {
+      if (!prev) return prev;
+      const groups = groupOv.get(prev.id);
+      const hasExclude = excludeOv.has(prev.id);
+      if (!groups && !hasExclude) return prev;
+      return {
+        ...prev,
+        ...(groups ? { contactGroups: groups } : {}),
+        ...(hasExclude ? { exclude: excludeOv.get(prev.id)! } : {}),
+      };
+    });
+    setGroupOverrides(new Map());
+    setExcludeOverrides(new Map());
+    router.refresh();
+  }, [router]);
+
+  const cancelCloseGroupsPanel = useCallback(() => {
+    if (groupsCloseTimerRef.current) {
+      clearTimeout(groupsCloseTimerRef.current);
+      groupsCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCloseGroupsPanel = useCallback(() => {
+    if (groupsCreatePinnedRef.current) return;
+    cancelCloseGroupsPanel();
+    groupsCloseTimerRef.current = setTimeout(() => {
+      groupsCloseTimerRef.current = null;
+      setGroupsPanelPos(null);
+      setGroupTargetOverrideIds(null);
+    }, 160);
+  }, [cancelCloseGroupsPanel]);
+
+  const openCtxGroups = useCallback(
+    (anchor: DOMRect) => {
+      if (!ctxMenu || contactCreating || contactEditing) return;
+      const ids = trashIdsForContext(ctxMenu.id);
+      if (ids.length === 0) return;
+      cancelCloseGroupsPanel();
+      const x = Math.max(
+        8,
+        Math.min(anchor.right + 2, window.innerWidth - 272),
+      );
+      const y = Math.max(
+        8,
+        Math.min(anchor.top, window.innerHeight - 320),
+      );
+      setGroupTargetOverrideIds(ids);
+      setGroupsPanelPos({ x, y });
+    },
+    [
+      ctxMenu,
+      contactCreating,
+      contactEditing,
+      trashIdsForContext,
+      cancelCloseGroupsPanel,
+    ],
+  );
+
+  useDismissible({
+    open: ctxMenu != null,
+    onDismiss: () => {
+      setCtxMenu(null);
+      closeGroupsPanel();
+      flushSelectionDirty();
+    },
+    refs: [ctxMenuRef, groupsPanelWrapRef],
+    onEscape: (e) => {
+      if (groupsPanelPos != null) {
+        e.preventDefault();
+        closeGroupsPanel();
+        return false;
+      }
+    },
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (deleteDialogOpen || ctxMenu != null || groupsPanelPos != null) return;
+      if (contactCreating || contactEditing) return;
+      if (!canDelete) return;
+      const t = e.target;
+      if (t instanceof HTMLElement) {
+        const tag = t.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          t.isContentEditable
+        ) {
+          return;
+        }
+      }
+      const ids = deleteTargetIds();
+      if (ids.length === 0) return;
+      e.preventDefault();
+      const label =
+        ids.length === 1
+          ? "Move this contact and its 1:1 messages to Trash?"
+          : `Move ${ids.length} contacts and their 1:1 messages to Trash?`;
+      if (!window.confirm(label)) return;
+      void confirmTrashMode("contact_and_messages", ids);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [
+    deleteDialogOpen,
+    ctxMenu,
+    groupsPanelPos,
+    contactCreating,
+    contactEditing,
+    canDelete,
+    deleteTargetIds,
+    confirmTrashMode,
+  ]);
   const groupsFor = useCallback(
     (id: number, fallback: string[]) => groupOverrides.get(id) ?? fallback,
     [groupOverrides],
   );
 
   const groupTargets = useMemo(() => {
+    if (groupTargetOverrideIds?.length) {
+      return groupTargetOverrideIds.flatMap((id) => {
+        const c =
+          contacts.find((x) => x.id === id) ??
+          selectedContacts.find((x) => x.id === id) ??
+          (detail?.id === id ? detail : null);
+        if (!c) return [];
+        return [
+          {
+            id: c.id,
+            contactGroups: groupsFor(c.id, c.contactGroups),
+          },
+        ];
+      });
+    }
     if (hasSelection) {
       return selectedContacts.map((c) => ({
         id: c.id,
@@ -673,8 +954,14 @@ export function BrowseShell({
       return [{ id: detail.id, contactGroups: groupsFor(detail.id, detail.contactGroups) }];
     }
     return [] as Array<{ id: number; contactGroups: string[] }>;
-  }, [hasSelection, selectedContacts, detail, groupsFor]);
-
+  }, [
+    groupTargetOverrideIds,
+    contacts,
+    hasSelection,
+    selectedContacts,
+    detail,
+    groupsFor,
+  ]);
   const menuGroups = useMemo(() => {
     const names = new Set(allGroups);
     for (const person of groupTargets) {
@@ -714,21 +1001,37 @@ export function BrowseShell({
       }
       if (changed === 0) return;
 
+      const nextGroupsById = new Map<number, string[]>();
+      for (const person of targets) {
+        const current =
+          groupOverridesRef.current.get(person.id) ?? person.contactGroups;
+        const has = current.includes(name);
+        if (enable === has) {
+          nextGroupsById.set(person.id, current);
+          continue;
+        }
+        const groups = enable
+          ? [...current, name].sort((a, b) =>
+              a.localeCompare(b, undefined, { sensitivity: "base" }),
+            )
+          : current.filter((g) => g !== name);
+        nextGroupsById.set(person.id, groups);
+      }
+
       // Optimistic UI so the menu can stay open across multiple toggles.
       setGroupOverrides((prev) => {
         const next = new Map(prev);
-        for (const person of targets) {
-          const current = next.get(person.id) ?? person.contactGroups;
-          const has = current.includes(name);
-          if (enable === has) continue;
-          const groups = enable
-            ? [...current, name].sort((a, b) =>
-                a.localeCompare(b, undefined, { sensitivity: "base" }),
-              )
-            : current.filter((g) => g !== name);
-          next.set(person.id, groups);
+        for (const [id, groups] of nextGroupsById) {
+          next.set(id, groups);
         }
         return next;
+      });
+      // Contact card reads `detail` after overrides flush — update it now.
+      setDetail((prev) => {
+        if (!prev) return prev;
+        const groups = nextGroupsById.get(prev.id);
+        if (!groups) return prev;
+        return { ...prev, contactGroups: groups };
       });
       selectionDirtyRef.current = true;
 
@@ -743,26 +1046,25 @@ export function BrowseShell({
         for (const person of targets) {
           const has = person.contactGroups.includes(name);
           if (enable === has) continue;
-          const groups = enable
-            ? [...person.contactGroups, name].sort((a, b) =>
-                a.localeCompare(b, undefined, { sensitivity: "base" }),
-              )
-            : person.contactGroups.filter((g) => g !== name);
+          const groups =
+            nextGroupsById.get(person.id) ??
+            (enable
+              ? [...person.contactGroups, name].sort((a, b) =>
+                  a.localeCompare(b, undefined, { sensitivity: "base" }),
+                )
+              : person.contactGroups.filter((g) => g !== name));
 
-          if (!hasSelection && person.id === contactId) {
-            const ok = await saveContactPatch({ contactGroups: groups });
-            if (!ok) throw new Error("save failed");
-          } else {
-            const res = await fetch(`/api/contacts/${person.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ contactGroups: groups }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "save failed");
-            if (data.contact && person.id === contactId) {
-              setDetail(data.contact);
-            }
+          const res = await fetch(`/api/contacts/${person.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contactGroups: groups }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "save failed");
+          if (data.contact) {
+            setDetail((prev) =>
+              prev && prev.id === data.contact.id ? data.contact : prev,
+            );
           }
         }
       } catch (err) {
@@ -771,16 +1073,10 @@ export function BrowseShell({
         selectionDirtyRef.current = true;
         router.refresh();
         setGroupOverrides(new Map());
+        setThreadsEpoch((n) => n + 1);
       }
     },
-    [
-      groupTargets,
-      hasSelection,
-      contactId,
-      saveContactPatch,
-      router,
-      queueStatusMessage,
-    ],
+    [groupTargets, router, queueStatusMessage],
   );
 
   const toggleGroup = useCallback(
@@ -794,24 +1090,40 @@ export function BrowseShell({
 
   const createAndAssignGroup = useCallback(
     (name: string) => {
-      void applyGroupMembership(name, true);
+      void (async () => {
+        await applyGroupMembership(name, true);
+        // Fixed context-menu flyout unmounts without onOpenChange(false), so
+        // refresh here so the left Groups nav picks up the new name.
+        router.refresh();
+      })();
     },
-    [applyGroupMembership],
+    [applyGroupMembership, router],
   );
 
   const onSelectionMenuOpenChange = useCallback(
     (open: boolean) => {
       if (open) return;
-      if (!selectionDirtyRef.current) return;
-      selectionDirtyRef.current = false;
-      setGroupOverrides(new Map());
-      setExcludeOverrides(new Map());
-      router.refresh();
+      flushSelectionDirty();
     },
-    [router],
+    [flushSelectionDirty],
   );
 
   const selectionFieldTargets = useMemo(() => {
+    if (groupTargetOverrideIds?.length) {
+      return groupTargetOverrideIds.flatMap((id) => {
+        const c =
+          contacts.find((x) => x.id === id) ??
+          selectedContacts.find((x) => x.id === id) ??
+          (detail?.id === id ? detail : null);
+        if (!c) return [];
+        return [
+          {
+            id: c.id,
+            exclude: excludeOverrides.get(c.id) ?? c.exclude,
+          },
+        ];
+      });
+    }
     if (hasSelection) {
       return selectedContacts.map((c) => ({
         id: c.id,
@@ -827,7 +1139,14 @@ export function BrowseShell({
       ];
     }
     return [] as Array<{ id: number; exclude: boolean }>;
-  }, [hasSelection, selectedContacts, detail, excludeOverrides]);
+  }, [
+    groupTargetOverrideIds,
+    contacts,
+    hasSelection,
+    selectedContacts,
+    detail,
+    excludeOverrides,
+  ]);
 
   const excludedCheck = useMemo((): GroupCheckState => {
     const n = selectionFieldTargets.length;
@@ -922,7 +1241,12 @@ export function BrowseShell({
     };
   }, [activeThread, yearly, groupChats]);
 
+  const deleteCount = deleteTargetIds().length;
+  const deleteNoun =
+    deleteCount === 1 ? "this contact" : `${deleteCount} contacts`;
+
   return (
+    <>
     <Group
       id="mv-browse-side"
       orientation="horizontal"
@@ -955,6 +1279,7 @@ export function BrowseShell({
           selectedIds={selectedIds}
           onSelectColumnClick={onSelectColumnClick}
           onNamePhoneClick={onNamePhoneClick}
+          onContextMenu={openContactCtxMenu}
         />
       </Panel>
 
@@ -990,7 +1315,7 @@ export function BrowseShell({
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => void deleteSelectedContacts()}
+                  onClick={() => setDeleteDialogOpen(true)}
                   className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                 >
                   Delete
@@ -1005,7 +1330,7 @@ export function BrowseShell({
                 onClick={beginContactEdit}
                 className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2.5 py-1 text-[12px] text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <PencilIcon className="size-3.5" />
+                <PencilIcon className="size-5" />
                 Edit
               </button>
               <GroupsMenu
@@ -1022,7 +1347,7 @@ export function BrowseShell({
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => void deleteSelectedContacts()}
+                  onClick={() => setDeleteDialogOpen(true)}
                   className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                 >
                   Delete
@@ -1166,23 +1491,147 @@ export function BrowseShell({
         </div>
       </Panel>
     </Group>
-  );
-}
-
-function PencilIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
+    {ctxMenu && (
+      <div
+        ref={ctxMenuRef}
+        className="fixed z-50 min-w-[180px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+        style={{ left: ctxMenu.x, top: ctxMenu.y }}
+      >
+        <button
+          type="button"
+          disabled={
+            saving || hasSelection || contactCreating || contactEditing
+          }
+          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+          onMouseEnter={scheduleCloseGroupsPanel}
+          onClick={onCtxEdit}
+        >
+          <PencilIcon className="size-5 shrink-0 opacity-80" />
+          Edit
+        </button>
+        <button
+          type="button"
+          disabled={saving || contactCreating || contactEditing}
+          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+          onMouseEnter={(e) => {
+            if (saving || contactCreating || contactEditing) return;
+            openCtxGroups(e.currentTarget.getBoundingClientRect());
+          }}
+          onMouseLeave={scheduleCloseGroupsPanel}
+        >
+          <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
+          <span className="min-w-0 flex-1">Groups</span>
+          <ChevronRightIcon className="size-3.5 shrink-0 opacity-70" />
+        </button>
+        <div className="my-1 border-t border-border/60" />
+        <button
+          type="button"
+          disabled={saving}
+          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+          onMouseEnter={scheduleCloseGroupsPanel}
+          onClick={() => onCtxDelete("contact_and_messages")}
+        >
+          <XIcon className="size-5 shrink-0 opacity-80" />
+          Delete
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+          onMouseEnter={scheduleCloseGroupsPanel}
+          onClick={() => onCtxDelete("messages_only")}
+        >
+          <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />
+          Delete messages
+        </button>
+      </div>
+    )}
+    {groupsPanelPos && (
+      <div
+        ref={groupsPanelWrapRef}
+        onMouseEnter={cancelCloseGroupsPanel}
+        onMouseLeave={scheduleCloseGroupsPanel}
+      >
+        <GroupsMenu
+          fixedPosition={groupsPanelPos}
+          allGroups={menuGroups}
+          checks={groupChecks}
+          excludedCheck={excludedCheck}
+          disabled={contactCreating || contactEditing}
+          onToggle={toggleGroup}
+          onToggleExcluded={() => void toggleExcludedForSelection()}
+          onCreate={createAndAssignGroup}
+          onModeChange={(mode) => {
+            groupsCreatePinnedRef.current = mode === "create";
+            if (mode === "create") cancelCloseGroupsPanel();
+          }}
+          onOpenChange={(open) => {
+            if (!open) closeGroupsPanel();
+            else onSelectionMenuOpenChange(true);
+          }}
+        />
+      </div>
+    )}
+    {deleteDialogOpen && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4"
+        role="presentation"
+        onClick={() => !saving && setDeleteDialogOpen(false)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mv-delete-contact-title"
+          className="w-full max-w-md rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2
+            id="mv-delete-contact-title"
+            className="text-[16px] font-semibold text-text"
+          >
+            Move to Trash
+          </h2>
+          <p className="mt-2 text-[13px] text-muted">
+            Choose what to remove for {deleteNoun}. Items can be restored from
+            Trash.
+          </p>
+          <div className="mt-4 flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void confirmTrashMode("contact_and_messages")}
+              className="rounded-md bg-red-500/20 px-3 py-2 text-left text-[13px] text-red-200 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+            >
+              <span className="font-medium text-red-100">
+                Delete contact &amp; messages
+              </span>
+              <span className="mt-0.5 block text-[12px] text-red-200/70">
+                Soft-trash the contact and all 1:1 threads
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void confirmTrashMode("messages_only")}
+              className="rounded-md bg-white/8 px-3 py-2 text-left text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+            >
+              <span className="font-medium">Delete messages only</span>
+              <span className="mt-0.5 block text-[12px] text-muted">
+                Keep the contact; move 1:1 threads to Trash
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setDeleteDialogOpen(false)}
+              className="mt-1 rounded-md px-3 py-2 text-[13px] text-muted transition-colors hover:bg-white/8 hover:text-text disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

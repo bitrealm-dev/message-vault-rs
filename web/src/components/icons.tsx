@@ -177,6 +177,79 @@ export function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+export function XIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 6 18 18M18 6 6 18" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4.5 2.5 8 6 4.5 9.5" />
+    </svg>
+  );
+}
+
+export function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+/** Text message bubble with an X inside (delete messages). */
+export function TrashMessagesIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* speech bubble */}
+      <path d="M4 3.75h16A2.25 2.25 0 0 1 22.25 6v8.5A2.25 2.25 0 0 1 20 16.75h-6.4L9.25 20.5v-3.75H4A2.25 2.25 0 0 1 1.75 14.5V6A2.25 2.25 0 0 1 4 3.75Z" />
+      {/* X */}
+      <path d="M9 7.5 15 13.5M15 7.5 9 13.5" />
+    </svg>
+  );
+}
+
 export function PanelCollapseIcon({ className }: { className?: string }) {
   return (
     <svg

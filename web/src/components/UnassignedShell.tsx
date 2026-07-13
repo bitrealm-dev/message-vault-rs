@@ -30,6 +30,7 @@ import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
+import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { fetchThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
@@ -101,15 +102,16 @@ export function UnassignedShell({
   const [status, setStatus] = useState<string | null>(null);
   const assignRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const storage = usePanelLayoutStorage();
   const sideLayout = useDefaultLayout({
     id: "mv-browse-side",
     panelIds: ["list", "right"],
-    storage: typeof window !== "undefined" ? localStorage : undefined,
+    storage,
   });
   const threadsLayout = useDefaultLayout({
     id: "mv-unassigned-threads",
     panelIds: ["detail", "messages"],
-    storage: typeof window !== "undefined" ? localStorage : undefined,
+    storage,
   });
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
@@ -768,7 +770,7 @@ export function UnassignedShell({
                   }}
                   className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
                 >
-                  <EllipsisIcon className="size-3.5" />
+                  <EllipsisIcon className="size-5" />
                 </button>
               )}
             </div>
@@ -845,7 +847,7 @@ export function UnassignedShell({
                 }}
                 className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
               >
-                <EllipsisIcon className="size-3.5" />
+                <EllipsisIcon className="size-5" />
               </button>
             </div>
           )}

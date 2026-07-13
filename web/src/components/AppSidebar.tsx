@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -162,10 +163,28 @@ function GroupsNav({ groups }: { groups: string[] }) {
     y: number;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Names created this session before props catch up via refresh. */
+  const [pendingGroups, setPendingGroups] = useState<string[]>([]);
   const headerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const createPanelRef = useRef<HTMLDivElement>(null);
   const renamePanelRef = useRef<HTMLDivElement>(null);
+
+  const displayGroups = useMemo(() => {
+    const names = new Set([...groups, ...pendingGroups]);
+    return [...names].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [groups, pendingGroups]);
+
+  useEffect(() => {
+    setPendingGroups((prev) => {
+      if (prev.length === 0) return prev;
+      const known = new Set(groups.map((g) => g.toLowerCase()));
+      const next = prev.filter((n) => !known.has(n.toLowerCase()));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [groups]);
 
   useDismissible({
     open: create != null,
@@ -194,6 +213,11 @@ function GroupsNav({ groups }: { groups: string[] }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "create failed");
       setCreate(null);
+      setPendingGroups((prev) =>
+        prev.some((n) => n.toLowerCase() === data.name.toLowerCase())
+          ? prev
+          : [...prev, data.name],
+      );
       router.refresh();
       router.push(`/group/${groupSlug(data.name)}`);
     } catch (err) {
@@ -249,7 +273,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
   };
 
   const groupIcon = (
-    <PeopleGroupIcon className="size-3.5 shrink-0 opacity-80" />
+    <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
   );
 
   return (
@@ -272,15 +296,15 @@ function GroupsNav({ groups }: { groups: string[] }) {
             }}
             className="rounded p-0.5 text-muted hover:bg-elevated hover:text-text disabled:opacity-40"
           >
-            <PlusIcon className="size-3.5" />
+            <PlusIcon className="size-5" />
           </button>
         </div>
       </div>
 
-      {groups.length === 0 ? (
+      {displayGroups.length === 0 ? (
         <p className="pl-10 pr-3 py-1 text-[13px] text-muted">No groups</p>
       ) : (
-        groups.map((name) => {
+        displayGroups.map((name) => {
           const href = `/group/${groupSlug(name)}`;
           const active = pathname === href;
           const menuOpen = menuFor === name;
@@ -325,7 +349,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
                       : "opacity-0 group-hover:opacity-100"
                   }`}
                 >
-                  <EllipsisIcon className="size-3.5" />
+                  <EllipsisIcon className="size-5" />
                 </button>
               </div>
 
@@ -366,7 +390,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
         href="/no-group"
         label="No group"
         active={pathname === "/no-group"}
-        icon={<PersonDetailIcon className="size-3.5 shrink-0 opacity-80" />}
+        icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
       />
 
       {create && (
@@ -453,7 +477,7 @@ export function AppSidebar({
   };
 
   const groupIcon = (
-    <PeopleGroupIcon className="size-3.5 shrink-0 opacity-80" />
+    <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
   );
 
   return (
@@ -467,15 +491,18 @@ export function AppSidebar({
           className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
         >
           {collapsed ? (
-            <PanelExpandIcon className="size-4" />
+            <PanelExpandIcon className="size-5" />
           ) : (
-            <PanelCollapseIcon className="size-4" />
+            <PanelCollapseIcon className="size-5" />
           )}
         </button>
         {!collapsed && (
-          <span className="truncate text-[13px] font-medium text-text">
+          <Link
+            href="/"
+            className="truncate text-[13px] font-medium text-text transition-colors hover:text-accent"
+          >
             Message Vault
-          </span>
+          </Link>
         )}
       </div>
 
@@ -490,25 +517,25 @@ export function AppSidebar({
             href="/contacts"
             label="Contacts"
             active={active === "/contacts"}
-            icon={<AddressBookIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<AddressBookIcon className="size-5 shrink-0 opacity-80" />}
           />
           <NavLink
             href="/all"
             label="All"
             active={active === "/all"}
-            icon={<PersonDetailIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
           />
           <NavLink
             href="/no-messages"
             label="No Messages"
             active={active === "/no-messages"}
-            icon={<EmptyChatIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<EmptyChatIcon className="size-5 shrink-0 opacity-80" />}
           />
           <NavLink
             href="/excluded"
             label="Excluded"
             active={active === "/excluded"}
-            icon={<ProhibitedIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
           />
 
           <div className="mt-3 pl-10 pr-1.5 pb-1">
@@ -520,7 +547,7 @@ export function AppSidebar({
             href="/unassigned"
             label="Unassigned"
             active={active === "/unassigned"}
-            icon={<QuestionHandleIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<QuestionHandleIcon className="size-5 shrink-0 opacity-80" />}
           />
           <NavLink
             href="/group-chats"
@@ -532,7 +559,7 @@ export function AppSidebar({
             href="/trash"
             label="Trash"
             active={active === "/trash"}
-            icon={<TrashIcon className="size-3.5 shrink-0 opacity-80" />}
+            icon={<TrashIcon className="size-5 shrink-0 opacity-80" />}
           />
 
           <GroupsNav groups={groups} />

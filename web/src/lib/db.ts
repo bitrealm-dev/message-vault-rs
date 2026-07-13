@@ -7,6 +7,8 @@ export {
   getContact,
   contactThreadsBundle,
   listContactsForPicker,
+  listTrashedContacts,
+  listTrashedContactMessages,
 } from "./contactsRead";
 export {
   listGroupYearRows,

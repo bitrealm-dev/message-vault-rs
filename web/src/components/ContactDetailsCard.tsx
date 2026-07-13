@@ -41,7 +41,7 @@ export function ContactDetailsCard({
         {formOpen && draft && onDraftChange && (
           <div className="mb-3 flex gap-3">
             <div className="pt-0.5">
-              <PersonDetailIcon className="size-4 shrink-0 text-muted" />
+              <PersonDetailIcon className="size-5 shrink-0 text-muted" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] tracking-wide text-muted">Name</div>
@@ -72,7 +72,7 @@ export function ContactDetailsCard({
         <div className="grid grid-cols-2 gap-4">
           <div className="flex min-w-0 gap-3">
             <div className="pt-0.5">
-              <PeopleGroupIcon className="size-4 shrink-0 text-muted" />
+              <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] tracking-wide text-muted">Groups</div>
@@ -101,7 +101,7 @@ export function ContactDetailsCard({
 
           <div className="flex min-w-0 gap-3">
             <div className="pt-0.5">
-              <PhoneIcon className="size-4 shrink-0 text-muted" />
+              <PhoneIcon className="size-5 shrink-0 text-muted" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] tracking-wide text-muted">

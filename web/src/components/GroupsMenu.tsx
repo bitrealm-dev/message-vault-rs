@@ -15,7 +15,10 @@ export function GroupsMenu({
   onToggleExcluded,
   onCreate,
   onOpenChange,
+  onModeChange,
   disabled = false,
+  /** When set, render only the panel at this fixed position (no toolbar trigger). */
+  fixedPosition = null,
 }: {
   allGroups: string[];
   /** Per-group membership across the current contact or selection. */
@@ -27,9 +30,12 @@ export function GroupsMenu({
   /** Called when a new group is created; should add it to the current target(s). */
   onCreate?: (name: string) => void;
   onOpenChange?: (open: boolean) => void;
+  /** Fired when switching between the group list and the create form. */
+  onModeChange?: (mode: "list" | "create") => void;
   disabled?: boolean;
+  fixedPosition?: { x: number; y: number } | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(fixedPosition != null);
   const [mode, setMode] = useState<"list" | "create">("list");
   const [query, setQuery] = useState("");
   const [newName, setNewName] = useState("");
@@ -40,18 +46,35 @@ export function GroupsMenu({
   const checkRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
+  const onModeChangeRef = useRef(onModeChange);
+  onModeChangeRef.current = onModeChange;
+  const isFixed = fixedPosition != null;
+
+  const setMenuMode = useCallback((next: "list" | "create") => {
+    setMode(next);
+    // Notify parent synchronously so hover-dismiss can pin before the list
+    // unmounts (unmount would otherwise fire mouseleave and close the flyout).
+    onModeChangeRef.current?.(next);
+  }, []);
 
   const closeMenu = useCallback(() => {
     setOpen(false);
-    setMode("list");
+    setMenuMode("list");
     onOpenChangeRef.current?.(false);
-  }, []);
+  }, [setMenuMode]);
 
   const openMenu = () => {
     setOpen(true);
-    setMode("list");
+    setMenuMode("list");
     onOpenChangeRef.current?.(true);
   };
+
+  useEffect(() => {
+    if (!isFixed) return;
+    setOpen(true);
+    setMenuMode("list");
+    onOpenChangeRef.current?.(true);
+  }, [isFixed, setMenuMode]);
 
   useEffect(() => {
     setLocalGroups((prev) => {
@@ -69,7 +92,7 @@ export function GroupsMenu({
   }, [localGroups, query]);
 
   useDismissible({
-    open,
+    open: open && !isFixed,
     onDismiss: closeMenu,
     refs: [rootRef],
     escape: "capture",
@@ -77,12 +100,27 @@ export function GroupsMenu({
       e.preventDefault();
       e.stopImmediatePropagation();
       if (mode === "create") {
-        setMode("list");
+        setMenuMode("list");
         setNewName("");
         return false;
       }
     },
   });
+
+  // Fixed flyout: Escape returns to the list before the parent closes the panel.
+  useEffect(() => {
+    if (!isFixed || !open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (mode !== "create") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuMode("list");
+      setNewName("");
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [isFixed, open, mode, setMenuMode]);
 
   useEffect(() => {
     if (!open) return;
@@ -133,34 +171,48 @@ export function GroupsMenu({
 
     onCreate(resolved);
     setNewName("");
-    setMode("list");
+    setMenuMode("list");
   };
 
+  const panelClass = isFixed
+    ? "w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl"
+    : "absolute top-full left-0 z-50 mt-1 w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl";
+
   return (
-    <div className="relative" ref={rootRef}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          if (open) closeMenu();
-          else openMenu();
-        }}
-        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
-          open
-            ? "bg-accent/20 text-accent"
-            : "bg-elevated text-muted hover:text-text"
-        }`}
-      >
-        <PeopleGroupIcon className="size-3.5" />
-        Groups
-        <ChevronIcon className="size-3 opacity-70" />
-      </button>
+    <div
+      ref={rootRef}
+      className={isFixed ? "fixed z-50" : "relative"}
+      style={
+        isFixed
+          ? { left: fixedPosition!.x, top: fixedPosition!.y }
+          : undefined
+      }
+    >
+      {!isFixed && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => {
+            if (open) closeMenu();
+            else openMenu();
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
+            open
+              ? "bg-accent/20 text-accent"
+              : "bg-elevated text-muted hover:text-text"
+          }`}
+        >
+          <PeopleGroupIcon className="size-5" />
+          Groups
+          <ChevronIcon className="size-4 opacity-70" />
+        </button>
+      )}
 
       {open && mode === "list" && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl">
+        <div className={panelClass}>
           <div className="border-b border-border/80 p-2">
             <div className="flex items-center gap-2 rounded-md border border-accent bg-elevated px-2 py-1.5">
-              <SearchIcon className="size-3.5 shrink-0 text-muted" />
+              <SearchIcon className="size-5 shrink-0 text-muted" />
               <input
                 ref={searchRef}
                 type="search"
@@ -222,7 +274,7 @@ export function GroupsMenu({
             <button
               type="button"
               disabled={disabled}
-              onClick={() => setMode("create")}
+              onClick={() => setMenuMode("create")}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
             >
               <span className="flex size-3.5 items-center justify-center text-[15px] leading-none text-muted">
@@ -235,7 +287,7 @@ export function GroupsMenu({
       )}
 
       {open && mode === "create" && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-64 rounded-xl border border-border bg-[#2c2c2e] p-3 shadow-xl">
+        <div className={`${panelClass} p-3`}>
           <h3 className="text-[14px] font-semibold text-text">Create group</h3>
           <input
             ref={nameRef}
@@ -264,7 +316,7 @@ export function GroupsMenu({
             <button
               type="button"
               onClick={() => {
-                setMode("list");
+                setMenuMode("list");
                 setNewName("");
               }}
               className="rounded-md bg-elevated px-3 py-1 text-[13px] text-text hover:bg-white/10"

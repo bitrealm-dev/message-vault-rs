@@ -66,11 +66,11 @@ function MissingMediaPlaceholder({
       }`}
     >
       {kind === "image" ? (
-        <BrokenImageIcon className="size-7 opacity-55" />
+        <BrokenImageIcon className="size-8 opacity-55" />
       ) : kind === "video" ? (
-        <BrokenVideoIcon className="size-7 opacity-55" />
+        <BrokenVideoIcon className="size-8 opacity-55" />
       ) : (
-        <BrokenFileIcon className="size-5 opacity-55" />
+        <BrokenFileIcon className="size-6 opacity-55" />
       )}
       <div className="min-w-0">
         <div className="text-[11px] font-medium tracking-wide uppercase opacity-70">

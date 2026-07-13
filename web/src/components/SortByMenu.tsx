@@ -165,7 +165,7 @@ function SortOption({
 
 function SortIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
       <path
         d="M5 3v10M5 3l-2.5 2.5M5 3l2.5 2.5M11 13V3M11 13l-2.5-2.5M11 13l2.5-2.5"
         stroke="currentColor"
@@ -179,7 +179,7 @@ function SortIcon() {
 
 function CheckIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+    <svg width="16" height="16" viewBox="0 0 12 12" fill="none" aria-hidden>
       <path
         d="M2 6.2L4.6 9 10 3"
         stroke="currentColor"

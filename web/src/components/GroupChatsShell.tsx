@@ -19,6 +19,7 @@ import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
+import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { useThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
@@ -72,10 +73,11 @@ export function GroupChatsShell({
     y: number;
     conversationId: number;
   } | null>(null);
+  const storage = usePanelLayoutStorage();
   const threadsLayout = useDefaultLayout({
     id: "mv-group-chats-threads",
     panelIds: ["list", "messages"],
-    storage: typeof window !== "undefined" ? localStorage : undefined,
+    storage,
   });
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);

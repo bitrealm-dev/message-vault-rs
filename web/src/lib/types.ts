@@ -102,6 +102,29 @@ export type UnassignedHandle = {
   letter: string;
 };
 
+/** Soft-trashed contact (contact + 1:1 messages). */
+export type TrashedContactItem = {
+  kind: "contact";
+  contactId: number;
+  displayName: string;
+  preferredHandle: string | null;
+  handleCount: number;
+  messageCount: number;
+  sortKey: string;
+  letter: string;
+};
+
+/** Soft-trashed 1:1 handle still linked to a live contact. */
+export type TrashedContactMessagesItem = {
+  kind: "messages_only";
+  contactId: number;
+  handle: string;
+  displayName: string;
+  messageCount: number;
+  sortKey: string;
+  letter: string;
+};
+
 export type HomeStats = {
   /** Non-excluded contacts with messages (`/contacts`). */
   included: number;

@@ -3,6 +3,8 @@ import {
   displayName,
   getDb,
   hasDuplicateOfColumn,
+  hasTrashedContactsTable,
+  hasTrashedHandlesTable,
   sortFields,
 } from "./dbCore";
 import { groupSlug } from "./groupSlug";
@@ -13,6 +15,8 @@ import type {
   ContactListItem,
   ContactSection,
   GroupChatThread,
+  TrashedContactItem,
+  TrashedContactMessagesItem,
   YearThread,
 } from "./types";
 
@@ -39,7 +43,26 @@ export function groupFromSlug(slug: string): string | null {
   return null;
 }
 
-const CONTACT_HAS_MESSAGES_SQL = `
+function notTrashedContactSql(alias = "c"): string {
+  const db = getDb();
+  if (!hasTrashedContactsTable(db)) return "";
+  return `AND NOT EXISTS (
+    SELECT 1 FROM trashed_contacts tc WHERE tc.contact_id = ${alias}.id
+  )`;
+}
+
+function notTrashedHandleSql(handleExpr: string): string {
+  const db = getDb();
+  if (!hasTrashedHandlesTable(db)) return "";
+  return `AND NOT EXISTS (
+    SELECT 1 FROM trashed_handles th WHERE th.handle = ${handleExpr}
+  )`;
+}
+
+/** Contact has visible (non-trashed) 1:1 messages or any group participation. */
+function contactHasMessagesSql(): string {
+  const trashOnHandle = notTrashedHandleSql("cp.handle");
+  return `
   EXISTS (
     SELECT 1
     FROM contact_handles cp
@@ -51,20 +74,26 @@ const CONTACT_HAS_MESSAGES_SQL = `
           JOIN messages m ON m.conversation_id = cv.id
           WHERE cv.conversation_type = 'individual'
             AND cv.chat_identifier = cp.handle
+            ${trashOnHandle}
         )
         OR EXISTS (
           SELECT 1
           FROM participants p
+          JOIN conversations gcv ON gcv.id = p.conversation_id
+            AND gcv.conversation_type = 'group'
           JOIN messages m ON m.conversation_id = p.conversation_id
           WHERE p.handle = cp.handle
         )
       )
   )
 `;
+}
 
 function sectionQueryBody(
   section: ContactSection,
 ): { fromWhere: string; params: unknown[] } {
+  const hasMsgs = contactHasMessagesSql();
+  const notTrashed = notTrashedContactSql("c");
   if (typeof section === "object" && "group" in section) {
     // Exclude and no-messages override groups: those contacts only appear under
     // their implicit sections.
@@ -74,7 +103,8 @@ function sectionQueryBody(
         JOIN contact_group_members cgm ON cgm.contact_id = c.id
         JOIN contact_groups cg ON cg.id = cgm.group_id AND cg.name = ?
         WHERE c.exclude = 0
-          AND ${CONTACT_HAS_MESSAGES_SQL}
+          ${notTrashed}
+          AND ${hasMsgs}
       `,
       params: [section.group],
     };
@@ -86,7 +116,8 @@ function sectionQueryBody(
         fromWhere: `
           FROM contacts c
           WHERE c.exclude = 0
-            AND ${CONTACT_HAS_MESSAGES_SQL}
+            ${notTrashed}
+            AND ${hasMsgs}
         `,
         params: [],
       };
@@ -94,7 +125,8 @@ function sectionQueryBody(
       return {
         fromWhere: `
           FROM contacts c
-          WHERE ${CONTACT_HAS_MESSAGES_SQL}
+          WHERE ${hasMsgs}
+            ${notTrashed}
         `,
         params: [],
       };
@@ -104,6 +136,7 @@ function sectionQueryBody(
         fromWhere: `
           FROM contacts c
           WHERE c.exclude = 1
+            ${notTrashed}
         `,
         params: [],
       };
@@ -112,7 +145,8 @@ function sectionQueryBody(
       return {
         fromWhere: `
           FROM contacts c
-          WHERE NOT (${CONTACT_HAS_MESSAGES_SQL})
+          WHERE NOT (${hasMsgs})
+            ${notTrashed}
         `,
         params: [],
       };
@@ -121,10 +155,11 @@ function sectionQueryBody(
         fromWhere: `
           FROM contacts c
           WHERE c.exclude = 0
+            ${notTrashed}
             AND NOT EXISTS (
               SELECT 1 FROM contact_group_members cgm WHERE cgm.contact_id = c.id
             )
-            AND ${CONTACT_HAS_MESSAGES_SQL}
+            AND ${hasMsgs}
         `,
         params: [],
       };
@@ -252,13 +287,14 @@ function contactDateRange(
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
   const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const trashFilter = notTrashedHandleSql("c.chat_identifier");
   const row = db
     .prepare(
       `SELECT MIN(substr(m.timestamp, 1, 10)) AS start, MAX(substr(m.timestamp, 1, 10)) AS end
        FROM messages m
        JOIN conversations c ON c.id = m.conversation_id
        WHERE c.conversation_type = 'individual'
-         AND c.chat_identifier IN (${placeholders})${hideDupes}`,
+         AND c.chat_identifier IN (${placeholders})${trashFilter}${hideDupes}`,
     )
     .get(...phones) as { start: string | null; end: string | null } | undefined;
   if (!row?.start || !row?.end) return null;
@@ -278,11 +314,13 @@ function contactIndividualConversationIds(phones: string[]): number[] {
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
+  const trashFilter = notTrashedHandleSql("chat_identifier");
   return (
     db
       .prepare(
         `SELECT id FROM conversations
-         WHERE conversation_type = 'individual' AND chat_identifier IN (${placeholders})`,
+         WHERE conversation_type = 'individual' AND chat_identifier IN (${placeholders})
+           ${trashFilter}`,
       )
       .all(...phones) as Array<{ id: number }>
   ).map((r) => r.id);
@@ -365,6 +403,7 @@ function contactMessageCountsById(
         AND c.conversation_type = 'individual'
        JOIN messages m ON m.conversation_id = c.id
        WHERE cp.contact_id IN (${placeholders})${hideDupes}
+         ${notTrashedHandleSql("cp.handle")}
        GROUP BY cp.contact_id`,
     )
     .all(...contactIds) as Array<{ contact_id: number; n: number }>;
@@ -427,6 +466,7 @@ export function contactYearlyThreadsForPhones(
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.conversation_type = 'individual'
          AND c.chat_identifier IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
+         ${notTrashedHandleSql("c.chat_identifier")}
        GROUP BY year
        ORDER BY year DESC`,
     )
@@ -467,10 +507,12 @@ export function countContacts(section: ContactSection): number {
 /** All contacts for assign-to-existing pickers (includes excluded / no-messages). */
 export function listContactsForPicker(): ContactListItem[] {
   const db = getDb();
+  const notTrashed = notTrashedContactSql("c");
   const rows = db
     .prepare(
-      `SELECT id, first_name, last_name, preferred_handle, exclude
-       FROM contacts`,
+      `SELECT c.id, c.first_name, c.last_name, c.preferred_handle, c.exclude
+       FROM contacts c
+       WHERE 1=1 ${notTrashed}`,
     )
     .all() as Array<{
     id: number;
@@ -520,5 +562,112 @@ export function listContactsForPicker(): ContactListItem[] {
           sensitivity: "base",
         }),
     );
+}
+
+/** Contacts soft-trashed with their 1:1 messages. */
+export function listTrashedContacts(): TrashedContactItem[] {
+  const db = getDb();
+  if (!hasTrashedContactsTable(db)) return [];
+  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const rows = db
+    .prepare(
+      `SELECT c.id AS id,
+              c.first_name AS first_name,
+              c.last_name AS last_name,
+              c.preferred_handle AS preferred_handle,
+              (SELECT COUNT(*) FROM contact_handles cp WHERE cp.contact_id = c.id) AS handle_count,
+              (
+                SELECT COUNT(m.id)
+                FROM contact_handles cp
+                JOIN conversations cv
+                  ON cv.chat_identifier = cp.handle
+                 AND cv.conversation_type = 'individual'
+                JOIN messages m ON m.conversation_id = cv.id
+                WHERE cp.contact_id = c.id${hideDupes}
+              ) AS message_count
+       FROM contacts c
+       JOIN trashed_contacts tc ON tc.contact_id = c.id
+       ORDER BY c.last_name COLLATE NOCASE, c.first_name COLLATE NOCASE`,
+    )
+    .all() as Array<{
+    id: number;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_handle: string | null;
+    handle_count: number;
+    message_count: number;
+  }>;
+
+  return rows.map((row) => {
+    const name = displayName(row);
+    const sorts = sortFields(row);
+    return {
+      kind: "contact" as const,
+      contactId: row.id,
+      displayName: name,
+      preferredHandle: row.preferred_handle,
+      handleCount: row.handle_count,
+      messageCount: row.message_count,
+      sortKey: `${sorts.sortLast}\0${sorts.sortFirst}`,
+      letter: sorts.letter,
+    };
+  });
+}
+
+/**
+ * Trashed 1:1 handles that still belong to a live (non-trashed) contact —
+ * "delete messages only".
+ */
+export function listTrashedContactMessages(): TrashedContactMessagesItem[] {
+  const db = getDb();
+  if (!hasTrashedHandlesTable(db)) return [];
+  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
+  const notTrashedContact = hasTrashedContactsTable(db)
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_contacts tc WHERE tc.contact_id = cp.contact_id
+       )`
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT cp.contact_id AS contact_id,
+              cp.handle AS handle,
+              c.first_name AS first_name,
+              c.last_name AS last_name,
+              c.preferred_handle AS preferred_handle,
+              COUNT(m.id) AS message_count
+       FROM trashed_handles th
+       JOIN contact_handles cp ON cp.handle = th.handle
+       JOIN contacts c ON c.id = cp.contact_id
+       JOIN conversations cv
+         ON cv.chat_identifier = cp.handle
+        AND cv.conversation_type = 'individual'
+       JOIN messages m ON m.conversation_id = cv.id
+       WHERE 1=1 ${notTrashedContact}${hideDupes}
+       GROUP BY cp.contact_id, cp.handle, c.first_name, c.last_name, c.preferred_handle
+       HAVING message_count > 0
+       ORDER BY cp.handle COLLATE NOCASE`,
+    )
+    .all() as Array<{
+    contact_id: number;
+    handle: string;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_handle: string | null;
+    message_count: number;
+  }>;
+
+  return rows.map((row) => {
+    const name = displayName(row);
+    const sorts = sortFields(row);
+    return {
+      kind: "messages_only" as const,
+      contactId: row.contact_id,
+      handle: row.handle,
+      displayName: name,
+      messageCount: row.message_count,
+      sortKey: `${name}\0${row.handle}`,
+      letter: sorts.letter,
+    };
+  });
 }
 

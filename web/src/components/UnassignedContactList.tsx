@@ -183,7 +183,7 @@ export function UnassignedContactList({
                       : "opacity-0 group-hover:opacity-100"
                   }`}
                 >
-                  <EllipsisIcon className="size-3.5" />
+                  <EllipsisIcon className="size-5" />
                 </button>
               )}
             </div>
