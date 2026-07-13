@@ -4,6 +4,7 @@ import { groupSlug } from "@/lib/groupSlug";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -169,6 +170,26 @@ function GroupsNav({ groups }: { groups: string[] }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const createPanelRef = useRef<HTMLDivElement>(null);
   const renamePanelRef = useRef<HTMLDivElement>(null);
+  const menuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelCloseGroupMenu = useCallback(() => {
+    if (menuCloseTimerRef.current) {
+      clearTimeout(menuCloseTimerRef.current);
+      menuCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCloseGroupMenu = useCallback(() => {
+    cancelCloseGroupMenu();
+    menuCloseTimerRef.current = setTimeout(() => {
+      menuCloseTimerRef.current = null;
+      setMenuFor(null);
+    }, 120);
+  }, [cancelCloseGroupMenu]);
+
+  useEffect(() => {
+    return () => cancelCloseGroupMenu();
+  }, [cancelCloseGroupMenu]);
 
   const displayGroups = useMemo(() => {
     const names = new Set([...groups, ...pendingGroups]);
@@ -310,7 +331,16 @@ function GroupsNav({ groups }: { groups: string[] }) {
           const menuOpen = menuFor === name;
 
           return (
-            <div key={href} className="relative">
+            <div
+              key={href}
+              className="relative"
+              onMouseEnter={() => {
+                if (menuFor === name) cancelCloseGroupMenu();
+              }}
+              onMouseLeave={() => {
+                if (menuFor === name) scheduleCloseGroupMenu();
+              }}
+            >
               <div
                 className={`group relative flex items-center text-[14px] transition-colors ${
                   active
@@ -339,6 +369,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    cancelCloseGroupMenu();
                     setCreate(null);
                     setRename(null);
                     setMenuFor((v) => (v === name ? null : name));

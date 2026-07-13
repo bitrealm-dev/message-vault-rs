@@ -16,6 +16,7 @@ export function HomePageClient({
     unassigned: number;
     groupChats: number;
     messages: number;
+    messageDuplicates: number;
     contacts: number;
   };
 }) {
@@ -55,7 +56,17 @@ export function HomePageClient({
           <span className="tabular-nums text-text">
             {stats.messages.toLocaleString()}
           </span>{" "}
-          messages across{" "}
+          messages
+          {stats.messageDuplicates > 0 && (
+            <>
+              {" · "}
+              <span className="tabular-nums text-text">
+                {stats.messageDuplicates.toLocaleString()}
+              </span>{" "}
+              duplicates
+            </>
+          )}
+          {" across "}
           <span className="tabular-nums text-text">
             {stats.contacts.toLocaleString()}
           </span>{" "}

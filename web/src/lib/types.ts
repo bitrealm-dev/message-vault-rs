@@ -134,7 +134,10 @@ export type HomeStats = {
   noMessages: number;
   unassigned: number;
   groupChats: number;
+  /** Soft-deduped messages (`duplicate_of IS NULL`). */
   messages: number;
+  /** Cross-source copies marked as duplicates. */
+  messageDuplicates: number;
   /** Total contact rows in the DB. */
   contacts: number;
 };
