@@ -677,7 +677,7 @@ export function UnassignedShell({
       <Panel
         id="list"
         defaultSize={272}
-        minSize={160}
+        minSize={100}
         maxSize={720}
         className="min-h-0"
       >

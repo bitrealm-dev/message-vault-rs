@@ -264,13 +264,9 @@ export function BrowseShell({
     }
     const map = new Map<string, ContactListItem[]>();
     for (const c of sorted) {
-      const letter =
-        sort === "first"
-          ? (() => {
-              const ch = c.sortFirst.charAt(0).toUpperCase();
-              return ch >= "A" && ch <= "Z" ? ch : "#";
-            })()
-          : c.letter;
+      const letterSrc = sort === "first" ? c.sortFirst : c.sortLast;
+      const ch = letterSrc.charAt(0).toUpperCase();
+      const letter = ch >= "A" && ch <= "Z" ? ch : "#";
       if (!map.has(letter)) map.set(letter, []);
       map.get(letter)!.push(c);
     }
@@ -1332,7 +1328,7 @@ export function BrowseShell({
       <Panel
         id="list"
         defaultSize={272}
-        minSize={160}
+        minSize={100}
         maxSize={720}
         className="min-h-0"
       >

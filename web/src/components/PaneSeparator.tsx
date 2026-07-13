@@ -2,10 +2,10 @@
 
 import { Separator } from "react-resizable-panels";
 
-const verticalClass =
-  "w-1.5 bg-border transition-colors hover:bg-accent/60 active:bg-accent/70";
-const horizontalClass =
-  "h-1.5 bg-border transition-colors hover:bg-accent/60 active:bg-accent/70";
+const baseVertical = "w-1 bg-border";
+const baseHorizontal = "h-1 bg-border";
+const interactive =
+  "transition-colors hover:bg-accent/60 active:bg-accent/70";
 
 /** Shared styled separator for react-resizable-panels. */
 export function PaneSeparator({
@@ -17,11 +17,16 @@ export function PaneSeparator({
   disabled?: boolean;
   id?: string;
 }) {
+  const base = orientation === "vertical" ? baseVertical : baseHorizontal;
   return (
     <Separator
       id={id}
       disabled={disabled}
-      className={orientation === "vertical" ? verticalClass : horizontalClass}
+      // Library sets cursor:not-allowed when disabled; override that.
+      style={disabled ? { cursor: "default" } : undefined}
+      className={
+        disabled ? base : `${base} ${interactive}`
+      }
     />
   );
 }

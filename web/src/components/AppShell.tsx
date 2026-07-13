@@ -46,7 +46,7 @@ export function AppShell({
         id="nav"
         panelRef={navPanelRef}
         defaultSize={200}
-        minSize={160}
+        minSize={120}
         maxSize={360}
         collapsible
         collapsedSize={40}

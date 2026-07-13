@@ -64,9 +64,10 @@ export function sortFields(row: {
   preferred_handle: string | null;
 }): { sortFirst: string; sortLast: string; letter: string } {
   const first = (row.first_name || "").trim();
-  const last = (row.last_name || row.first_name || "").trim();
-  const sortFirst = first || row.preferred_handle || "Unknown";
-  const sortLast = last || row.preferred_handle || "Unknown";
+  const last = (row.last_name || "").trim();
+  // Prefer a real name over a phone for sort keys / letter buckets.
+  const sortFirst = first || last || row.preferred_handle || "Unknown";
+  const sortLast = last || first || row.preferred_handle || "Unknown";
   const letterSrc = sortLast;
   const ch = letterSrc.charAt(0).toUpperCase();
   const letter = ch >= "A" && ch <= "Z" ? ch : "#";
