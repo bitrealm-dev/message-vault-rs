@@ -3,6 +3,26 @@
 import { AppShell } from "@/components/AppShell";
 import Link from "next/link";
 
+function StatCard({
+  href,
+  label,
+  value,
+}: {
+  href: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-lg border border-border bg-panel px-4 py-4 transition hover:border-accent/50"
+    >
+      <div className="text-[12px] text-muted">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+    </Link>
+  );
+}
+
 export function HomePageClient({
   groups,
   stats,
@@ -20,10 +40,7 @@ export function HomePageClient({
     contacts: number;
   };
 }) {
-  const cards = [
-    { href: "/contacts", label: "Contacts", value: stats.included },
-    { href: "/all", label: "All", value: stats.all },
-    { href: "/excluded", label: "Excluded", value: stats.excluded },
+  const otherCards = [
     { href: "/no-messages", label: "No Messages", value: stats.noMessages },
     { href: "/unassigned", label: "Unassigned", value: stats.unassigned },
     { href: "/group-chats", label: "Group Chats", value: stats.groupChats },
@@ -37,18 +54,28 @@ export function HomePageClient({
           Browse your imported messages by contacts and group chats.
         </p>
 
-        <div className="mt-8 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3">
-          {cards.map((c) => (
-            <Link
-              key={c.href}
-              href={c.href}
-              className="rounded-lg border border-border bg-panel px-4 py-4 transition hover:border-accent/50"
-            >
-              <div className="text-[12px] text-muted">{c.label}</div>
-              <div className="mt-1 text-2xl font-semibold tabular-nums">
-                {c.value}
-              </div>
-            </Link>
+        <section className="mt-8 max-w-3xl">
+          <h2 className="text-[12px] font-semibold tracking-wider text-muted uppercase">
+            Contacts
+          </h2>
+          <div className="mt-3 grid grid-cols-3 gap-4">
+            <StatCard href="/all" label="All" value={stats.all} />
+            <StatCard
+              href="/contacts"
+              label="Contacts"
+              value={stats.included}
+            />
+            <StatCard
+              href="/excluded"
+              label="Excluded"
+              value={stats.excluded}
+            />
+          </div>
+        </section>
+
+        <div className="mt-6 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3">
+          {otherCards.map((c) => (
+            <StatCard key={c.href} {...c} />
           ))}
         </div>
 

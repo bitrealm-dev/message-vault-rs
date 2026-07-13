@@ -128,7 +128,7 @@ export type TrashedContactMessagesItem = {
 export type HomeStats = {
   /** Non-excluded contacts with messages (`/contacts`). */
   included: number;
-  /** All contacts with messages, including excluded (`/all`). */
+  /** Contacts ∪ Excluded (`/all`). */
   all: number;
   excluded: number;
   noMessages: number;

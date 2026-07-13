@@ -122,11 +122,12 @@ function sectionQueryBody(
         params: [],
       };
     case "all":
+      // Contacts ∪ Excluded (excluded always included, even with no messages).
       return {
         fromWhere: `
           FROM contacts c
-          WHERE ${hasMsgs}
-            ${notTrashed}
+          WHERE ${notTrashed}
+            AND (c.exclude = 1 OR (${hasMsgs}))
         `,
         params: [],
       };
