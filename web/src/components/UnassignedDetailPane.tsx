@@ -47,7 +47,7 @@ export function UnassignedDetailPane({
   onSelectHandle: (h: string) => void;
 }) {
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-y-auto bg-panel px-5 py-4">
+    <section className="flex h-full min-h-0 flex-col overflow-y-auto bg-bg px-5 py-4">
       {multiSelected ? (
         <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
           <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
@@ -78,7 +78,7 @@ export function UnassignedDetailPane({
                   onClick={() => onSelectHandle(h.handle)}
                   className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
                 >
-                  {h.displayName}
+                  {h.handle}
                 </button>
                 <span className="shrink-0 text-[12px] text-muted tabular-nums">
                   {h.messageCount} msgs
@@ -107,27 +107,29 @@ export function UnassignedDetailPane({
             formOpen={creating}
             draft={createDraft}
             onDraftChange={onDraftChange}
-            groups={creating ? (createDraft?.contactGroups ?? []) : []}
-            excluded={creating ? Boolean(createDraft?.exclude) : false}
+            groups={createDraft?.contactGroups ?? []}
+            excluded={Boolean(createDraft?.exclude)}
             phonesView={[selected.handle]}
           />
 
-          <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-            <MessageSourcePicker
-              sources={sources}
-              messageSources={messageSources}
-              sourceCounts={sourceCounts}
-              source={source}
-              onSourceChange={onSourceChange}
-            />
-            <YearThreadPicker
-              years={yearly}
-              activeYear={activeYear}
-              onSelect={onLoadYear}
-              emptyLabel="No messages for this source"
-              loading={loadingThreads}
-            />
-          </div>
+          {!creating && (
+            <div className="mt-4 rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+              <MessageSourcePicker
+                sources={sources}
+                messageSources={messageSources}
+                sourceCounts={sourceCounts}
+                source={source}
+                onSourceChange={onSourceChange}
+              />
+              <YearThreadPicker
+                years={yearly}
+                activeYear={activeYear}
+                onSelect={onLoadYear}
+                emptyLabel="No messages for this source"
+                loading={loadingThreads}
+              />
+            </div>
+          )}
         </>
       )}
     </section>

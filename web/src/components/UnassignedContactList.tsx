@@ -114,7 +114,7 @@ export function UnassignedContactList({
                   e.stopPropagation();
                   if (e.shiftKey) e.preventDefault();
                 }}
-                className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
+                className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2 outline-none"
               >
                 <input
                   type="checkbox"
@@ -140,11 +140,11 @@ export function UnassignedContactList({
                       e.clientX,
                       e.clientY,
                       h.handle,
-                      multiSelected && selectedHandles.has(h.handle) ? 88 : 140,
+                      multiSelected && selectedHandles.has(h.handle) ? 88 : 200,
                     );
                   }
                 }}
-                className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
+                className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left outline-none"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] text-text">
@@ -178,7 +178,7 @@ export function UnassignedContactList({
                     const r = e.currentTarget.getBoundingClientRect();
                     onOpenTrashMenu(r.right - 8, r.bottom + 2, h.handle);
                   }}
-                  className={`mr-0.5 shrink-0 self-center rounded p-0.5 text-muted hover:bg-white/10 hover:text-text disabled:opacity-40 ${
+                  className={`mr-0.5 shrink-0 self-center rounded p-0.5 text-muted outline-none hover:bg-white/10 hover:text-text disabled:opacity-40 ${
                     rowActive
                       ? "opacity-100"
                       : "opacity-0 group-hover:opacity-100"

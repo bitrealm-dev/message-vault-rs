@@ -17,7 +17,7 @@ import {
   type ContactEditDraft,
 } from "./contactEdit";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
-import { EllipsisIcon } from "./icons";
+import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon, PeopleGroupIcon, PencilIcon, XIcon } from "./icons";
 import {
   type SortOrder,
   type UnassignedSortBy,
@@ -99,9 +99,20 @@ export function UnassignedShell({
     y: number;
     handle?: string;
   } | null>(null);
+  const [groupsPanelPos, setGroupsPanelPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const assignRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const groupsPanelWrapRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const groupsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const groupsCreatePinnedRef = useRef(false);
   const storage = usePanelLayoutStorage();
   const sideLayout = useDefaultLayout({
     id: "mv-browse-side",
@@ -158,6 +169,7 @@ export function UnassignedShell({
     setCreateDraft(null);
     setAssignMode(null);
     setCtxMenu(null);
+    setGroupsPanelPos(null);
   }, []);
 
   const {
@@ -180,7 +192,8 @@ export function UnassignedShell({
     rowClickMode: "alwaysOpen",
     checkboxEvents: "preventAndStop",
     escapeToClear: true,
-    escapeBlocked: () => ctxMenu != null || assignMode != null,
+    escapeBlocked: () =>
+      ctxMenu != null || assignMode != null || groupsPanelPos != null,
     selectAllSetsAnchor: true,
     onOpen: (id) => selectHandleRef.current(id),
     onSelectionMutation: dismissSelectionUi,
@@ -200,6 +213,10 @@ export function UnassignedShell({
   const selectHandle = useCallback(
     (next: string) => {
       setHandle(next);
+      setCreating(false);
+      setCreateDraft(null);
+      setExtraGroups([]);
+      setMoreMenuOpen(false);
       setMessages([]);
       setActiveYear(null);
       setAssignMode(null);
@@ -214,50 +231,93 @@ export function UnassignedShell({
   );
   selectHandleRef.current = selectHandle;
 
-  // Default to create/edit when a single unassigned handle is focused.
-  const createHandleRef = useRef<string | null>(null);
+  const seedDraftForHandle = useCallback(
+    (target: string) => {
+      const row = handles.find((h) => h.handle === target);
+      setExtraGroups([]);
+      // Email handles stay DB-only: draft phones start empty; email is attached on save.
+      setCreateDraft({
+        ...emptyContactEditDraft(),
+        firstName: row?.nameHint?.trim() ?? "",
+        phones: isEmailHandle(target) ? ["", ""] : [target, ""],
+      });
+    },
+    [handles],
+  );
+
+  // Keep a view-mode draft for Groups; do not enter edit on select.
   useEffect(() => {
     if (mode !== "unassigned") {
-      createHandleRef.current = null;
       setCreating(false);
       setCreateDraft(null);
       return;
     }
     if (multiSelected || !handle) {
-      createHandleRef.current = null;
       setCreating(false);
       setCreateDraft(null);
       return;
     }
-    setCreating(true);
-    if (createHandleRef.current === handle) return;
-    createHandleRef.current = handle;
+    setCreating(false);
     const row = handles.find((h) => h.handle === handle);
     setExtraGroups([]);
-    // Email handles stay DB-only: draft phones start empty; email is attached on save.
     setCreateDraft({
       ...emptyContactEditDraft(),
       firstName: row?.nameHint?.trim() ?? "",
       phones: isEmailHandle(handle) ? ["", ""] : [handle, ""],
     });
-  }, [handle, mode, multiSelected, handles]);
+    // Only re-seed when the focused handle (or selection mode) changes — not on
+    // list refresh, which would cancel an in-progress edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handles read intentionally on handle change
+  }, [handle, mode, multiSelected]);
+
+  const beginCreate = useCallback(() => {
+    if (mode !== "unassigned" || !handle || multiSelected) return;
+    setMoreMenuOpen(false);
+    if (!createDraft) seedDraftForHandle(handle);
+    setCreating(true);
+  }, [mode, handle, multiSelected, createDraft, seedDraftForHandle]);
 
   const cancelCreate = useCallback(() => {
-    createHandleRef.current = null;
     setCreating(false);
-    setCreateDraft(null);
-    setExtraGroups([]);
-    setHandle(null);
-    setYearly([]);
-    setMessages([]);
-    setActiveYear(null);
-    setMessageSources([]);
-    setSourceCounts({ all: 0, bySource: {} });
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("h");
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+    setMoreMenuOpen(false);
+    if (handle && mode === "unassigned" && !multiSelected) {
+      seedDraftForHandle(handle);
+    } else {
+      setCreateDraft(null);
+      setExtraGroups([]);
+    }
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, [handle, mode, multiSelected, seedDraftForHandle]);
+
+  useEffect(() => {
+    if (!creating || multiSelected || mode !== "unassigned") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (
+        ctxMenu != null ||
+        assignMode != null ||
+        groupsPanelPos != null ||
+        moreMenuOpen
+      ) {
+        return;
+      }
+      e.preventDefault();
+      cancelCreate();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [
+    creating,
+    multiSelected,
+    mode,
+    ctxMenu,
+    assignMode,
+    groupsPanelPos,
+    moreMenuOpen,
+    cancelCreate,
+  ]);
 
   const menuGroups = useMemo(() => {
     const names = new Set([...allGroups, ...extraGroups]);
@@ -479,7 +539,10 @@ export function UnassignedShell({
     },
     setStatus,
     onRemoved: clearFocusAfterRemoval,
-    onDismissMenus: () => setCtxMenu(null),
+    onDismissMenus: () => {
+      setCtxMenu(null);
+      setGroupsPanelPos(null);
+    },
   });
 
   const canSaveCreate =
@@ -554,9 +617,69 @@ export function UnassignedShell({
   });
 
   useDismissible({
+    open: moreMenuOpen,
+    onDismiss: () => setMoreMenuOpen(false),
+    refs: [moreMenuRef],
+  });
+
+  const closeGroupsPanel = useCallback(() => {
+    if (groupsCloseTimerRef.current) {
+      clearTimeout(groupsCloseTimerRef.current);
+      groupsCloseTimerRef.current = null;
+    }
+    groupsCreatePinnedRef.current = false;
+    setGroupsPanelPos(null);
+  }, []);
+
+  const cancelCloseGroupsPanel = useCallback(() => {
+    if (groupsCloseTimerRef.current) {
+      clearTimeout(groupsCloseTimerRef.current);
+      groupsCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCloseGroupsPanel = useCallback(() => {
+    if (groupsCreatePinnedRef.current) return;
+    cancelCloseGroupsPanel();
+    groupsCloseTimerRef.current = setTimeout(() => {
+      groupsCloseTimerRef.current = null;
+      setGroupsPanelPos(null);
+    }, 160);
+  }, [cancelCloseGroupsPanel]);
+
+  const openCtxGroups = useCallback(
+    (anchor: DOMRect) => {
+      if (!createDraft || multiSelected || mode !== "unassigned") {
+        return;
+      }
+      cancelCloseGroupsPanel();
+      const x = Math.max(
+        8,
+        Math.min(anchor.right + 2, window.innerWidth - 272),
+      );
+      const y = Math.max(
+        8,
+        Math.min(anchor.top, window.innerHeight - 320),
+      );
+      setGroupsPanelPos({ x, y });
+    },
+    [createDraft, multiSelected, mode, cancelCloseGroupsPanel],
+  );
+
+  useDismissible({
     open: ctxMenu != null,
-    onDismiss: () => setCtxMenu(null),
-    refs: [ctxMenuRef],
+    onDismiss: () => {
+      setCtxMenu(null);
+      closeGroupsPanel();
+    },
+    refs: [ctxMenuRef, groupsPanelWrapRef],
+    onEscape: (e) => {
+      if (groupsPanelPos != null) {
+        e.preventDefault();
+        closeGroupsPanel();
+        return false;
+      }
+    },
   });
 
   const assignToContact = async (contactId: number) => {
@@ -564,6 +687,7 @@ export function UnassignedShell({
     if (targets.length === 0) return;
     setSaving(true);
     setCtxMenu(null);
+    closeGroupsPanel();
     try {
       let displayName = "";
       for (const phone of targets) {
@@ -599,6 +723,7 @@ export function UnassignedShell({
     nextHandle: string,
     menuH: number,
   ) => {
+    closeGroupsPanel();
     if (multiSelected && selectedHandles.has(nextHandle)) {
       setAssignMode(null);
       setCtxMenu({ ...clampMenu(x, y, 200, menuH), handle: nextHandle });
@@ -706,24 +831,9 @@ export function UnassignedShell({
 
       <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
         <div className="flex h-full min-h-0 min-w-0 flex-col">
-        <div className="flex h-[45px] shrink-0 items-center justify-between gap-3 border-b border-border bg-panel px-4">
-          <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-            {multiSelected
-              ? `${selectedHandles.size} contact${
-                  selectedHandles.size === 1 ? "" : "s"
-                } selected`
-              : creating && createDraft
-                ? [createDraft.firstName, createDraft.lastName]
-                    .map((p) => p.trim())
-                    .filter(Boolean)
-                    .join(" ") ||
-                  selected?.displayName ||
-                  "New contact"
-                : (selected?.displayName ??
-                  (mode === "trash" ? "Trash" : "Unassigned"))}
-          </h1>
+        <div className="relative flex h-[45px] shrink-0 items-center gap-2 border-b border-border bg-panel px-2">
           {multiSelected && (
-            <div className="flex shrink-0 items-center gap-2">
+            <>
               {mode === "unassigned" && (
                 <div className="relative">
                   <button
@@ -733,12 +843,12 @@ export function UnassignedShell({
                       setAssignQuery("");
                       setAssignMode((m) => (m === "header" ? null : "header"));
                     }}
-                    className="rounded-md border border-border px-2.5 py-1 text-[12px] text-text hover:bg-white/15"
+                    className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-white/18"
                   >
                     Add to existing contact
                   </button>
                   {assignMode === "header" && (
-                    <div ref={assignRef} className="absolute right-0 z-30 mt-1">
+                    <div ref={assignRef} className="absolute left-0 z-30 mt-1">
                       {assignSearch}
                     </div>
                   )}
@@ -749,7 +859,7 @@ export function UnassignedShell({
                   type="button"
                   disabled={saving}
                   onClick={() => void moveToTrash()}
-                  className="rounded-md border border-border px-2.5 py-1 text-[12px] text-text hover:bg-red-500/15 hover:text-red-300"
+                  className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-red-500/15 hover:text-red-300"
                 >
                   Delete
                 </button>
@@ -774,15 +884,15 @@ export function UnassignedShell({
                   <EllipsisIcon className="size-5" />
                 </button>
               )}
-            </div>
+            </>
           )}
-          {creating && createDraft && !multiSelected && mode === "unassigned" && (
-            <div className="flex shrink-0 items-center gap-2">
+          {creating && createDraft && !multiSelected && mode === "unassigned" ? (
+            <>
               <button
                 type="button"
                 disabled={saving || !canSaveCreate}
                 onClick={() => void saveCreate()}
-                className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18 disabled:opacity-50"
+                className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-white/18 disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Save"}
               </button>
@@ -790,75 +900,133 @@ export function UnassignedShell({
                 type="button"
                 disabled={saving}
                 onClick={cancelCreate}
-                className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-white/14 hover:text-text disabled:opacity-50"
+                className="inline-flex h-7 items-center rounded-md bg-white/8 px-2.5 text-[12px] leading-none text-muted transition-colors hover:bg-white/14 hover:text-text disabled:opacity-50"
               >
                 Cancel
               </button>
-              <GroupsMenu
-                allGroups={menuGroups}
-                checks={draftGroupChecks}
-                excludedCheck={draftExcludedCheck}
-                onToggle={toggleDraftGroup}
-                onToggleExcluded={toggleDraftExcluded}
-                onCreate={createAndAssignDraftGroup}
-              />
-              <div className="relative">
+            </>
+          ) : (
+            !multiSelected &&
+            mode === "unassigned" && (
+              <>
                 <button
                   type="button"
-                  disabled={saving}
-                  onClick={() => {
-                    setAssignQuery("");
-                    setAssignMode((m) => (m === "header" ? null : "header"));
-                  }}
-                  className="rounded-md border border-border px-2.5 py-1 text-[12px] text-text hover:bg-white/15"
+                  disabled={!selected || saving}
+                  onClick={beginCreate}
+                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-elevated px-2.5 text-[12px] leading-none text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Add to existing contact
+                  <PencilIcon className="size-4 shrink-0" />
+                  Edit
                 </button>
+                <GroupsMenu
+                  allGroups={menuGroups}
+                  checks={draftGroupChecks}
+                  excludedCheck={draftExcludedCheck}
+                  disabled={!createDraft || !selected || saving}
+                  onToggle={toggleDraftGroup}
+                  onToggleExcluded={toggleDraftExcluded}
+                  onCreate={createAndAssignDraftGroup}
+                />
+                <div
+                  ref={moreMenuRef}
+                  className="relative inline-flex shrink-0 items-center"
+                >
+                  <button
+                    type="button"
+                    disabled={!selected || saving}
+                    aria-expanded={moreMenuOpen}
+                    onClick={() => setMoreMenuOpen((v) => !v)}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      moreMenuOpen
+                        ? "bg-accent/20 text-accent"
+                        : "bg-elevated text-muted hover:text-text"
+                    }`}
+                  >
+                    More
+                    <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+                  </button>
+                  {moreMenuOpen && (
+                    <div className="absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setAssignQuery("");
+                          setAssignMode("header");
+                        }}
+                      >
+                        Add to existing contact
+                      </button>
+                      <div className="my-1 border-t border-border/60" />
+                      <button
+                        type="button"
+                        disabled={saving}
+                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          void moveToTrash();
+                        }}
+                      >
+                        <XIcon className="size-5 shrink-0 opacity-80" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {assignMode === "header" && (
-                  <div ref={assignRef} className="absolute right-0 z-30 mt-1">
+                  <div ref={assignRef} className="absolute left-2 top-[45px] z-30">
                     {assignSearch}
                   </div>
                 )}
-              </div>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void moveToTrash()}
-                className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-              >
-                Delete
-              </button>
-            </div>
+              </>
+            )
           )}
           {mode === "trash" && selected && !multiSelected && (
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                disabled={saving}
-                aria-label="Trash options"
-                aria-expanded={Boolean(ctxMenu)}
-                onClick={(e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  if (ctxMenu) {
-                    setCtxMenu(null);
-                    return;
-                  }
-                  if (!handle) return;
-                  openTrashMenu(r.right - 188, r.bottom + 4, handle);
-                }}
-                className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
-              >
-                <EllipsisIcon className="size-5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              disabled={saving}
+              aria-label="Trash options"
+              aria-expanded={Boolean(ctxMenu)}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                if (ctxMenu) {
+                  setCtxMenu(null);
+                  return;
+                }
+                if (!handle) return;
+                openTrashMenu(r.right - 188, r.bottom + 4, handle);
+              }}
+              className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
+            >
+              <EllipsisIcon className="size-5" />
+            </button>
+          )}
+          <span className="min-w-0 flex-1" aria-hidden />
+          {status && (
+            <span className="truncate text-[12px] text-muted">{status}</span>
           )}
         </div>
 
-        {status && (
-          <div className="border-b border-border bg-elevated px-4 py-1.5 text-[12px] text-muted">
-            {status}
-          </div>
-        )}
+        <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-panel px-5">
+          {multiSelected ? (
+            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+              {selectedHandles.size} contact
+              {selectedHandles.size === 1 ? "" : "s"} selected
+            </h1>
+          ) : selected ? (
+            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+              {selected.handle}
+            </h1>
+          ) : (
+            <span className="text-[13px] text-muted">
+              {mode === "trash"
+                ? "Choose a trashed number or email"
+                : "Choose an unassigned number or email"}
+            </span>
+          )}
+        </div>
 
         {multiSelected ? (
           <div className="min-h-0 flex-1">
@@ -981,9 +1149,10 @@ export function UnassignedShell({
               <button
                 type="button"
                 disabled={saving}
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                 onClick={() => void moveToTrash()}
               >
+                <XIcon className="size-5 shrink-0 opacity-80" />
                 Delete
               </button>
             </>
@@ -991,11 +1160,41 @@ export function UnassignedShell({
             <>
               <button
                 type="button"
-                disabled={saving}
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
+                disabled={saving || creating}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+                onMouseEnter={scheduleCloseGroupsPanel}
+                onClick={() => {
+                  setCtxMenu(null);
+                  closeGroupsPanel();
+                  beginCreate();
+                }}
+              >
+                <PencilIcon className="size-5 shrink-0 opacity-80" />
+                Edit
+              </button>
+              <button
+                type="button"
+                disabled={saving || !createDraft || creating}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+                onMouseEnter={(e) => {
+                  if (saving || !createDraft || creating) return;
+                  openCtxGroups(e.currentTarget.getBoundingClientRect());
+                }}
+                onMouseLeave={scheduleCloseGroupsPanel}
+              >
+                <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
+                <span className="min-w-0 flex-1">Groups</span>
+                <ChevronRightIcon className="size-3.5 shrink-0 opacity-70" />
+              </button>
+              <button
+                type="button"
+                disabled={saving || creating}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
+                onMouseEnter={scheduleCloseGroupsPanel}
                 onClick={() => {
                   const pos = clampMenu(ctxMenu.x, ctxMenu.y, 288, 280);
                   setCtxMenu(null);
+                  closeGroupsPanel();
                   setAssignQuery("");
                   setAssignMode(pos);
                 }}
@@ -1005,14 +1204,41 @@ export function UnassignedShell({
               <div className="my-1 border-t border-border/60" />
               <button
                 type="button"
-                disabled={saving}
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                disabled={saving || creating}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                onMouseEnter={scheduleCloseGroupsPanel}
                 onClick={() => void moveToTrash()}
               >
+                <XIcon className="size-5 shrink-0 opacity-80" />
                 Delete
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {groupsPanelPos && createDraft && (
+        <div
+          ref={groupsPanelWrapRef}
+          onMouseEnter={cancelCloseGroupsPanel}
+          onMouseLeave={scheduleCloseGroupsPanel}
+        >
+          <GroupsMenu
+            fixedPosition={groupsPanelPos}
+            allGroups={menuGroups}
+            checks={draftGroupChecks}
+            excludedCheck={draftExcludedCheck}
+            onToggle={toggleDraftGroup}
+            onToggleExcluded={toggleDraftExcluded}
+            onCreate={createAndAssignDraftGroup}
+            onModeChange={(next) => {
+              groupsCreatePinnedRef.current = next === "create";
+              if (next === "create") cancelCloseGroupsPanel();
+            }}
+            onOpenChange={(open) => {
+              if (!open) closeGroupsPanel();
+            }}
+          />
         </div>
       )}
 
