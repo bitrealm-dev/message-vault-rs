@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 import { searchContacts } from "@/lib/contactSearch";
 import { isEmailHandle, phoneHandlesOnly } from "@/lib/handleKind";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   draftHasName,
@@ -39,6 +39,7 @@ const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
 const UNASSIGNED_SORT_BY_KEY = "mv-unassigned-sort-by";
 const UNASSIGNED_SORT_BY_ALLOWED = ["phone", "date", "messages"] as const;
 const UNASSIGNED_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
+const ASSIGN_PAGE_SIZE = 40;
 
 export function UnassignedShell({
   handles: initialHandles,
@@ -94,6 +95,7 @@ export function UnassignedShell({
     null | "header" | { x: number; y: number }
   >(null);
   const [assignQuery, setAssignQuery] = useState("");
+  const [assignVisibleCount, setAssignVisibleCount] = useState(ASSIGN_PAGE_SIZE);
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -597,7 +599,7 @@ export function UnassignedShell({
     }
   };
 
-  const assignFiltered = useMemo(() => {
+  const assignMatches = useMemo(() => {
     const q = assignQuery.trim();
     const byFirst = (a: ContactListItem, b: ContactListItem) =>
       a.sortFirst.localeCompare(b.sortFirst, undefined, {
@@ -605,10 +607,32 @@ export function UnassignedShell({
       }) ||
       a.sortLast.localeCompare(b.sortLast, undefined, { sensitivity: "base" });
     if (!q) {
-      return [...assignContacts].sort(byFirst).slice(0, 40);
+      return [...assignContacts].sort(byFirst);
     }
-    return searchContacts(assignContacts, q).slice(0, 40);
+    return searchContacts(assignContacts, q);
   }, [assignContacts, assignQuery]);
+
+  const assignFiltered = useMemo(
+    () => assignMatches.slice(0, assignVisibleCount),
+    [assignMatches, assignVisibleCount],
+  );
+
+  useEffect(() => {
+    setAssignVisibleCount(ASSIGN_PAGE_SIZE);
+  }, [assignQuery, assignMode]);
+
+  const onAssignListScroll = useCallback(
+    (e: UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      if (el.scrollTop + el.clientHeight < el.scrollHeight - 48) return;
+      setAssignVisibleCount((n) =>
+        n >= assignMatches.length
+          ? n
+          : Math.min(n + ASSIGN_PAGE_SIZE, assignMatches.length),
+      );
+    },
+    [assignMatches.length],
+  );
 
   useDismissible({
     open: assignMode != null,
@@ -752,27 +776,37 @@ export function UnassignedShell({
         placeholder="Search contacts…"
         className="w-full border-b border-border bg-transparent px-3 py-2 text-[13px] text-text outline-none placeholder:text-muted"
       />
-      <div className="max-h-64 overflow-y-auto py-1">
+      <div
+        className="max-h-64 overflow-y-auto py-1"
+        onScroll={onAssignListScroll}
+      >
         {assignFiltered.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-muted">No matches</p>
         ) : (
-          assignFiltered.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => void assignToContact(c.id)}
-              className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-white/15"
-            >
-              <span className="truncate text-[13px] text-text">
-                {c.displayName}
-              </span>
-              {c.preferredHandle && (
-                <span className="truncate text-[11px] text-muted">
-                  {c.preferredHandle}
+          <>
+            {assignFiltered.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => void assignToContact(c.id)}
+                className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-white/15"
+              >
+                <span className="truncate text-[13px] text-text">
+                  {c.displayName}
                 </span>
-              )}
-            </button>
-          ))
+                {c.preferredHandle && (
+                  <span className="truncate text-[11px] text-muted">
+                    {c.preferredHandle}
+                  </span>
+                )}
+              </button>
+            ))}
+            {assignFiltered.length < assignMatches.length && (
+              <p className="px-3 py-1.5 text-center text-[11px] text-muted">
+                Scroll for more…
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1017,7 +1051,14 @@ export function UnassignedShell({
             </h1>
           ) : selected ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-              {selected.handle}
+              {selected.nameHint ? (
+                <>
+                  {selected.displayName}
+                  <span className="font-normal text-muted"> (Unverified)</span>
+                </>
+              ) : (
+                selected.handle
+              )}
             </h1>
           ) : (
             <span className="text-[13px] text-muted">

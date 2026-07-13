@@ -151,6 +151,8 @@ Rows are not deleted. **All (combined)** hides soft-hidden copies. A single-sour
 
 Full walkthrough with diagrams: [docs/dedupe.md](docs/dedupe.md).
 
+Database tables and how they connect: [docs/schema.md](docs/schema.md).
+
 ```bash
 cargo run --release -- import --source imessage --mode replace
 cargo run --release -- import --all --mode replace

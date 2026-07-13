@@ -69,31 +69,33 @@ export function ContactDetailsCard({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 items-start gap-4">
           <div className="flex min-w-0 gap-3">
             <div className="pt-0.5">
               <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] tracking-wide text-muted">Groups</div>
-              <div className="mt-0.5">
+              <div className="text-[11px] leading-4 tracking-wide text-muted">
+                Groups
+              </div>
+              <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
                 {shownGroups.length === 0 ? (
-                  <span className="text-[13px] text-muted">None</span>
+                  <span className="truncate text-[13px] leading-5 text-muted">
+                    None
+                  </span>
                 ) : (
-                  <div className="flex flex-col gap-0.5">
-                    {shownGroups.map((name) => (
-                      <span
-                        key={name}
-                        className={
-                          name === "Excluded"
-                            ? "truncate text-[13px] font-semibold text-amber-400/90"
-                            : "truncate text-[13px] text-text"
-                        }
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
+                  shownGroups.map((name) => (
+                    <span
+                      key={name}
+                      className={
+                        name === "Excluded"
+                          ? "truncate text-[13px] font-semibold leading-5 text-amber-400/90"
+                          : "truncate text-[13px] leading-5 text-text"
+                      }
+                    >
+                      {name}
+                    </span>
+                  ))
                 )}
               </div>
             </div>
@@ -104,28 +106,30 @@ export function ContactDetailsCard({
               <PhoneIcon className="size-5 shrink-0 text-muted" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] tracking-wide text-muted">
+              <div className="text-[11px] leading-4 tracking-wide text-muted">
                 {phoneLabel}
               </div>
-              <div className="mt-0.5">
+              <div className="mt-0.5 min-h-5 min-w-0">
                 {formOpen && draft && onDraftChange ? (
                   <ContactPhoneList
                     phones={draft.phones}
                     onChange={(phones) => onDraftChange({ ...draft, phones })}
                   />
                 ) : phonesView.length > 0 ? (
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex min-w-0 flex-col gap-0.5">
                     {phonesView.map((phone) => (
                       <span
                         key={phone}
-                        className="truncate text-[13px] text-text"
+                        className="truncate text-[13px] leading-5 text-text"
                       >
                         {phone}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <span className="text-[13px] text-muted">None</span>
+                  <span className="truncate text-[13px] leading-5 text-muted">
+                    None
+                  </span>
                 )}
               </div>
             </div>

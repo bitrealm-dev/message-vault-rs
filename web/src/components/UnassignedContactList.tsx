@@ -149,6 +149,12 @@ export function UnassignedContactList({
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] text-text">
                     {h.displayName}
+                    {h.nameHint ? (
+                      <span className="font-normal text-muted">
+                        {" "}
+                        (Unverified)
+                      </span>
+                    ) : null}
                   </span>
                   {h.nameHint && (
                     <span className="block truncate text-[11px] text-muted">

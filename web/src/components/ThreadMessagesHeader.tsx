@@ -1,6 +1,6 @@
 "use client";
 
-import { PaperclipIcon } from "./icons";
+import { MessageIcon, PaperclipIcon } from "./icons";
 
 /** Shared header above a year / thread message list. */
 export function ThreadMessagesHeader({
@@ -35,11 +35,14 @@ export function ThreadMessagesHeader({
       </div>
       <div className="mt-1.5 text-[13px] text-muted tabular-nums">{dateLabel}</div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px] text-muted">
-        <span className="tabular-nums">{messageCount.toLocaleString()} msgs</span>
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <MessageIcon className="size-3.5 shrink-0 opacity-80" />
+          {messageCount.toLocaleString()}
+        </span>
         {attachmentCount != null && (
           <>
             <span className="opacity-50">·</span>
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
+            <span className="inline-flex items-center gap-1 tabular-nums">
               <PaperclipIcon className="size-3.5 shrink-0 opacity-80" />
               {attachmentCount.toLocaleString()}
             </span>
