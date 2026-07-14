@@ -21,10 +21,16 @@ export type TrashGroupConversation = {
   title: string;
 };
 
-const NAME_COLS = 4;
-const NAME_ROWS = 3;
-const NAME_SLOTS = NAME_COLS * NAME_ROWS;
 const NAME_SEP = "  ·  ";
+
+/** Visible gap around · — flex items trim ordinary spaces. */
+function NameSep() {
+  return (
+    <span className="px-1.5 font-normal text-muted" aria-hidden>
+      ·
+    </span>
+  );
+}
 
 /** Collapse year-bucketed rows into one entry per conversation. */
 export function collapseGroupConversations(
@@ -64,24 +70,9 @@ export function collapseGroupConversations(
 }
 
 function participantLabels(g: TrashGroupConversation): string[] {
-  if (g.participantNames.length > 0) return g.participantNames;
-  return g.participantHandles;
-}
-
-/**
- * Up to 3 lines of 4 names; last name becomes +n when overflowing.
- * Names on a line are joined with "  ·  ".
- */
-export function nameLines(labels: string[]): string[] {
-  const capped =
-    labels.length <= NAME_SLOTS
-      ? labels
-      : [...labels.slice(0, NAME_SLOTS - 1), `+${labels.length - (NAME_SLOTS - 1)}`];
-  const lines: string[] = [];
-  for (let i = 0; i < capped.length; i += NAME_COLS) {
-    lines.push(capped.slice(i, i + NAME_COLS).join(NAME_SEP));
-  }
-  return lines;
+  return g.participantNames.length > 0
+    ? g.participantNames
+    : g.participantHandles;
 }
 
 function formatConversationRange(
@@ -126,7 +117,8 @@ export function TrashGroupChatList({
           const checked = selectedIds.has(g.id);
           const selectionActive = selectedIds.size >= 1;
           const showInsetDivider = i < items.length - 1;
-          const lines = nameLines(participantLabels(g));
+          const names = participantLabels(g);
+          const namesTitle = names.join(NAME_SEP);
           const dateLabel = formatConversationRange(
             g.conversationDateStart,
             g.conversationDateEnd,
@@ -194,15 +186,18 @@ export function TrashGroupChatList({
                         {g.namedTitle}
                       </div>
                     ) : null}
-                    <div className="space-y-0.5">
-                      {lines.map((line, idx) => (
-                        <div
-                          key={`${g.id}-line-${idx}`}
-                          className="truncate text-[13px] leading-snug font-medium text-text"
-                          title={line}
+                    <div
+                      className="flex min-w-0 flex-wrap gap-y-0.5 text-[13px] leading-snug font-medium text-text"
+                      title={namesTitle}
+                    >
+                      {names.map((name, idx) => (
+                        <span
+                          key={`${g.id}-name-${idx}`}
+                          className="whitespace-nowrap"
                         >
-                          {line}
-                        </div>
+                          {name}
+                          {idx < names.length - 1 ? <NameSep /> : null}
+                        </span>
                       ))}
                     </div>
                   </div>
