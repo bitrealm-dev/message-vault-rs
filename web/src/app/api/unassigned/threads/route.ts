@@ -9,7 +9,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "handle required" }, { status: 400 });
   }
   const source = new URL(req.url).searchParams.get("source");
-  const bundle = unassignedThreadsBundle(handle, source);
+  const includeTrashed =
+    new URL(req.url).searchParams.get("trashed") === "1";
+  const bundle = unassignedThreadsBundle(handle, source, { includeTrashed });
   if (!bundle) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }

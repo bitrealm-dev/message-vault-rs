@@ -15,9 +15,13 @@ export async function GET(req: Request, { params }: Params) {
   if (!contact) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const source = new URL(req.url).searchParams.get("source");
+  const url = new URL(req.url);
+  const source = url.searchParams.get("source");
+  const includeTrashed =
+    url.searchParams.get("trashed") === "1" ||
+    url.searchParams.get("trashed") === "true";
   const { yearly, groupChats, messageSources, sourceCounts } =
-    contactThreadsBundle(id, source);
+    contactThreadsBundle(id, source, { includeTrashed });
   return NextResponse.json({
     contact,
     yearly,

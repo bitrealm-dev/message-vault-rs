@@ -230,6 +230,25 @@ export function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+/** Circular arrow — restore / undelete from trash. */
+export function RestoreIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
+      <path d="M3.5 4.5v4.5h4.5" />
+    </svg>
+  );
+}
+
 export function XIcon({ className }: { className?: string }) {
   return (
     <svg

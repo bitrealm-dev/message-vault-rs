@@ -102,6 +102,16 @@ export type UnassignedHandle = {
   dateEnd: string | null;
   sortKey: string;
   letter: string;
+  /** Backup archive name — show "(Unverified)" when true. */
+  unverified?: boolean;
+  /** Trash-list metadata (Contacts trash three-pane). */
+  trashKind?: "unassigned" | "messages_only" | "contact";
+  contactId?: number;
+  /** Name sort keys (trash / contacts). Falls back to handle when absent. */
+  sortFirst?: string;
+  sortLast?: string;
+  firstName?: string | null;
+  lastName?: string | null;
 };
 
 /** Soft-trashed contact (contact + 1:1 messages). */
@@ -114,6 +124,10 @@ export type TrashedContactItem = {
   messageCount: number;
   sortKey: string;
   letter: string;
+  sortFirst: string;
+  sortLast: string;
+  firstName: string | null;
+  lastName: string | null;
 };
 
 /** Soft-trashed 1:1 handle still linked to a live contact. */
@@ -125,6 +139,10 @@ export type TrashedContactMessagesItem = {
   messageCount: number;
   sortKey: string;
   letter: string;
+  sortFirst: string;
+  sortLast: string;
+  firstName: string | null;
+  lastName: string | null;
 };
 
 export type HomeStats = {

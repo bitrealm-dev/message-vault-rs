@@ -1,26 +1,131 @@
 "use client";
 
 import type {
-  ContactListItem,
   GroupYearRow,
   TrashedContactItem,
   TrashedContactMessagesItem,
   UnassignedHandle,
 } from "@/lib/types";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ContactsTrashShell } from "./ContactsTrashShell";
 import { GroupChatsShell } from "./GroupChatsShell";
+import { useHistory } from "./history";
 import { UnassignedShell } from "./UnassignedShell";
 
-type TrashTab = "unassigned" | "group-chats" | "contacts";
+type TrashTab = "contacts" | "group-chats";
+
+function mergeTrashContactList(
+  unassigned: UnassignedHandle[],
+  contacts: TrashedContactItem[],
+  messagesOnly: TrashedContactMessagesItem[],
+): UnassignedHandle[] {
+  const rows: UnassignedHandle[] = [];
+
+  for (const h of unassigned) {
+    const nameKey = h.nameHint?.trim() || h.handle;
+    rows.push({
+      ...h,
+      trashKind: "unassigned",
+      sortFirst: nameKey,
+      sortLast: nameKey,
+      firstName: null,
+      lastName: null,
+    });
+  }
+
+  for (const m of messagesOnly) {
+    rows.push({
+      handle: m.handle,
+      displayName: m.displayName,
+      nameHint: null,
+      unverified: false,
+      messageCount: m.messageCount,
+      dateStart: null,
+      dateEnd: null,
+      sortKey: m.sortKey,
+      letter: m.letter,
+      trashKind: "messages_only",
+      contactId: m.contactId,
+      sortFirst: m.sortFirst,
+      sortLast: m.sortLast,
+      firstName: m.firstName,
+      lastName: m.lastName,
+    });
+  }
+
+  for (const c of contacts) {
+    const handle = c.preferredHandle;
+    if (!handle) continue;
+    rows.push({
+      handle,
+      displayName: c.displayName,
+      nameHint: null,
+      unverified: false,
+      messageCount: c.messageCount,
+      dateStart: null,
+      dateEnd: null,
+      sortKey: c.sortKey,
+      letter: c.letter,
+      trashKind: "contact",
+      contactId: c.contactId,
+      sortFirst: c.sortFirst,
+      sortLast: c.sortLast,
+      firstName: c.firstName,
+      lastName: c.lastName,
+    });
+  }
+
+  return rows.sort((a, b) =>
+    a.sortKey.localeCompare(b.sortKey, undefined, { sensitivity: "base" }),
+  );
+}
+
+function TrashTabBar({
+  tab,
+  contactCount,
+  groupCount,
+  onSwitch,
+}: {
+  tab: TrashTab;
+  contactCount: number;
+  groupCount: number;
+  onSwitch: (next: TrashTab) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        onClick={() => onSwitch("contacts")}
+        className={`rounded-md px-2.5 py-1 text-[12px] leading-none ${
+          tab === "contacts"
+            ? "bg-elevated text-text"
+            : "text-muted hover:text-text"
+        }`}
+      >
+        Contacts
+        <span className="ml-1 text-muted">{contactCount}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onSwitch("group-chats")}
+        className={`rounded-md px-2.5 py-1 text-[12px] leading-none ${
+          tab === "group-chats"
+            ? "bg-elevated text-text"
+            : "text-muted hover:text-text"
+        }`}
+      >
+        Group chats
+        <span className="ml-1 text-muted">{groupCount}</span>
+      </button>
+    </div>
+  );
+}
 
 export function TrashShell({
   handles,
   groupChats,
   trashedContacts,
   trashedContactMessages,
-  assignContacts,
   initialHandle,
   initialConversationId,
   initialYear,
@@ -29,7 +134,6 @@ export function TrashShell({
   groupChats: GroupYearRow[];
   trashedContacts: TrashedContactItem[];
   trashedContactMessages: TrashedContactMessagesItem[];
-  assignContacts: ContactListItem[];
   initialHandle: string | null;
   initialConversationId: number | null;
   initialYear: number | null;
@@ -37,12 +141,16 @@ export function TrashShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { clear: clearHistory } = useHistory();
+
+  useEffect(() => {
+    clearHistory();
+  }, [clearHistory]);
 
   const tab: TrashTab = (() => {
     const raw = searchParams.get("tab");
     if (raw === "group-chats") return "group-chats";
-    if (raw === "contacts") return "contacts";
-    return "unassigned";
+    return "contacts";
   })();
 
   const switchTab = useCallback(
@@ -52,16 +160,10 @@ export function TrashShell({
         params.set("tab", "group-chats");
         params.delete("h");
         params.delete("c");
-      } else if (next === "contacts") {
-        params.set("tab", "contacts");
-        params.delete("h");
-        params.delete("g");
-        params.delete("y");
       } else {
-        params.delete("tab");
+        params.set("tab", "contacts");
         params.delete("g");
         params.delete("y");
-        params.delete("c");
       }
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -69,72 +171,45 @@ export function TrashShell({
     [pathname, router, searchParams],
   );
 
-  const contactsCount = trashedContacts.length + trashedContactMessages.length;
+  const contactList = useMemo(
+    () =>
+      mergeTrashContactList(handles, trashedContacts, trashedContactMessages),
+    [handles, trashedContacts, trashedContactMessages],
+  );
+
+  const groupCount = useMemo(
+    () => new Set(groupChats.map((g) => g.id)).size,
+    [groupChats],
+  );
+
+  const tabBar: ReactNode = (
+    <TrashTabBar
+      tab={tab}
+      contactCount={contactList.length}
+      groupCount={groupCount}
+      onSwitch={switchTab}
+    />
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-4 py-2">
-        <button
-          type="button"
-          onClick={() => switchTab("unassigned")}
-          className={`rounded-md px-3 py-1.5 text-[13px] ${
-            tab === "unassigned"
-              ? "bg-elevated text-text"
-              : "text-muted hover:text-text"
-          }`}
-        >
-          Unassigned
-          <span className="ml-1.5 text-muted">{handles.length}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => switchTab("contacts")}
-          className={`rounded-md px-3 py-1.5 text-[13px] ${
-            tab === "contacts"
-              ? "bg-elevated text-text"
-              : "text-muted hover:text-text"
-          }`}
-        >
-          Contacts
-          <span className="ml-1.5 text-muted">{contactsCount}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => switchTab("group-chats")}
-          className={`rounded-md px-3 py-1.5 text-[13px] ${
-            tab === "group-chats"
-              ? "bg-elevated text-text"
-              : "text-muted hover:text-text"
-          }`}
-        >
-          Group chats
-          <span className="ml-1.5 text-muted">
-            {new Set(groupChats.map((g) => g.id)).size}
-          </span>
-        </button>
-      </div>
-      <div className="min-h-0 min-w-0 flex-1">
-        {tab === "unassigned" ? (
-          <UnassignedShell
-            mode="trash"
-            handles={handles}
-            assignContacts={assignContacts}
-            initialHandle={initialHandle}
-          />
-        ) : tab === "contacts" ? (
-          <ContactsTrashShell
-            contacts={trashedContacts}
-            messagesOnly={trashedContactMessages}
-          />
-        ) : (
-          <GroupChatsShell
-            mode="trash"
-            groupChats={groupChats}
-            initialConversationId={initialConversationId}
-            initialYear={initialYear}
-          />
-        )}
-      </div>
+    <div className="h-full min-h-0 min-w-0">
+      {tab === "contacts" ? (
+        <UnassignedShell
+          mode="trash"
+          handles={contactList}
+          assignContacts={[]}
+          initialHandle={initialHandle}
+          trashTabBar={tabBar}
+        />
+      ) : (
+        <GroupChatsShell
+          mode="trash"
+          groupChats={groupChats}
+          initialConversationId={initialConversationId}
+          initialYear={initialYear}
+          trashTabBar={tabBar}
+        />
+      )}
     </div>
   );
 }

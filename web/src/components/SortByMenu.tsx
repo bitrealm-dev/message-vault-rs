@@ -140,6 +140,38 @@ export function UnassignedSortMenu({
   );
 }
 
+export type TrashSortBy = "phone" | "first" | "last" | "count";
+
+const TRASH_SORT_FIELDS: SortField<TrashSortBy>[] = [
+  { id: "phone", label: "Phone number" },
+  { id: "first", label: "First" },
+  { id: "last", label: "Last" },
+  { id: "count", label: "Count" },
+];
+
+/** Phone / first / last / count + ascending/descending for Trash contacts. */
+export function TrashSortMenu({
+  sortBy,
+  order,
+  onChange,
+}: {
+  sortBy: TrashSortBy;
+  order: SortOrder;
+  onChange: (next: { sortBy: TrashSortBy; order: SortOrder }) => void;
+}) {
+  return (
+    <SortMenu
+      fields={TRASH_SORT_FIELDS}
+      sort={sortBy}
+      order={order}
+      onChange={({ sort, order: nextOrder }) =>
+        onChange({ sortBy: sort, order: nextOrder })
+      }
+      ariaLabel="Sort trash"
+    />
+  );
+}
+
 function SortOption({
   label,
   selected,

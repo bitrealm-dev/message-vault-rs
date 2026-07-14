@@ -5,7 +5,7 @@ import {
   formatGroupDateTable,
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
-import type { RefObject, MouseEvent } from "react";
+import type { RefObject, MouseEvent, ReactNode } from "react";
 
 function dateColClass(style: GroupDateFormat): string {
   switch (style) {
@@ -98,6 +98,7 @@ function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
 
 export function GroupChatsListPane({
   mode,
+  trashTabBar,
   selectAllRef,
   allSelected,
   uniqueIdsCount,
@@ -123,6 +124,7 @@ export function GroupChatsListPane({
   onOpenCtxMenu,
 }: {
   mode: "group-chats" | "trash";
+  trashTabBar?: ReactNode;
   selectAllRef: RefObject<HTMLInputElement | null>;
   allSelected: boolean;
   uniqueIdsCount: number;
@@ -225,6 +227,7 @@ export function GroupChatsListPane({
                     <option value="d-mon">31 Jan 2025</option>
                   </select>
                 </label>
+                {trashTabBar}
               </div>
             </div>
 

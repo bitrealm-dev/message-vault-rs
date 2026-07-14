@@ -45,11 +45,13 @@ export function GroupChatsShell({
   initialConversationId,
   initialYear,
   mode = "group-chats",
+  trashTabBar = null,
 }: {
   groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
+  trashTabBar?: React.ReactNode;
 }) {
   const router = useRouter();
 
@@ -440,6 +442,7 @@ export function GroupChatsShell({
       >
         <GroupChatsListPane
           mode={mode}
+          trashTabBar={trashTabBar}
           selectAllRef={selectAllRef}
           allSelected={allSelected}
           uniqueIdsCount={uniqueIds.length}

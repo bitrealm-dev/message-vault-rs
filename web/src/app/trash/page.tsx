@@ -1,7 +1,6 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { TrashShell } from "@/components/TrashShell";
 import {
-  listContactsForPicker,
   listGroups,
   listTrashedContactMessages,
   listTrashedContacts,
@@ -26,7 +25,6 @@ export default async function TrashPage({
   const groupChats = listTrashedGroupYearRows();
   const trashedContacts = listTrashedContacts();
   const trashedContactMessages = listTrashedContactMessages();
-  const assignContacts = listContactsForPicker();
   const contactGroups = listGroups();
 
   return (
@@ -36,7 +34,6 @@ export default async function TrashPage({
         groupChats={groupChats}
         trashedContacts={trashedContacts}
         trashedContactMessages={trashedContactMessages}
-        assignContacts={assignContacts}
         initialHandle={initialHandle}
         initialConversationId={initialConversationId}
         initialYear={initialYear}

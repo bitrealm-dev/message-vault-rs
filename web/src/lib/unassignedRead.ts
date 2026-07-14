@@ -113,6 +113,7 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
         dateEnd: r.date_end,
         sortKey,
         letter,
+        unverified: Boolean(hintUseful),
       };
     })
     .sort((a, b) =>
@@ -123,6 +124,7 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
 export function unassignedThreadsBundle(
   handle: string,
   source?: string | null,
+  opts?: { includeTrashed?: boolean },
 ): {
   handle: string;
   yearly: YearThread[];
@@ -140,10 +142,12 @@ export function unassignedThreadsBundle(
     .get(trimmed) as { id: number } | undefined;
   if (!conv) return null;
 
-  const owned = db
-    .prepare(`SELECT 1 AS ok FROM contact_handles WHERE handle = ?`)
-    .get(trimmed) as { ok: number } | undefined;
-  if (owned) return null;
+  if (!opts?.includeTrashed) {
+    const owned = db
+      .prepare(`SELECT 1 AS ok FROM contact_handles WHERE handle = ?`)
+      .get(trimmed) as { ok: number } | undefined;
+    if (owned) return null;
+  }
 
   const hasMsgs = db
     .prepare(
@@ -156,7 +160,9 @@ export function unassignedThreadsBundle(
   const sourceCounts = contactMessageSourceCountsForConversations(ids);
   return {
     handle: trimmed,
-    yearly: contactYearlyThreadsForPhones([trimmed], source),
+    yearly: contactYearlyThreadsForPhones([trimmed], source, {
+      includeTrashed: opts?.includeTrashed,
+    }),
     messageSources: Object.keys(sourceCounts.bySource).sort(),
     sourceCounts,
   };

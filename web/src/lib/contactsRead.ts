@@ -328,11 +328,16 @@ function contactPhones(contactId: number): string[] {
   ).map((r) => r.handle);
 }
 
-function contactIndividualConversationIds(phones: string[]): number[] {
+function contactIndividualConversationIds(
+  phones: string[],
+  opts?: { includeTrashed?: boolean },
+): number[] {
   if (!phones.length) return [];
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
-  const trashFilter = notTrashedHandleSql("chat_identifier");
+  const trashFilter = opts?.includeTrashed
+    ? ""
+    : notTrashedHandleSql("chat_identifier");
   return (
     db
       .prepare(
@@ -344,10 +349,13 @@ function contactIndividualConversationIds(phones: string[]): number[] {
   ).map((r) => r.id);
 }
 
-function contactConversationIds(phones: string[]): number[] {
+function contactConversationIds(
+  phones: string[],
+  opts?: { includeTrashed?: boolean },
+): number[] {
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
-  const individual = contactIndividualConversationIds(phones);
+  const individual = contactIndividualConversationIds(phones, opts);
   const groups = db
     .prepare(
       `SELECT DISTINCT c.id AS id
@@ -433,6 +441,7 @@ function contactMessageCountsById(
 export function contactThreadsBundle(
   contactId: number,
   source?: string | null,
+  opts?: { includeTrashed?: boolean },
 ): {
   yearly: YearThread[];
   groupChats: GroupChatThread[];
@@ -448,15 +457,15 @@ export function contactThreadsBundle(
       sourceCounts: { all: 0, bySource: {} },
     };
   }
-  const allConvIds = contactConversationIds(phones);
-  const individualIds = contactIndividualConversationIds(phones);
+  const allConvIds = contactConversationIds(phones, opts);
+  const individualIds = contactIndividualConversationIds(phones, opts);
   const sourceCounts =
     contactMessageSourceCountsForConversations(individualIds);
   // Enable sources that appear in 1:1 or groups so group-only archives stay selectable.
   const anySourceCounts =
     contactMessageSourceCountsForConversations(allConvIds);
   return {
-    yearly: contactYearlyThreadsForPhones(phones, source),
+    yearly: contactYearlyThreadsForPhones(phones, source, opts),
     groupChats: contactGroupChatThreadsForPhones(phones, source),
     messageSources: Object.keys(anySourceCounts.bySource).sort(),
     sourceCounts,
@@ -466,6 +475,7 @@ export function contactThreadsBundle(
 export function contactYearlyThreadsForPhones(
   phones: string[],
   source?: string | null,
+  opts?: { includeTrashed?: boolean },
 ): YearThread[] {
   if (!phones.length) return [];
   const db = getDb();
@@ -473,6 +483,9 @@ export function contactYearlyThreadsForPhones(
   const sourceSql = source ? " AND m.source = ?" : "";
   const params: Array<string | number> = [...phones];
   if (source) params.push(source);
+  const trashFilter = opts?.includeTrashed
+    ? ""
+    : notTrashedHandleSql("c.chat_identifier");
   const rows = db
     .prepare(
       `SELECT CAST(substr(m.timestamp, 1, 4) AS INTEGER) AS year,
@@ -486,7 +499,7 @@ export function contactYearlyThreadsForPhones(
        LEFT JOIN attachments a ON a.message_id = m.id
        WHERE c.conversation_type = 'individual'
          AND c.chat_identifier IN (${placeholders})${sourceSql}${combinedDedupeSql(source, "m")}
-         ${notTrashedHandleSql("c.chat_identifier")}
+         ${trashFilter}
        GROUP BY year
        ORDER BY year DESC`,
     )
@@ -623,15 +636,28 @@ export function listTrashedContacts(): TrashedContactItem[] {
   return rows.map((row) => {
     const name = displayName(row);
     const sorts = sortFields(row);
+    let preferred = row.preferred_handle;
+    if (!preferred) {
+      const first = db
+        .prepare(
+          `SELECT handle FROM contact_handles WHERE contact_id = ? ORDER BY handle LIMIT 1`,
+        )
+        .get(row.id) as { handle: string } | undefined;
+      preferred = first?.handle ?? null;
+    }
     return {
       kind: "contact" as const,
       contactId: row.id,
       displayName: name,
-      preferredHandle: row.preferred_handle,
+      preferredHandle: preferred,
       handleCount: row.handle_count,
       messageCount: row.message_count,
       sortKey: `${sorts.sortLast}\0${sorts.sortFirst}`,
       letter: sorts.letter,
+      sortFirst: sorts.sortFirst,
+      sortLast: sorts.sortLast,
+      firstName: row.first_name,
+      lastName: row.last_name,
     };
   });
 }
@@ -689,6 +715,10 @@ export function listTrashedContactMessages(): TrashedContactMessagesItem[] {
       messageCount: row.message_count,
       sortKey: `${name}\0${row.handle}`,
       letter: sorts.letter,
+      sortFirst: sorts.sortFirst,
+      sortLast: sorts.sortLast,
+      firstName: row.first_name,
+      lastName: row.last_name,
     };
   });
 }

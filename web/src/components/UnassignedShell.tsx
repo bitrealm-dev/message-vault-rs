@@ -17,12 +17,14 @@ import {
   type ContactEditDraft,
 } from "./contactEdit";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
-import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon, PeopleGroupIcon, PencilIcon, XIcon } from "./icons";
+import { ChevronDownIcon, ChevronRightIcon, PeopleGroupIcon, PencilIcon, XIcon } from "./icons";
 import {
   type SortOrder,
+  type TrashSortBy,
   type UnassignedSortBy,
 } from "./SortByMenu";
 import { UnassignedContactList } from "./UnassignedContactList";
+import { TrashContactList } from "./TrashContactList";
 import { UnassignedDetailPane } from "./UnassignedDetailPane";
 import { UnassignedMessagesPane } from "./UnassignedMessagesPane";
 import { useHistory } from "./history";
@@ -40,7 +42,25 @@ const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
 const UNASSIGNED_SORT_BY_KEY = "mv-unassigned-sort-by";
 const UNASSIGNED_SORT_BY_ALLOWED = ["phone", "date", "messages"] as const;
 const UNASSIGNED_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
+const TRASH_SORT_BY_KEY = "mv-trash-sort-by";
+const TRASH_SORT_ORDER_KEY = "mv-trash-sort-order";
+const TRASH_SORT_BY_ALLOWED = ["phone", "first", "last", "count"] as const;
 const ASSIGN_PAGE_SIZE = 40;
+
+function trashLetterFor(
+  h: UnassignedHandle,
+  sortBy: TrashSortBy,
+): string {
+  if (sortBy === "count") return "";
+  const src =
+    sortBy === "first"
+      ? (h.sortFirst ?? h.handle)
+      : sortBy === "last"
+        ? (h.sortLast ?? h.handle)
+        : h.handle;
+  const ch = src.charAt(0).toUpperCase();
+  return ch >= "A" && ch <= "Z" ? ch : "#";
+}
 
 export function UnassignedShell({
   handles: initialHandles,
@@ -48,12 +68,15 @@ export function UnassignedShell({
   initialHandle,
   groups: allGroups = [],
   mode = "unassigned",
+  trashTabBar = null,
 }: {
   handles: UnassignedHandle[];
   assignContacts: ContactListItem[];
   initialHandle: string | null;
   groups?: string[];
   mode?: "unassigned" | "trash";
+  /** Contacts / Group chats tabs — sits in the list header (left of the pane split). */
+  trashTabBar?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -71,6 +94,16 @@ export function UnassignedShell({
     UNASSIGNED_SORT_ORDER_ALLOWED,
     "asc",
   );
+  const [trashSortBy, setTrashSortBy] = usePersistedEnum(
+    TRASH_SORT_BY_KEY,
+    TRASH_SORT_BY_ALLOWED,
+    "phone",
+  );
+  const [trashSortOrder, setTrashSortOrder] = usePersistedEnum(
+    TRASH_SORT_ORDER_KEY,
+    UNASSIGNED_SORT_ORDER_ALLOWED,
+    "asc",
+  );
   const setUnassignedSort = useCallback(
     (next: { sortBy: UnassignedSortBy; order: SortOrder }) => {
       setSortBy(next.sortBy);
@@ -78,6 +111,14 @@ export function UnassignedShell({
     },
     [setSortBy, setSortOrder],
   );
+  const setTrashSort = useCallback(
+    (next: { sortBy: TrashSortBy; order: SortOrder }) => {
+      setTrashSortBy(next.sortBy);
+      setTrashSortOrder(next.order);
+    },
+    [setTrashSortBy, setTrashSortOrder],
+  );
+  const [trashQuery, setTrashQuery] = useState("");
   const [handle, setHandle] = useState<string | null>(initialHandle);
   const [yearly, setYearly] = useState<YearThread[]>([]);
   const [messageSources, setMessageSources] = useState<string[]>([]);
@@ -130,12 +171,58 @@ export function UnassignedShell({
   });
 
   const selected = handles.find((h) => h.handle === handle) ?? null;
+  const selectedTrashKind = selected?.trashKind;
+  const selectedContactId = selected?.contactId;
 
   const sortedHandles = useMemo(() => {
     const copy = [...handles];
+    const order = mode === "trash" ? trashSortOrder : sortOrder;
     copy.sort((a, b) => {
       let cmp = 0;
-      if (sortBy === "messages") {
+      if (mode === "trash") {
+        if (trashSortBy === "count") {
+          cmp = a.messageCount - b.messageCount;
+          if (cmp === 0) {
+            cmp = a.handle.localeCompare(b.handle, undefined, {
+              sensitivity: "base",
+            });
+          }
+        } else if (trashSortBy === "first") {
+          const aFirst = a.sortFirst ?? a.handle;
+          const bFirst = b.sortFirst ?? b.handle;
+          cmp = aFirst.localeCompare(bFirst, undefined, { sensitivity: "base" });
+          if (cmp === 0) {
+            const aLast = a.sortLast ?? a.handle;
+            const bLast = b.sortLast ?? b.handle;
+            cmp = aLast.localeCompare(bLast, undefined, { sensitivity: "base" });
+          }
+          if (cmp === 0) {
+            cmp = a.handle.localeCompare(b.handle, undefined, {
+              sensitivity: "base",
+            });
+          }
+        } else if (trashSortBy === "last") {
+          const aLast = a.sortLast ?? a.handle;
+          const bLast = b.sortLast ?? b.handle;
+          cmp = aLast.localeCompare(bLast, undefined, { sensitivity: "base" });
+          if (cmp === 0) {
+            const aFirst = a.sortFirst ?? a.handle;
+            const bFirst = b.sortFirst ?? b.handle;
+            cmp = aFirst.localeCompare(bFirst, undefined, {
+              sensitivity: "base",
+            });
+          }
+          if (cmp === 0) {
+            cmp = a.handle.localeCompare(b.handle, undefined, {
+              sensitivity: "base",
+            });
+          }
+        } else {
+          cmp = a.handle.localeCompare(b.handle, undefined, {
+            sensitivity: "base",
+          });
+        }
+      } else if (sortBy === "messages") {
         cmp = a.messageCount - b.messageCount;
         if (cmp === 0) {
           cmp = a.handle.localeCompare(b.handle, undefined, {
@@ -156,14 +243,54 @@ export function UnassignedShell({
           sensitivity: "base",
         });
       }
-      return sortOrder === "desc" ? -cmp : cmp;
+      return order === "desc" ? -cmp : cmp;
     });
     return copy;
-  }, [handles, sortBy, sortOrder]);
+  }, [handles, mode, sortBy, sortOrder, trashSortBy, trashSortOrder]);
+
+  const trashFilteredHandles = useMemo(() => {
+    if (mode !== "trash") return sortedHandles;
+    const q = trashQuery.trim().toLowerCase();
+    if (!q) return sortedHandles;
+    return sortedHandles.filter((h) => {
+      const hay = [
+        h.displayName,
+        h.handle,
+        h.firstName,
+        h.lastName,
+        h.nameHint,
+      ]
+        .filter(Boolean)
+        .join("\0")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [mode, sortedHandles, trashQuery]);
+
+  const trashGrouped = useMemo((): [string, UnassignedHandle[]][] => {
+    if (mode !== "trash") return [];
+    if (trashSortBy === "count" || trashQuery.trim()) {
+      return [["", trashFilteredHandles]];
+    }
+    const map = new Map<string, UnassignedHandle[]>();
+    for (const h of trashFilteredHandles) {
+      const letter = trashLetterFor(h, trashSortBy);
+      if (!map.has(letter)) map.set(letter, []);
+      map.get(letter)!.push(h);
+    }
+    return [...map.entries()].sort(([a], [b]) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+  }, [mode, trashFilteredHandles, trashSortBy, trashQuery]);
 
   const orderedIds = useMemo(
-    () => sortedHandles.map((h) => h.handle),
-    [sortedHandles],
+    () =>
+      (mode === "trash" ? trashFilteredHandles : sortedHandles).map(
+        (h) => h.handle,
+      ),
+    [mode, trashFilteredHandles, sortedHandles],
   );
   const validIds = useMemo(() => handles.map((h) => h.handle), [handles]);
 
@@ -413,9 +540,19 @@ export function UnassignedShell({
     }
     let cancelled = false;
     setLoadingThreads(true);
-    const qs = new URLSearchParams({ handle });
+    const qs = new URLSearchParams();
     if (source) qs.set("source", source);
-    fetch(`/api/unassigned/threads?${qs.toString()}`)
+    if (mode === "trash") qs.set("trashed", "1");
+    const url =
+      mode === "trash" &&
+      selectedTrashKind === "contact" &&
+      selectedContactId != null
+        ? `/api/contacts/${selectedContactId}/threads?${qs.toString()}`
+        : (() => {
+            qs.set("handle", handle);
+            return `/api/unassigned/threads?${qs.toString()}`;
+          })();
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -480,7 +617,16 @@ export function UnassignedShell({
     };
     // activeYear intentionally omitted — only reload on handle/source change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, source, sourceQuery, setSource, multiSelected]);
+  }, [
+    handle,
+    mode,
+    selectedTrashKind,
+    selectedContactId,
+    source,
+    sourceQuery,
+    setSource,
+    multiSelected,
+  ]);
 
   const loadYear = (year: number, conversationIds: number[]) => {
     setActiveYear(year);
@@ -490,21 +636,24 @@ export function UnassignedShell({
       .finally(() => setLoadingMessages(false));
   };
 
-  const clearFocusAfterRemoval = (phones: string[]) => {
-    const removed = new Set(phones);
-    setHandles((prev) => prev.filter((h) => !removed.has(h.handle)));
-    clearSelection();
-    if (handle && removed.has(handle)) {
-      setHandle(null);
-      setYearly([]);
-      setMessages([]);
-      setActiveYear(null);
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("h");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }
-  };
+  const clearFocusAfterRemoval = useCallback(
+    (phones: string[]) => {
+      const removed = new Set(phones);
+      setHandles((prev) => prev.filter((h) => !removed.has(h.handle)));
+      clearSelection();
+      if (handle && removed.has(handle)) {
+        setHandle(null);
+        setYearly([]);
+        setMessages([]);
+        setActiveYear(null);
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("h");
+        const qs = params.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      }
+    },
+    [clearSelection, handle, pathname, router, searchParams],
+  );
 
   const getTrashTargets = useCallback(
     (forHandle?: string) => {
@@ -514,17 +663,92 @@ export function UnassignedShell({
     [actionTargets, multiSelected],
   );
 
+  const runMixedTrashRestoreOrDelete = useCallback(
+    async (targets: string[], permanent: boolean) => {
+      if (targets.length === 0) return;
+      if (permanent) {
+        const msg =
+          targets.length === 1
+            ? "Delete forever? This cannot be undone."
+            : `Delete ${targets.length} items forever? This cannot be undone.`;
+        if (!window.confirm(msg)) return;
+      }
+      setSaving(true);
+      setCtxMenu(null);
+      setGroupsPanelPos(null);
+      try {
+        for (const target of targets) {
+          const row = handles.find((h) => h.handle === target);
+          const kind = row?.trashKind ?? "unassigned";
+          let res: Response;
+          if (kind === "contact" && row?.contactId != null) {
+            res = await fetch("/api/contacts/trash", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ids: [row.contactId],
+                permanent: permanent || undefined,
+              }),
+            });
+          } else if (kind === "messages_only") {
+            res = await fetch("/api/contacts/trash", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                handle: target,
+                permanent: permanent || undefined,
+              }),
+            });
+          } else {
+            res = await fetch("/api/unassigned/trash", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                handle: target,
+                permanent: permanent || undefined,
+              }),
+            });
+          }
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "action failed");
+        }
+        setStatus(
+          permanent
+            ? targets.length === 1
+              ? "Deleted forever"
+              : `Deleted ${targets.length} forever`
+            : targets.length === 1
+              ? "Undeleted"
+              : `Undeleted ${targets.length}`,
+        );
+        if (permanent) clearHistory();
+        clearFocusAfterRemoval(targets);
+        router.refresh();
+      } catch (err) {
+        console.error(err);
+        setStatus(err instanceof Error ? err.message : "action failed");
+        router.refresh();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      handles,
+      clearFocusAfterRemoval,
+      clearHistory,
+      router,
+    ],
+  );
+
   const {
     saving: trashSaving,
     moveToTrash,
-    restoreFromTrash,
-    permanentlyDeleteFromTrash,
   } = useTrashActions<string>({
     endpoint: "/api/unassigned/trash",
     idField: "handle",
     getTargets: getTrashTargets,
     canTrash: mode === "unassigned",
-    canRestoreOrDelete: mode === "trash",
+    canRestoreOrDelete: false,
     confirmTrash: (targets) =>
       targets.length === 1
         ? "Move this number or email to Trash?"
@@ -547,14 +771,14 @@ export function UnassignedShell({
       setCtxMenu(null);
       setGroupsPanelPos(null);
     },
-    onTrashed: (handles) => {
+    onTrashed: (trashedHandles) => {
       pushHistory({
         type: "trashUnassignedHandles",
-        handles,
+        handles: trashedHandles,
         label:
-          handles.length === 1
-            ? `Delete ${handles[0]}`
-            : `Delete ${handles.length} unassigned handles`,
+          trashedHandles.length === 1
+            ? `Delete ${trashedHandles[0]}`
+            : `Delete ${trashedHandles.length} unassigned handles`,
       });
     },
     afterPermanent: () => {
@@ -562,6 +786,22 @@ export function UnassignedShell({
       router.refresh();
     },
   });
+
+  const restoreFromTrash = useCallback(
+    async (override?: string) => {
+      if (mode !== "trash") return;
+      await runMixedTrashRestoreOrDelete(getTrashTargets(override), false);
+    },
+    [mode, getTrashTargets, runMixedTrashRestoreOrDelete],
+  );
+
+  const permanentlyDeleteFromTrash = useCallback(
+    async (override?: string) => {
+      if (mode !== "trash") return;
+      await runMixedTrashRestoreOrDelete(getTrashTargets(override), true);
+    },
+    [mode, getTrashTargets, runMixedTrashRestoreOrDelete],
+  );
 
   const canSaveCreate =
     !!createDraft &&
@@ -795,10 +1035,6 @@ export function UnassignedShell({
     setCtxMenu({ ...clampMenu(x, y, 200, menuH), handle: nextHandle });
   };
 
-  const openTrashMenu = (x: number, y: number, nextHandle: string) => {
-    openCtxMenuAt(x, y, nextHandle, 88);
-  };
-
   const assignSearch = (
     <div className="w-72 rounded-lg border border-border bg-elevated shadow-xl">
       <input
@@ -872,25 +1108,47 @@ export function UnassignedShell({
         maxSize={720}
         className="min-h-0"
       >
-        <UnassignedContactList
-          mode={mode}
-          selectAllRef={selectAllRef}
-          allHandlesSelected={allHandlesSelected}
-          handleCount={handles.length}
-          sortedHandles={sortedHandles}
-          handle={handle}
-          selectedHandles={selectedHandles}
-          multiSelected={multiSelected}
-          saving={saving}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onSortChange={setUnassignedSort}
-          onToggleSelectAll={toggleSelectAll}
-          onSelectColumnClick={onSelectColumnClick}
-          onRowClick={onRowClick}
-          onOpenCtxMenu={openCtxMenuAt}
-          onOpenTrashMenu={openTrashMenu}
-        />
+        {mode === "trash" ? (
+          <TrashContactList
+            tabBar={trashTabBar}
+            selectAllRef={selectAllRef}
+            allSelected={allHandlesSelected}
+            query={trashQuery}
+            onQueryChange={setTrashQuery}
+            grouped={trashGrouped}
+            sortedCount={trashFilteredHandles.length}
+            handle={handle}
+            selectedHandles={selectedHandles}
+            saving={saving}
+            canDeleteForever={actionTargets.length > 0}
+            sortBy={trashSortBy}
+            sortOrder={trashSortOrder}
+            onSortChange={setTrashSort}
+            onToggleSelectAll={toggleSelectAll}
+            onSelectColumnClick={onSelectColumnClick}
+            onRowClick={onRowClick}
+            onRestore={(h) => void restoreFromTrash(h)}
+            onDeleteForever={(h) => void permanentlyDeleteFromTrash(h)}
+            onDeleteForeverHeader={() => void permanentlyDeleteFromTrash()}
+          />
+        ) : (
+          <UnassignedContactList
+            selectAllRef={selectAllRef}
+            allHandlesSelected={allHandlesSelected}
+            handleCount={handles.length}
+            sortedHandles={sortedHandles}
+            handle={handle}
+            selectedHandles={selectedHandles}
+            multiSelected={multiSelected}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={setUnassignedSort}
+            onToggleSelectAll={toggleSelectAll}
+            onSelectColumnClick={onSelectColumnClick}
+            onRowClick={onRowClick}
+            onOpenCtxMenu={openCtxMenuAt}
+          />
+        )}
       </Panel>
 
       <PaneSeparator orientation="vertical" />
@@ -898,58 +1156,34 @@ export function UnassignedShell({
       <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
         <div className="flex h-full min-h-0 min-w-0 flex-col">
         <div className="relative flex h-[45px] shrink-0 items-center gap-2 border-b border-border bg-panel px-2">
-          {multiSelected && (
+          {multiSelected && mode === "unassigned" && (
             <>
-              {mode === "unassigned" && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setAssignQuery("");
-                      setAssignMode((m) => (m === "header" ? null : "header"));
-                    }}
-                    className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-white/18"
-                  >
-                    Add to existing contact
-                  </button>
-                  {assignMode === "header" && (
-                    <div ref={assignRef} className="absolute left-0 z-30 mt-1">
-                      {assignSearch}
-                    </div>
-                  )}
-                </div>
-              )}
-              {mode === "unassigned" ? (
+              <div className="relative">
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => void moveToTrash()}
-                  className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-red-500/15 hover:text-red-300"
-                >
-                  Delete
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={saving}
-                  aria-label="Trash options"
-                  aria-expanded={Boolean(ctxMenu)}
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    if (ctxMenu) {
-                      setCtxMenu(null);
-                      return;
-                    }
-                    const target = selectedItems[0]?.handle;
-                    if (!target) return;
-                    openTrashMenu(r.right - 188, r.bottom + 4, target);
+                  onClick={() => {
+                    setAssignQuery("");
+                    setAssignMode((m) => (m === "header" ? null : "header"));
                   }}
-                  className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
+                  className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-white/18"
                 >
-                  <EllipsisIcon className="size-5" />
+                  Add to existing contact
                 </button>
-              )}
+                {assignMode === "header" && (
+                  <div ref={assignRef} className="absolute left-0 z-30 mt-1">
+                    {assignSearch}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void moveToTrash()}
+                className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-text transition-colors hover:bg-red-500/15 hover:text-red-300"
+              >
+                Delete
+              </button>
             </>
           )}
           {creating && createDraft && !multiSelected && mode === "unassigned" ? (
@@ -1049,26 +1283,6 @@ export function UnassignedShell({
               </>
             )
           )}
-          {mode === "trash" && selected && !multiSelected && (
-            <button
-              type="button"
-              disabled={saving}
-              aria-label="Trash options"
-              aria-expanded={Boolean(ctxMenu)}
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                if (ctxMenu) {
-                  setCtxMenu(null);
-                  return;
-                }
-                if (!handle) return;
-                openTrashMenu(r.right - 188, r.bottom + 4, handle);
-              }}
-              className="rounded-md border border-border p-1.5 text-text hover:bg-white/15 disabled:opacity-40"
-            >
-              <EllipsisIcon className="size-5" />
-            </button>
-          )}
           <span className="min-w-0 flex-1" aria-hidden />
           {status && (
             <span className="truncate text-[12px] text-muted">{status}</span>
@@ -1083,11 +1297,13 @@ export function UnassignedShell({
             </h1>
           ) : selected ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-              {selected.nameHint ? (
+              {selected.unverified ? (
                 <>
                   {selected.displayName}
                   <span className="font-normal text-muted"> (Unverified)</span>
                 </>
+              ) : selected.displayName !== selected.handle ? (
+                selected.displayName
               ) : (
                 selected.handle
               )}
@@ -1095,7 +1311,7 @@ export function UnassignedShell({
           ) : (
             <span className="text-[13px] text-muted">
               {mode === "trash"
-                ? "Choose a trashed number or email"
+                ? "Choose a trashed contact or number"
                 : "Choose an unassigned number or email"}
             </span>
           )}

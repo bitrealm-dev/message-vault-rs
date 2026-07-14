@@ -3,7 +3,6 @@
 import type { UnassignedHandle } from "@/lib/types";
 import type { MouseEvent, RefObject } from "react";
 import { ListHistoryMenu } from "./history";
-import { EllipsisIcon } from "./icons";
 import {
   UnassignedSortMenu,
   type SortOrder,
@@ -11,14 +10,12 @@ import {
 } from "./SortByMenu";
 
 export function UnassignedContactList({
-  mode,
   selectAllRef,
   allHandlesSelected,
   sortedHandles,
   handle,
   selectedHandles,
   multiSelected,
-  saving,
   sortBy,
   sortOrder,
   onSortChange,
@@ -26,9 +23,7 @@ export function UnassignedContactList({
   onSelectColumnClick,
   onRowClick,
   onOpenCtxMenu,
-  onOpenTrashMenu,
 }: {
-  mode: "unassigned" | "trash";
   selectAllRef: RefObject<HTMLInputElement | null>;
   allHandlesSelected: boolean;
   handleCount?: number;
@@ -36,7 +31,6 @@ export function UnassignedContactList({
   handle: string | null;
   selectedHandles: Set<string>;
   multiSelected: boolean;
-  saving: boolean;
   sortBy: UnassignedSortBy;
   sortOrder: SortOrder;
   onSortChange: (next: { sortBy: UnassignedSortBy; order: SortOrder }) => void;
@@ -49,7 +43,6 @@ export function UnassignedContactList({
     handle: string,
     menuH: number,
   ) => void;
-  onOpenTrashMenu: (x: number, y: number, handle: string) => void;
 }) {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
@@ -60,9 +53,7 @@ export function UnassignedContactList({
             type="checkbox"
             checked={allHandlesSelected}
             disabled={sortedHandles.length === 0}
-            aria-label={
-              mode === "trash" ? "Select all trash" : "Select all unassigned"
-            }
+            aria-label="Select all unassigned"
             onChange={onToggleSelectAll}
             className="checkbox-list"
           />
@@ -82,7 +73,7 @@ export function UnassignedContactList({
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {sortedHandles.length === 0 && (
           <p className="px-3 py-4 text-[12px] text-muted">
-            {mode === "trash" ? "Trash is empty" : "No unassigned conversations"}
+            No unassigned conversations
           </p>
         )}
         {sortedHandles.map((h) => {
@@ -137,30 +128,26 @@ export function UnassignedContactList({
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  if (mode === "trash") {
-                    onOpenTrashMenu(e.clientX, e.clientY, h.handle);
-                  } else {
-                    onOpenCtxMenu(
-                      e.clientX,
-                      e.clientY,
-                      h.handle,
-                      multiSelected && selectedHandles.has(h.handle) ? 88 : 200,
-                    );
-                  }
+                  onOpenCtxMenu(
+                    e.clientX,
+                    e.clientY,
+                    h.handle,
+                    multiSelected && selectedHandles.has(h.handle) ? 88 : 200,
+                  );
                 }}
                 className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left outline-none"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] text-text">
                     {h.displayName}
-                    {h.nameHint ? (
+                    {h.unverified ? (
                       <span className="font-normal text-muted">
                         {" "}
                         (Unverified)
                       </span>
                     ) : null}
                   </span>
-                  {h.nameHint && (
+                  {h.handle !== h.displayName && (
                     <span className="block truncate text-[11px] text-muted">
                       {h.handle}
                     </span>
@@ -177,26 +164,6 @@ export function UnassignedContactList({
                   {h.messageCount.toLocaleString()}
                 </span>
               </button>
-              {mode === "trash" && (
-                <button
-                  type="button"
-                  aria-label={`Trash options for ${h.displayName}`}
-                  disabled={saving}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const r = e.currentTarget.getBoundingClientRect();
-                    onOpenTrashMenu(r.right - 8, r.bottom + 2, h.handle);
-                  }}
-                  className={`mr-0.5 shrink-0 self-center rounded p-0.5 text-muted outline-none hover:bg-white/10 hover:text-text disabled:opacity-40 ${
-                    rowActive
-                      ? "opacity-100"
-                      : "opacity-0 group-hover:opacity-100"
-                  }`}
-                >
-                  <EllipsisIcon className="size-5" />
-                </button>
-              )}
             </div>
           );
         })}

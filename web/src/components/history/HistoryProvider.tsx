@@ -83,6 +83,11 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(() => {
     setPast([]);
     setFuture([]);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(null);
   }, []);
 
   const undo = useCallback(async () => {
