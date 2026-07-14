@@ -41,6 +41,10 @@ target
 /staging/*
 !/staging/.gitkeep
 
+# Committed demo bundle (tracked)
+!/demo/
+!/demo/**
+
 # Local machine config (use config/config.toml.example)
 /config/config.toml
 /config/contacts.csv

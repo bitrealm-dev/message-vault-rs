@@ -1,0 +1,16 @@
+[owner]
+display_name = "Demo User"
+phone_e164 = "+14155559000"
+emails = ["demo.user@example.com"]
+
+[paths]
+db = "data/vault.db"
+data_dir = "data"
+assets_dir = "assets"
+assets_converted_dir = "assets_converted"
+contacts_csv = "demo/config/contacts.csv"
+exclude_csv = "demo/config/exclude.csv"
+
+[[sources]]
+id = "imessage"
+export_dir = "demo/staging/imessage"

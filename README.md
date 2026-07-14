@@ -170,6 +170,29 @@ cargo run --release -- export-markdown --out /path/to/Obsidian-Message-Vault
 
 Layout: `People/{Name}/{year}.md`, hub notes `_{Name}.md`, and `.obsidian/snippets/message-vault-bubbles.css` (from `config/obsidian-message-vault.css`).
 
+## Demo dataset
+
+A committed iMessage bundle lives under [`demo/`](demo/) (~30 contacts, ~50 conversations, thousands of messages). Bootstrap without a real backup:
+
+```bash
+./scripts/setup-demo.sh
+cd web && npm run dev
+```
+
+Restore the default demo state after exploring the UI (sidebar **Reset demo**, or CLI):
+
+```bash
+cargo run --release -- reset-demo
+```
+
+Regenerate committed NDJSON (maintainers):
+
+```bash
+cargo run -p demo-seed -- --out demo --seed 42
+```
+
+See [`demo/README.md`](demo/README.md) for what the dataset exercises.
+
 ## Web
 
 See [`web/README.md`](web/README.md). Quick start:

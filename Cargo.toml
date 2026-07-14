@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-  ".",
-  "crates/message-json",
+    ".",
+    "crates/demo-seed",
+    "crates/message-json",
   "crates/go-sms-pro-exporter",
   "crates/sms-backup-restore-exporter",
   "crates/sms-backup-plus-exporter",

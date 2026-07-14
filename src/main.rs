@@ -8,6 +8,7 @@ mod import;
 mod ingest;
 mod models;
 mod ndjson;
+mod reset_demo;
 mod schema;
 mod vcf;
 mod vcf_to_contacts;
@@ -178,6 +179,17 @@ enum Commands {
         /// Overwrite --out if it already exists
         #[arg(long)]
         force: bool,
+    },
+
+    /// Restore committed demo bundle: copy config, wipe DB, re-import iMessage staging
+    ResetDemo {
+        /// Demo bundle directory
+        #[arg(long, default_value = "demo")]
+        bundle: PathBuf,
+
+        /// Active config path to overwrite (default config/config.toml)
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
     },
 }
 
@@ -480,6 +492,20 @@ fn main() -> Result<()> {
             println!("  skipped (no TEL): {}", stats.cards_skipped_no_tel);
             println!("  exclude-only:     {}", stats.exclude_only);
             println!("  contacts written: {}", stats.contacts_written);
+        }
+
+        Commands::ResetDemo { bundle, config } => {
+            let stats = reset_demo::run_reset_demo(&bundle, &config)?;
+            println!();
+            println!("Demo reset complete");
+            println!("  conversations: {}", stats.import.conversations);
+            println!("  messages:      {}", stats.import.messages);
+            println!("  attachments:   {}", stats.import.attachments);
+            println!("  tapbacks:      {}", stats.import.tapbacks);
+            println!("  contacts:      {}", stats.import.contacts);
+            println!("  assets copied: {}", stats.import.assets_copied);
+            println!("  assets missing:{}", stats.import.assets_missing);
+            println!("  dedupe keys:   {}", stats.dedupe_keys_filled);
         }
     }
 
