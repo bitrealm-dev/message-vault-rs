@@ -6,8 +6,12 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    pub owner: OwnerConfig,
-    pub account: AccountConfig,
+    /// Legacy optional vault owner (prefer `vault_owners` in DB).
+    #[serde(default)]
+    pub owner: Option<OwnerConfig>,
+    /// Legacy optional web account (prefer `accounts` in DB).
+    #[serde(default)]
+    pub account: Option<AccountConfig>,
     pub paths: PathsConfig,
     /// Named import sources. If empty, a single legacy `paths.export_dir` becomes source `default`.
     #[serde(default)]
@@ -118,6 +122,23 @@ impl SourceConfig {
         }
     }
 
+    /// Per-account asset store: `data_dir/<account_id>/<source_id>/<assets_dir>`.
+    pub fn resolved_assets_dir_for_account(
+        &self,
+        paths: &PathsConfig,
+        account_id: &str,
+    ) -> PathBuf {
+        if let Some(p) = &self.assets_dir {
+            p.clone()
+        } else {
+            paths
+                .data_dir
+                .join(account_id)
+                .join(&self.id)
+                .join(&paths.assets_dir)
+        }
+    }
+
     #[allow(dead_code)] // available for tooling / web parity
     pub fn resolved_assets_converted_dir(&self, paths: &PathsConfig) -> PathBuf {
         if let Some(p) = &self.assets_converted_dir {
@@ -125,6 +146,22 @@ impl SourceConfig {
         } else {
             paths
                 .data_dir
+                .join(&self.id)
+                .join(&paths.assets_converted_dir)
+        }
+    }
+
+    pub fn resolved_assets_converted_dir_for_account(
+        &self,
+        paths: &PathsConfig,
+        account_id: &str,
+    ) -> PathBuf {
+        if let Some(p) = &self.assets_converted_dir {
+            p.clone()
+        } else {
+            paths
+                .data_dir
+                .join(account_id)
                 .join(&self.id)
                 .join(&paths.assets_converted_dir)
         }
@@ -205,10 +242,6 @@ impl Config {
             if !seen.insert(source.id.as_str()) {
                 bail!("duplicate source id '{}'", source.id);
             }
-        }
-
-        if config.owner.phones.is_empty() {
-            bail!("owner.phones must contain at least one phone number");
         }
 
         Ok(config)

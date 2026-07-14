@@ -106,6 +106,7 @@ pub struct DedupeStats {
 /// `source_priority` is config `[[sources]]` order (earlier = preferred when choosing the survivor).
 pub fn dedupe_cross_source(
     conn: &mut Connection,
+    account_id: &str,
     source_priority: &[String],
     near_window_secs: i64,
 ) -> Result<DedupeStats> {
@@ -121,8 +122,17 @@ pub fn dedupe_cross_source(
         println!("  dedupe:   recomputing content keys…");
         let _ = io::stdout().flush();
         let tx = conn.transaction()?;
-        stats.keys_filled = recompute_all_content_keys(&tx)?;
-        tx.execute("UPDATE messages SET duplicate_of = NULL", [])?;
+        stats.keys_filled = recompute_all_content_keys(&tx, account_id)?;
+        tx.execute(
+            r#"
+            UPDATE messages
+            SET duplicate_of = NULL
+            WHERE conversation_id IN (
+                SELECT id FROM conversations WHERE account_id = ?1
+            )
+            "#,
+            params![account_id],
+        )?;
         tx.commit()?;
         println!(
             "  dedupe:   keys filled={}  ({:.1}s)",
@@ -135,7 +145,7 @@ pub fn dedupe_cross_source(
         println!("  dedupe:   pass A exact content_key…");
         let _ = io::stdout().flush();
         let tx = conn.transaction()?;
-        let (groups, flagged) = flag_exact_content_key_dupes(&tx, &prio)?;
+        let (groups, flagged) = flag_exact_content_key_dupes(&tx, account_id, &prio)?;
         stats.exact_groups = groups;
         stats.exact_flagged = flagged;
         tx.commit()?;
@@ -151,7 +161,7 @@ pub fn dedupe_cross_source(
         println!("  dedupe:   pass B near-time (±{near_window_secs}s)…");
         let _ = io::stdout().flush();
         let tx = conn.transaction()?;
-        stats.near_flagged = flag_near_time_dupes(&tx, &prio, near_window_secs)?;
+        stats.near_flagged = flag_near_time_dupes(&tx, account_id, &prio, near_window_secs)?;
         tx.commit()?;
         println!(
             "  dedupe:   near flagged={}  ({:.1}s total)",
@@ -164,20 +174,24 @@ pub fn dedupe_cross_source(
 }
 
 /// Compute `content_key` for production rows that still lack one (after attachments exist).
-pub fn fill_missing_content_keys(conn: &Connection) -> Result<u64> {
-    recompute_content_keys(conn, true)
+pub fn fill_missing_content_keys(conn: &Connection, account_id: &str) -> Result<u64> {
+    recompute_content_keys(conn, true, account_id)
 }
 
 /// Rebuild every message `content_key` from current chat/time/body/attachments.
-pub fn recompute_all_content_keys(conn: &Connection) -> Result<u64> {
-    recompute_content_keys(conn, false)
+pub fn recompute_all_content_keys(conn: &Connection, account_id: &str) -> Result<u64> {
+    recompute_content_keys(conn, false, account_id)
 }
 
-fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> {
+fn recompute_content_keys(
+    conn: &Connection,
+    missing_only: bool,
+    account_id: &str,
+) -> Result<u64> {
     let filter = if missing_only {
-        "WHERE m.content_key IS NULL OR m.content_key = ''"
+        "WHERE (m.content_key IS NULL OR m.content_key = '') AND c.account_id = ?1"
     } else {
-        ""
+        "WHERE c.account_id = ?1"
     };
     let sql = format!(
         r#"
@@ -200,7 +214,7 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
         String,
         Option<String>,
     )> = stmt
-        .query_map([], |row| {
+        .query_map(params![account_id], |row| {
             Ok((
                 row.get(0)?,
                 row.get(1)?,
@@ -224,13 +238,15 @@ fn recompute_content_keys(conn: &Connection, missing_only: bool) -> Result<u64> 
     {
         let mut p_stmt = conn.prepare(
             r#"
-            SELECT conversation_id, handle
-            FROM participants
-            WHERE handle IS NOT NULL AND handle != ''
-            ORDER BY conversation_id, handle
+            SELECT p.conversation_id, p.handle
+            FROM participants p
+            JOIN conversations c ON c.id = p.conversation_id
+            WHERE c.account_id = ?1
+              AND p.handle IS NOT NULL AND p.handle != ''
+            ORDER BY p.conversation_id, p.handle
             "#,
         )?;
-        let p_rows = p_stmt.query_map([], |row| {
+        let p_rows = p_stmt.query_map(params![account_id], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?;
         for row in p_rows {
@@ -328,6 +344,7 @@ struct Cand {
 
 fn flag_exact_content_key_dupes(
     conn: &Connection,
+    account_id: &str,
     prio: &HashMap<&str, usize>,
 ) -> Result<(u64, u64)> {
     // One scan of messages + one aggregated attachment pass, then group in Rust.
@@ -336,19 +353,21 @@ fn flag_exact_content_key_dupes(
         r#"
         SELECT m.id, m.source, m.content_key, IFNULL(ac.n, 0)
         FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
         LEFT JOIN (
             SELECT message_id, COUNT(*) AS n
             FROM attachments
             WHERE sha256 IS NOT NULL AND sha256 != ''
             GROUP BY message_id
         ) ac ON ac.message_id = m.id
-        WHERE m.content_key IS NOT NULL AND m.content_key != ''
+        WHERE c.account_id = ?1
+          AND m.content_key IS NOT NULL AND m.content_key != ''
         "#,
     )?;
 
     let mut by_key: HashMap<String, Vec<Cand>> = HashMap::new();
     {
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(params![account_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -520,6 +539,7 @@ struct NearRow {
 
 fn flag_near_time_dupes(
     conn: &Connection,
+    account_id: &str,
     prio: &HashMap<&str, usize>,
     window_secs: i64,
 ) -> Result<u64> {
@@ -529,7 +549,9 @@ fn flag_near_time_dupes(
         r#"
         SELECT m.id, m.conversation_id, m.source, m.is_from_me, m.timestamp_utc, m.timestamp, m.body
         FROM messages m
-        WHERE m.duplicate_of IS NULL
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.account_id = ?1
+          AND m.duplicate_of IS NULL
         "#,
     )?;
     let msg_rows: Vec<(
@@ -541,7 +563,7 @@ fn flag_near_time_dupes(
         String,
         Option<String>,
     )> = msg_stmt
-        .query_map([], |row| {
+        .query_map(params![account_id], |row| {
             Ok((
                 row.get(0)?,
                 row.get(1)?,
@@ -691,6 +713,7 @@ fn flag_near_time_dupes(
 /// Open DB helpers used by CLI.
 pub fn run_dedupe(
     db_path: &std::path::Path,
+    account_id: &str,
     source_priority: &[String],
     near_window_secs: i64,
 ) -> Result<DedupeStats> {
@@ -698,7 +721,7 @@ pub fn run_dedupe(
         .with_context(|| format!("failed to open database {}", db_path.display()))?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     crate::schema::ensure_messages_schema(&conn)?;
-    dedupe_cross_source(&mut conn, source_priority, near_window_secs)
+    dedupe_cross_source(&mut conn, account_id, source_priority, near_window_secs)
 }
 
 #[cfg(test)]
@@ -774,16 +797,25 @@ mod tests {
         );
     }
 
+    const TEST_ACCOUNT_ID: &str = "00000000-0000-0000-0000-000000000001";
+
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
         schema::ensure_messages_schema(&conn).unwrap();
         conn.execute(
+            "INSERT INTO accounts (id, username, read_only) VALUES (?1, 'test', 0)",
+            params![TEST_ACCOUNT_ID],
+        )
+        .unwrap();
+        conn.execute(
             r#"
-            INSERT INTO conversations (chat_identifier, service, conversation_type, group_title, exported_at, source_file)
-            VALUES ('+14075551212', 'SMS', 'individual', NULL, NULL, 't.json')
+            INSERT INTO conversations (
+                account_id, chat_identifier, service, conversation_type, group_title, exported_at, source_file
+            )
+            VALUES (?1, '+14075551212', 'SMS', 'individual', NULL, NULL, 't.json')
             "#,
-            [],
+            params![TEST_ACCOUNT_ID],
         )
         .unwrap();
         conn
@@ -837,6 +869,7 @@ mod tests {
         );
         let stats = dedupe_cross_source(
             &mut conn,
+            TEST_ACCOUNT_ID,
             &["go-sms-pro".into(), "sms-backup-plus".into()],
             2,
         )
@@ -886,6 +919,7 @@ mod tests {
         );
         let stats = dedupe_cross_source(
             &mut conn,
+            TEST_ACCOUNT_ID,
             &["go-sms-pro".into(), "sms-backup-plus".into()],
             2,
         )
@@ -927,6 +961,7 @@ mod tests {
         );
         let stats = dedupe_cross_source(
             &mut conn,
+            TEST_ACCOUNT_ID,
             &["go-sms-pro".into(), "sms-backup-plus".into()],
             2,
         )
@@ -968,6 +1003,7 @@ mod tests {
         );
         dedupe_cross_source(
             &mut conn,
+            TEST_ACCOUNT_ID,
             &["go-sms-pro".into(), "sms-backup-plus".into()],
             2,
         )

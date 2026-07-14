@@ -4,10 +4,16 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use rusqlite::{params, Connection};
 
 use crate::config::Config;
 use crate::dedupe;
 use crate::import::{self, ImportMode};
+use crate::schema;
+use crate::vault_owner;
+
+/// Stable demo account id used when `reset-demo` runs without `--account`.
+pub const DEMO_ACCOUNT_ID: &str = "00000000-0000-0000-0000-00000000d001";
 
 #[derive(Debug)]
 pub struct ResetDemoStats {
@@ -16,6 +22,14 @@ pub struct ResetDemoStats {
 }
 
 pub fn run_reset_demo(bundle: &Path, config_dest: &Path) -> Result<ResetDemoStats> {
+    run_reset_demo_for_account(bundle, config_dest, DEMO_ACCOUNT_ID)
+}
+
+pub fn run_reset_demo_for_account(
+    bundle: &Path,
+    config_dest: &Path,
+    account_id: &str,
+) -> Result<ResetDemoStats> {
     let bundle = if bundle.is_absolute() {
         bundle.to_path_buf()
     } else {
@@ -45,12 +59,12 @@ pub fn run_reset_demo(bundle: &Path, config_dest: &Path) -> Result<ResetDemoStat
     })?;
 
     let cfg = Config::load(config_dest)?;
-    wipe_vault(&cfg)?;
+    wipe_vault(&cfg, account_id)?;
     restore_demo_csvs(&bundle, &cfg)?;
 
     let src = cfg.source("imessage")?;
     let export_dir = src.export_dir.clone();
-    let assets_dir = src.resolved_assets_dir(&cfg.paths);
+    let assets_dir = src.resolved_assets_dir_for_account(&cfg.paths, account_id);
     let db = cfg.paths.db.clone();
     let contacts_csv = cfg.paths.contacts_csv.clone();
     let exclude_csv = cfg.paths.exclude_csv.clone();
@@ -58,8 +72,11 @@ pub fn run_reset_demo(bundle: &Path, config_dest: &Path) -> Result<ResetDemoStat
     println!("Reset demo");
     println!("  bundle:       {}", bundle.display());
     println!("  config:       {}", config_dest.display());
+    println!("  account:      {}", account_id);
     println!("  export_dir:   {}", export_dir.display());
     println!("  db:           {}", db.display());
+
+    seed_demo_account(&db, account_id, &cfg)?;
 
     let import_stats = import::import_export(
         &export_dir,
@@ -70,15 +87,80 @@ pub fn run_reset_demo(bundle: &Path, config_dest: &Path) -> Result<ResetDemoStat
         true,
         ImportMode::Replace,
         "imessage",
+        account_id,
     )?;
 
     let priority: Vec<String> = cfg.sources.iter().map(|s| s.id.clone()).collect();
-    let dedupe_stats = dedupe::run_dedupe(&db, &priority, 2)?;
+    let dedupe_stats = dedupe::run_dedupe(&db, account_id, &priority, 2)?;
 
     Ok(ResetDemoStats {
         import: import_stats,
         dedupe_keys_filled: dedupe_stats.keys_filled,
     })
+}
+
+fn seed_demo_account(db_path: &Path, account_id: &str, cfg: &Config) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    schema::ensure_vault_schema(&conn)?;
+    vault_owner::ensure_account_row(&conn, account_id)?;
+
+    if let Some(acct) = &cfg.account {
+        conn.execute(
+            r#"
+            INSERT INTO accounts (id, username, read_only)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(id) DO UPDATE SET
+                username = excluded.username,
+                read_only = excluded.read_only
+            "#,
+            params![account_id, acct.username, acct.read_only as i64],
+        )?;
+        conn.execute(
+            "DELETE FROM account_emails WHERE account_id = ?1",
+            params![account_id],
+        )?;
+        conn.execute(
+            r#"
+            INSERT INTO account_emails (account_id, email, is_primary)
+            VALUES (?1, ?2, 1)
+            "#,
+            params![account_id, acct.login_email],
+        )?;
+    }
+
+    if let Some(owner) = &cfg.owner {
+        conn.execute(
+            r#"
+            INSERT INTO vault_owners (account_id, display_name)
+            VALUES (?1, ?2)
+            ON CONFLICT(account_id) DO UPDATE SET display_name = excluded.display_name
+            "#,
+            params![account_id, owner.display_name],
+        )?;
+        conn.execute(
+            "DELETE FROM vault_owner_phones WHERE account_id = ?1",
+            params![account_id],
+        )?;
+        for phone in &owner.phones {
+            conn.execute(
+                "INSERT INTO vault_owner_phones (account_id, phone) VALUES (?1, ?2)",
+                params![account_id, phone],
+            )?;
+        }
+        conn.execute(
+            "DELETE FROM vault_owner_emails WHERE account_id = ?1",
+            params![account_id],
+        )?;
+        for email in &owner.emails {
+            conn.execute(
+                "INSERT INTO vault_owner_emails (account_id, email) VALUES (?1, ?2)",
+                params![account_id, email],
+            )?;
+        }
+    }
+
+    Ok(())
 }
 
 fn restore_demo_csvs(bundle: &Path, cfg: &Config) -> Result<()> {
@@ -108,11 +190,11 @@ fn copy_if_exists(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-fn wipe_vault(cfg: &Config) -> Result<()> {
+fn wipe_vault(cfg: &Config, account_id: &str) -> Result<()> {
     remove_db_files(&cfg.paths.db)?;
     for src in &cfg.sources {
-        let assets = src.resolved_assets_dir(&cfg.paths);
-        let converted = src.resolved_assets_converted_dir(&cfg.paths);
+        let assets = src.resolved_assets_dir_for_account(&cfg.paths, account_id);
+        let converted = src.resolved_assets_converted_dir_for_account(&cfg.paths, account_id);
         remove_tree_if_exists(&assets)?;
         remove_tree_if_exists(&converted)?;
     }

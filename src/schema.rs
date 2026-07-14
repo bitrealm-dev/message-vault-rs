@@ -1,16 +1,20 @@
 use anyhow::Result;
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 
 const MESSAGE_TABLES_DDL: &str = r#"
 CREATE TABLE conversations (
     id INTEGER PRIMARY KEY,
-    chat_identifier TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    chat_identifier TEXT NOT NULL,
     service TEXT,
     conversation_type TEXT NOT NULL,
     group_title TEXT,
     exported_at TEXT,
-    source_file TEXT NOT NULL
+    source_file TEXT NOT NULL,
+    UNIQUE(account_id, chat_identifier)
 );
+
+CREATE INDEX ix_conversations_account_id ON conversations (account_id);
 
 CREATE TABLE participants (
     id INTEGER PRIMARY KEY,
@@ -90,12 +94,14 @@ CREATE INDEX ix_messages_source ON messages (source);
 const STAGING_TABLES_DDL: &str = r#"
 CREATE TABLE staging_conversations (
     id INTEGER PRIMARY KEY,
-    chat_identifier TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    chat_identifier TEXT NOT NULL,
     service TEXT,
     conversation_type TEXT NOT NULL,
     group_title TEXT,
     exported_at TEXT,
-    source_file TEXT NOT NULL
+    source_file TEXT NOT NULL,
+    UNIQUE(account_id, chat_identifier)
 );
 
 CREATE TABLE staging_participants (
@@ -162,6 +168,133 @@ CREATE TABLE staging_tapbacks (
 CREATE INDEX ix_staging_tapbacks_message_id ON staging_tapbacks (message_id);
 "#;
 
+const CONTACTS_TABLES_DDL: &str = r#"
+CREATE TABLE contacts (
+    id INTEGER PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    first_name TEXT,
+    last_name TEXT,
+    exclude INTEGER NOT NULL DEFAULT 0,
+    preferred_handle TEXT
+);
+
+CREATE INDEX ix_contacts_account_id ON contacts (account_id);
+
+CREATE TABLE contact_handles (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    handle TEXT NOT NULL,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    PRIMARY KEY (account_id, handle)
+);
+
+CREATE INDEX ix_contact_handles_contact_id
+    ON contact_handles (contact_id);
+
+CREATE TABLE contact_groups (
+    id INTEGER PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    UNIQUE(account_id, name)
+);
+
+CREATE TABLE contact_group_members (
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES contact_groups(id) ON DELETE CASCADE,
+    PRIMARY KEY (contact_id, group_id)
+);
+
+CREATE TABLE trashed_handles (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    handle TEXT NOT NULL,
+    trashed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (account_id, handle)
+);
+
+CREATE TABLE trashed_conversations (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    conversation_id INTEGER NOT NULL,
+    trashed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (account_id, conversation_id)
+);
+
+CREATE TABLE trashed_contacts (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    contact_id INTEGER NOT NULL,
+    trashed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (account_id, contact_id)
+);
+"#;
+
+fn table_exists(conn: &Connection, name: &str) -> Result<bool> {
+    let exists: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [name],
+        |row| row.get(0),
+    )?;
+    Ok(exists)
+}
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        [column],
+        |row| row.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Fresh-start: drop legacy single-tenant vault tables lacking `account_id`.
+fn wipe_legacy_vault_tables(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        PRAGMA foreign_keys = OFF;
+        DROP TABLE IF EXISTS tapbacks;
+        DROP TABLE IF EXISTS attachments;
+        DROP TABLE IF EXISTS messages;
+        DROP TABLE IF EXISTS participants;
+        DROP TABLE IF EXISTS conversations;
+        DROP TABLE IF EXISTS staging_tapbacks;
+        DROP TABLE IF EXISTS staging_attachments;
+        DROP TABLE IF EXISTS staging_messages;
+        DROP TABLE IF EXISTS staging_participants;
+        DROP TABLE IF EXISTS staging_conversations;
+        DROP TABLE IF EXISTS contact_group_members;
+        DROP TABLE IF EXISTS contact_groups;
+        DROP TABLE IF EXISTS contact_handles;
+        DROP TABLE IF EXISTS contacts;
+        DROP TABLE IF EXISTS trashed_handles;
+        DROP TABLE IF EXISTS trashed_conversations;
+        DROP TABLE IF EXISTS trashed_contacts;
+        PRAGMA foreign_keys = ON;
+        "#,
+    )?;
+    Ok(())
+}
+
+/// Ensure multi-account vault schema. Wipes legacy tables when `conversations` lacks `account_id`.
+pub fn ensure_vault_schema(conn: &Connection) -> Result<()> {
+    if table_exists(conn, "conversations")?
+        && !table_has_column(conn, "conversations", "account_id")?
+    {
+        wipe_legacy_vault_tables(conn)?;
+    }
+
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    ensure_accounts_schema(conn)?;
+
+    let has_conversations = table_exists(conn, "conversations")?;
+    if !has_conversations {
+        conn.execute_batch(MESSAGE_TABLES_DDL)?;
+    }
+
+    let has_contacts = table_exists(conn, "contacts")?;
+    if !has_contacts {
+        conn.execute_batch(CONTACTS_TABLES_DDL)?;
+    }
+
+    Ok(())
+}
+
 /// Drop and recreate production message-related tables. Does not touch contacts or staging.
 #[allow(dead_code)]
 pub fn recreate_messages(conn: &Connection) -> Result<()> {
@@ -183,13 +316,10 @@ pub fn recreate_messages(conn: &Connection) -> Result<()> {
 /// Create production message tables if they do not already exist (for append on a fresh DB).
 /// Migrates older schemas that lack `messages.source` / cross-source dedupe columns.
 pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
-    let exists: bool = conn.query_row(
-        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'conversations'",
-        [],
-        |row| row.get(0),
-    )?;
+    ensure_vault_schema(conn)?;
+
+    let exists = table_exists(conn, "conversations")?;
     if !exists {
-        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(MESSAGE_TABLES_DDL)?;
         return Ok(());
     }
@@ -197,15 +327,6 @@ pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {
     migrate_messages_dedupe_columns(conn)?;
     migrate_delete_performance_indexes(conn)?;
     Ok(())
-}
-
-fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
-    let n: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
-        [column],
-        |row| row.get(0),
-    )?;
-    Ok(n > 0)
 }
 
 fn migrate_messages_source(conn: &Connection) -> Result<()> {
@@ -259,36 +380,59 @@ fn migrate_delete_performance_indexes(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Delete all production messages (and cascaded rows) for one import source.
-pub fn delete_messages_for_source(conn: &Connection, source: &str) -> Result<u64> {
+/// Delete all production messages (and cascaded rows) for one import source within one account.
+pub fn delete_messages_for_source(
+    conn: &Connection,
+    account_id: &str,
+    source: &str,
+) -> Result<u64> {
     // Ensure indexes exist even if caller skipped ensure_messages_schema somehow.
     migrate_delete_performance_indexes(conn)?;
 
-    // Delete children first with set-based IN queries so CASCADE work is minimal,
-    // then clear reverse FKs (duplicate_of), then delete the messages themselves.
     conn.execute(
         r#"
         DELETE FROM attachments
-        WHERE message_id IN (SELECT id FROM messages WHERE source = ?1)
+        WHERE message_id IN (
+            SELECT m.id FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE m.source = ?1 AND c.account_id = ?2
+        )
         "#,
-        [source],
+        params![source, account_id],
     )?;
     conn.execute(
         r#"
         DELETE FROM tapbacks
-        WHERE message_id IN (SELECT id FROM messages WHERE source = ?1)
+        WHERE message_id IN (
+            SELECT m.id FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE m.source = ?1 AND c.account_id = ?2
+        )
         "#,
-        [source],
+        params![source, account_id],
     )?;
     conn.execute(
         r#"
         UPDATE messages
         SET duplicate_of = NULL
-        WHERE duplicate_of IN (SELECT id FROM messages WHERE source = ?1)
+        WHERE duplicate_of IN (
+            SELECT m.id FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE m.source = ?1 AND c.account_id = ?2
+        )
         "#,
-        [source],
+        params![source, account_id],
     )?;
-    let n = conn.execute("DELETE FROM messages WHERE source = ?1", [source])?;
+    let n = conn.execute(
+        r#"
+        DELETE FROM messages
+        WHERE source = ?1
+          AND conversation_id IN (
+              SELECT id FROM conversations WHERE account_id = ?2
+          )
+        "#,
+        params![source, account_id],
+    )?;
     Ok(n as u64)
 }
 
@@ -325,7 +469,7 @@ pub fn clear_staging(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// True when contacts tables match the current handle-based schema.
+/// True when contacts tables match the current multi-account handle-based schema.
 pub fn contacts_schema_ready(conn: &Connection) -> Result<bool> {
     let has_handles: bool = conn
         .query_row(
@@ -342,72 +486,92 @@ pub fn contacts_schema_ready(conn: &Connection) -> Result<bool> {
     let cols: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(cols.iter().any(|c| c == "preferred_handle"))
+    Ok(cols.iter().any(|c| c == "account_id")
+        && cols.iter().any(|c| c == "preferred_handle"))
 }
 
 /// Create contacts tables if they do not already exist.
 pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        r#"
-        PRAGMA foreign_keys = ON;
-
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY,
-            first_name TEXT,
-            last_name TEXT,
-            exclude INTEGER NOT NULL DEFAULT 0,
-            preferred_handle TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS contact_handles (
-            handle TEXT PRIMARY KEY,
-            contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE
-        );
-
-        CREATE INDEX IF NOT EXISTS ix_contact_handles_contact_id
-            ON contact_handles (contact_id);
-
-        CREATE TABLE IF NOT EXISTS contact_groups (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE
-        );
-
-        CREATE TABLE IF NOT EXISTS contact_group_members (
-            contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-            group_id INTEGER NOT NULL REFERENCES contact_groups(id) ON DELETE CASCADE,
-            PRIMARY KEY (contact_id, group_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS trashed_handles (
-            handle TEXT PRIMARY KEY,
-            trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS trashed_conversations (
-            conversation_id INTEGER PRIMARY KEY,
-            trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS trashed_contacts (
-            contact_id INTEGER PRIMARY KEY,
-            trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        "#,
-    )?;
-    ensure_accounts_schema(conn)?;
+    ensure_vault_schema(conn)?;
+    if !table_exists(conn, "contacts")? {
+        conn.execute_batch(CONTACTS_TABLES_DDL)?;
+    }
     Ok(())
 }
 
-/// Web login accounts — stable `id` separate from mutable username/email.
+/// Web login accounts and per-account vault owner profile tables.
 pub fn ensure_accounts_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS accounts (
             id TEXT PRIMARY KEY,
             username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-            email TEXT NOT NULL UNIQUE COLLATE NOCASE,
             read_only INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS account_emails (
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (account_id, email)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_account_emails_one_primary
+            ON account_emails(account_id)
+            WHERE is_primary = 1;
+
+        CREATE TABLE IF NOT EXISTS vault_owners (
+            account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+            display_name TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS vault_owner_phones (
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            phone TEXT NOT NULL,
+            PRIMARY KEY (account_id, phone)
+        );
+
+        CREATE TABLE IF NOT EXISTS vault_owner_emails (
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            email TEXT NOT NULL,
+            PRIMARY KEY (account_id, email)
+        );
+        "#,
+    )?;
+    migrate_legacy_accounts_email(conn)?;
+    Ok(())
+}
+
+/// Drop legacy `accounts.email` column; emails live in `account_emails`.
+fn migrate_legacy_accounts_email(conn: &Connection) -> Result<()> {
+    let has_email: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('accounts') WHERE name = 'email'",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_email {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        r#"
+        PRAGMA foreign_keys = OFF;
+
+        INSERT OR IGNORE INTO account_emails (account_id, email, is_primary)
+        SELECT id, email, 1 FROM accounts
+        WHERE email IS NOT NULL AND trim(email) != '';
+
+        CREATE TABLE accounts_new (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            read_only INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO accounts_new (id, username, read_only)
+            SELECT id, username, read_only FROM accounts;
+        DROP TABLE accounts;
+        ALTER TABLE accounts_new RENAME TO accounts;
+
+        PRAGMA foreign_keys = ON;
         "#,
     )?;
     Ok(())
@@ -423,6 +587,9 @@ pub fn recreate_contacts(conn: &Connection) -> Result<()> {
         DROP TABLE IF EXISTS contact_groups;
         DROP TABLE IF EXISTS contact_handles;
         DROP TABLE IF EXISTS contacts;
+        DROP TABLE IF EXISTS trashed_handles;
+        DROP TABLE IF EXISTS trashed_conversations;
+        DROP TABLE IF EXISTS trashed_contacts;
         "#,
     )?;
     ensure_contacts_schema(conn)

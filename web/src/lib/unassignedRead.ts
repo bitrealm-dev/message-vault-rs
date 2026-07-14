@@ -1,3 +1,4 @@
+import { currentAccountId } from "./accountScope";
 import {
   getDb,
   hasDuplicateOfColumn,
@@ -13,13 +14,15 @@ import {
 import type { UnassignedHandle, YearThread } from "./types";
 
 export function countUnassignedHandles(): number {
+  const accountId = currentAccountId();
   const db = getDb();
   const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
   const hasTrash = hasTrashedHandlesTable(db);
   const trashFilter = !hasTrash
     ? ""
     : `AND NOT EXISTS (
-         SELECT 1 FROM trashed_handles th WHERE th.handle = c.chat_identifier
+         SELECT 1 FROM trashed_handles th
+         WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
        )`;
   const row = db
     .prepare(
@@ -27,16 +30,18 @@ export function countUnassignedHandles(): number {
          SELECT c.id
          FROM conversations c
          JOIN messages m ON m.conversation_id = c.id
-         WHERE c.conversation_type = 'individual'
+         WHERE c.account_id = ?
+           AND c.conversation_type = 'individual'
            AND NOT EXISTS (
-             SELECT 1 FROM contact_handles cp WHERE cp.handle = c.chat_identifier
+             SELECT 1 FROM contact_handles cp
+             WHERE cp.handle = c.chat_identifier AND cp.account_id = c.account_id
            )
            ${trashFilter}${hideDupes}
          GROUP BY c.id
          HAVING COUNT(m.id) > 0
        )`,
     )
-    .get() as { n: number };
+    .get(accountId) as { n: number };
   return row.n;
 }
 
@@ -54,6 +59,7 @@ export function listTrashedHandles(): UnassignedHandle[] {
 
 
 function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] {
+  const accountId = currentAccountId();
   const db = getDb();
   const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
   const hasTrash = hasTrashedHandlesTable(db);
@@ -63,10 +69,12 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
     ? ""
     : section === "trash"
       ? `AND EXISTS (
-           SELECT 1 FROM trashed_handles th WHERE th.handle = c.chat_identifier
+           SELECT 1 FROM trashed_handles th
+           WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
          )`
       : `AND NOT EXISTS (
-           SELECT 1 FROM trashed_handles th WHERE th.handle = c.chat_identifier
+           SELECT 1 FROM trashed_handles th
+           WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
          )`;
 
   const rows = db
@@ -80,16 +88,18 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
        JOIN messages m ON m.conversation_id = c.id
        LEFT JOIN participants p
          ON p.conversation_id = c.id AND p.handle = c.chat_identifier
-       WHERE c.conversation_type = 'individual'
+       WHERE c.account_id = ?
+         AND c.conversation_type = 'individual'
          AND NOT EXISTS (
-           SELECT 1 FROM contact_handles cp WHERE cp.handle = c.chat_identifier
+           SELECT 1 FROM contact_handles cp
+           WHERE cp.handle = c.chat_identifier AND cp.account_id = c.account_id
          )
          ${trashFilter}${hideDupes}
        GROUP BY c.id
        HAVING message_count > 0
        ORDER BY handle COLLATE NOCASE`,
     )
-    .all() as Array<{
+    .all(accountId) as Array<{
     handle: string;
     name_hint: string | null;
     message_count: number;
@@ -131,21 +141,24 @@ export function unassignedThreadsBundle(
   messageSources: string[];
   sourceCounts: ContactSourceCounts;
 } | null {
+  const accountId = currentAccountId();
   const trimmed = handle.trim();
   if (!trimmed) return null;
   const db = getDb();
   const conv = db
     .prepare(
       `SELECT id FROM conversations
-       WHERE conversation_type = 'individual' AND chat_identifier = ?`,
+       WHERE account_id = ? AND conversation_type = 'individual' AND chat_identifier = ?`,
     )
-    .get(trimmed) as { id: number } | undefined;
+    .get(accountId, trimmed) as { id: number } | undefined;
   if (!conv) return null;
 
   if (!opts?.includeTrashed) {
     const owned = db
-      .prepare(`SELECT 1 AS ok FROM contact_handles WHERE handle = ?`)
-      .get(trimmed) as { ok: number } | undefined;
+      .prepare(
+        `SELECT 1 AS ok FROM contact_handles WHERE account_id = ? AND handle = ?`,
+      )
+      .get(accountId, trimmed) as { ok: number } | undefined;
     if (owned) return null;
   }
 
@@ -167,4 +180,3 @@ export function unassignedThreadsBundle(
     sourceCounts,
   };
 }
-

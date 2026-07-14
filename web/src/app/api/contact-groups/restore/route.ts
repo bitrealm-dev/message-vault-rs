@@ -1,8 +1,19 @@
 import { restoreGroup } from "@/lib/contactsWrite";
 import { listGroups } from "@/lib/db";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
 
 /** Recreate a deleted group and re-attach member contacts (undo delete group). */
 export async function POST(req: Request) {
@@ -24,9 +35,13 @@ export async function POST(req: Request) {
     : [];
 
   try {
-    const name = restoreGroup(body.name, memberContactIds);
-    return NextResponse.json({ name, groups: listGroups() });
+    return await withAccountHandler(async () => {
+      const name = restoreGroup(body.name as string, memberContactIds);
+      return NextResponse.json({ name, groups: listGroups() });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "restore failed";
     const status = message.includes("already exists") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });

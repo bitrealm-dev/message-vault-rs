@@ -1,11 +1,31 @@
 import { createGroup, deleteGroup, renameGroup } from "@/lib/contactsWrite";
 import { listGroups } from "@/lib/db";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
+
 export async function GET() {
-  return NextResponse.json({ groups: listGroups() });
+  try {
+    return await withAccountHandler(async () => {
+      return NextResponse.json({ groups: listGroups() });
+    });
+  } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
+    const message = err instanceof Error ? err.message : "load failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -21,9 +41,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const name = createGroup(body.name);
-    return NextResponse.json({ name, groups: listGroups() });
+    return await withAccountHandler(async () => {
+      const name = createGroup(body.name as string);
+      return NextResponse.json({ name, groups: listGroups() });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "create failed";
     const status = message.includes("already exists") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
@@ -43,9 +67,13 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const name = renameGroup(body.from, body.to);
-    return NextResponse.json({ name, groups: listGroups() });
+    return await withAccountHandler(async () => {
+      const name = renameGroup(body.from as string, body.to as string);
+      return NextResponse.json({ name, groups: listGroups() });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "rename failed";
     const status = message.includes("not found")
       ? 404
@@ -69,9 +97,13 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    deleteGroup(body.name);
-    return NextResponse.json({ ok: true, groups: listGroups() });
+    return await withAccountHandler(async () => {
+      deleteGroup(body.name as string);
+      return NextResponse.json({ ok: true, groups: listGroups() });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "delete failed";
     const status = message.includes("not found") ? 404 : 400;
     return NextResponse.json({ error: message }, { status });

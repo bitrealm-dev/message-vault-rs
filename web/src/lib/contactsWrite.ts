@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { currentAccountId } from "./accountScope";
 import { dbPath } from "./paths";
 import { getContact, resetDb } from "./db";
 import {
@@ -46,6 +47,7 @@ export type ContactCreate = {
 /** Insert a new contact in SQLite and append contacts.csv; returns the contact. */
 export function createContact(input: ContactCreate): ContactDetail {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const firstName = input.firstName?.trim() || null;
   const lastName = input.lastName?.trim() || null;
   if (!firstName && !lastName) {
@@ -74,7 +76,7 @@ export function createContact(input: ContactCreate): ContactDetail {
   try {
     const tx = writeDb.transaction(() => {
       for (const phone of phones) {
-        const owner = phoneOwner(writeDb, phone);
+        const owner = phoneOwner(writeDb, phone, accountId);
         if (owner != null) {
           throw new Error(`phone ${phone} already belongs to another contact`);
         }
@@ -82,26 +84,26 @@ export function createContact(input: ContactCreate): ContactDetail {
 
       const result = writeDb
         .prepare(
-          `INSERT INTO contacts (first_name, last_name, exclude, preferred_handle)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT INTO contacts (account_id, first_name, last_name, exclude, preferred_handle)
+           VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(firstName, lastName, exclude ? 1 : 0, preferredHandle);
+        .run(accountId, firstName, lastName, exclude ? 1 : 0, preferredHandle);
       newId = Number(result.lastInsertRowid);
 
       const insertPhone = writeDb.prepare(
-        `INSERT INTO contact_handles (handle, contact_id) VALUES (?, ?)`,
+        `INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?, ?, ?)`,
       );
       for (const phone of phones) {
-        insertPhone.run(phone, newId);
+        insertPhone.run(accountId, phone, newId);
       }
-      clearTrashedHandles(writeDb, phones);
+      clearTrashedHandles(writeDb, phones, accountId);
 
       if (contactGroups.length > 0) {
         const insertMember = writeDb.prepare(
           `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
         );
         for (const name of contactGroups) {
-          const groupId = ensureGroupId(writeDb, name);
+          const groupId = ensureGroupId(writeDb, name, accountId);
           insertMember.run(newId, groupId);
         }
       }
@@ -127,26 +129,37 @@ export function createContact(input: ContactCreate): ContactDetail {
   return created;
 }
 
-function ensureGroupId(db: Database.Database, name: string): number {
+function ensureGroupId(
+  db: Database.Database,
+  name: string,
+  accountId: string,
+): number {
   assertAllowedGroupName(name);
-  db.prepare(`INSERT OR IGNORE INTO contact_groups (name) VALUES (?)`).run(name);
+  db.prepare(
+    `INSERT OR IGNORE INTO contact_groups (account_id, name) VALUES (?, ?)`,
+  ).run(accountId, name);
   const row = db
-    .prepare(`SELECT id FROM contact_groups WHERE name = ?`)
-    .get(name) as { id: number } | undefined;
+    .prepare(`SELECT id FROM contact_groups WHERE account_id = ? AND name = ?`)
+    .get(accountId, name) as { id: number } | undefined;
   if (!row) throw new Error(`failed to ensure group ${name}`);
   return row.id;
 }
 
-function findGroupId(db: Database.Database, name: string): number | null {
+function findGroupId(
+  db: Database.Database,
+  name: string,
+  accountId: string,
+): number | null {
   const row = db
-    .prepare(`SELECT id FROM contact_groups WHERE name = ?`)
-    .get(name) as { id: number } | undefined;
+    .prepare(`SELECT id FROM contact_groups WHERE account_id = ? AND name = ?`)
+    .get(accountId, name) as { id: number } | undefined;
   return row?.id ?? null;
 }
 
 
 export function createGroup(name: string): string {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
   assertAllowedGroupName(trimmed);
@@ -154,12 +167,16 @@ export function createGroup(name: string): string {
   const writeDb = new Database(dbPath());
   try {
     const existing = writeDb
-      .prepare(`SELECT name FROM contact_groups WHERE name = ? COLLATE NOCASE`)
-      .get(trimmed) as { name: string } | undefined;
+      .prepare(
+        `SELECT name FROM contact_groups WHERE account_id = ? AND name = ? COLLATE NOCASE`,
+      )
+      .get(accountId, trimmed) as { name: string } | undefined;
     if (existing) {
       throw new Error("group already exists");
     }
-    writeDb.prepare(`INSERT INTO contact_groups (name) VALUES (?)`).run(trimmed);
+    writeDb
+      .prepare(`INSERT INTO contact_groups (account_id, name) VALUES (?, ?)`)
+      .run(accountId, trimmed);
   } finally {
     writeDb.close();
   }
@@ -170,6 +187,7 @@ export function createGroup(name: string): string {
 
 export function renameGroup(from: string, to: string): string {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const oldName = from.trim();
   const newName = to.trim();
   if (!oldName || !newName) throw new Error("name required");
@@ -181,19 +199,20 @@ export function renameGroup(from: string, to: string): string {
 
   const writeDb = new Database(dbPath());
   try {
-    const id = findGroupId(writeDb, oldName);
+    const id = findGroupId(writeDb, oldName, accountId);
     if (id == null) throw new Error("group not found");
 
     const clash = writeDb
       .prepare(
-        `SELECT id FROM contact_groups WHERE name = ? COLLATE NOCASE AND id != ?`,
+        `SELECT id FROM contact_groups
+         WHERE account_id = ? AND name = ? COLLATE NOCASE AND id != ?`,
       )
-      .get(newName, id) as { id: number } | undefined;
+      .get(accountId, newName, id) as { id: number } | undefined;
     if (clash) throw new Error("group already exists");
 
     writeDb
-      .prepare(`UPDATE contact_groups SET name = ? WHERE id = ?`)
-      .run(newName, id);
+      .prepare(`UPDATE contact_groups SET name = ? WHERE id = ? AND account_id = ?`)
+      .run(newName, id, accountId);
   } finally {
     writeDb.close();
   }
@@ -207,17 +226,20 @@ export function renameGroup(from: string, to: string): string {
 
 export function deleteGroup(name: string): void {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
 
   const writeDb = new Database(dbPath());
   try {
-    const id = findGroupId(writeDb, trimmed);
+    const id = findGroupId(writeDb, trimmed, accountId);
     if (id == null) throw new Error("group not found");
     writeDb
       .prepare(`DELETE FROM contact_group_members WHERE group_id = ?`)
       .run(id);
-    writeDb.prepare(`DELETE FROM contact_groups WHERE id = ?`).run(id);
+    writeDb
+      .prepare(`DELETE FROM contact_groups WHERE id = ? AND account_id = ?`)
+      .run(id, accountId);
   } finally {
     writeDb.close();
   }
@@ -231,10 +253,13 @@ export function deleteGroup(name: string): void {
 function phoneOwner(
   db: Database.Database,
   phone: string,
+  accountId: string,
 ): number | null {
   const row = db
-    .prepare(`SELECT contact_id FROM contact_handles WHERE handle = ?`)
-    .get(phone) as { contact_id: number } | undefined;
+    .prepare(
+      `SELECT contact_id FROM contact_handles WHERE account_id = ? AND handle = ?`,
+    )
+    .get(accountId, phone) as { contact_id: number } | undefined;
   return row?.contact_id ?? null;
 }
 
@@ -247,10 +272,11 @@ function remapPhoneHandle(
   contactId: number,
   from: string,
   to: string,
+  accountId: string,
 ): void {
   if (from === to) return;
 
-  const owner = phoneOwner(db, to);
+  const owner = phoneOwner(db, to, accountId);
   if (owner != null && owner !== contactId) {
     throw new Error(`phone ${to} already belongs to another contact`);
   }
@@ -258,16 +284,19 @@ function remapPhoneHandle(
   // Prefer updating the PK in place; if `to` already exists on this contact,
   // drop the old row instead (merge).
   if (owner === contactId) {
-    db.prepare(`DELETE FROM contact_handles WHERE handle = ?`).run(from);
+    db.prepare(
+      `DELETE FROM contact_handles WHERE account_id = ? AND handle = ?`,
+    ).run(accountId, from);
   } else {
     db.prepare(
-      `UPDATE contact_handles SET handle = ? WHERE handle = ?`,
-    ).run(to, from);
+      `UPDATE contact_handles SET handle = ? WHERE account_id = ? AND handle = ?`,
+    ).run(to, accountId, from);
   }
 
   db.prepare(
-    `UPDATE conversations SET chat_identifier = ? WHERE chat_identifier = ?`,
-  ).run(to, from);
+    `UPDATE conversations SET chat_identifier = ?
+     WHERE account_id = ? AND chat_identifier = ?`,
+  ).run(to, accountId, from);
   db.prepare(`UPDATE participants SET handle = ? WHERE handle = ?`).run(to, from);
   db.prepare(`UPDATE messages SET sender = ? WHERE sender = ?`).run(to, from);
   db.prepare(`UPDATE tapbacks SET sender = ? WHERE sender = ?`).run(to, from);
@@ -278,33 +307,34 @@ function syncContactPhones(
   contactId: number,
   oldPhones: string[],
   newPhones: string[],
+  accountId: string,
 ): void {
   const shared = Math.min(oldPhones.length, newPhones.length);
   for (let i = 0; i < shared; i++) {
     const from = oldPhones[i]!;
     const to = newPhones[i]!;
     if (from !== to) {
-      remapPhoneHandle(db, contactId, from, to);
+      remapPhoneHandle(db, contactId, from, to, accountId);
     }
   }
 
   for (let i = shared; i < oldPhones.length; i++) {
-    db.prepare(`DELETE FROM contact_handles WHERE handle = ?`).run(
-      oldPhones[i],
-    );
+    db.prepare(
+      `DELETE FROM contact_handles WHERE account_id = ? AND handle = ?`,
+    ).run(accountId, oldPhones[i]);
   }
 
   const insert = db.prepare(
-    `INSERT INTO contact_handles (handle, contact_id) VALUES (?, ?)`,
+    `INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?, ?, ?)`,
   );
   for (let i = shared; i < newPhones.length; i++) {
     const phone = newPhones[i]!;
-    const owner = phoneOwner(db, phone);
+    const owner = phoneOwner(db, phone, accountId);
     if (owner != null && owner !== contactId) {
       throw new Error(`phone ${phone} already belongs to another contact`);
     }
     if (owner == null) {
-      insert.run(phone, contactId);
+      insert.run(accountId, phone, contactId);
     }
   }
 }
@@ -315,6 +345,7 @@ export function patchContact(
   patch: ContactPatch,
 ): ContactDetail {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const existing = getContact(id);
   if (!existing) {
     throw new Error("contact not found");
@@ -357,17 +388,17 @@ export function patchContact(
   try {
     const tx = writeDb.transaction(() => {
       if (patch.phones) {
-        syncContactPhones(writeDb, id, existing.phones, phones);
-        clearTrashedHandles(writeDb, phones);
+        syncContactPhones(writeDb, id, existing.phones, phones, accountId);
+        clearTrashedHandles(writeDb, phones, accountId);
       }
 
       writeDb
         .prepare(
           `UPDATE contacts
            SET first_name = ?, last_name = ?, exclude = ?, preferred_handle = ?
-           WHERE id = ?`,
+           WHERE id = ? AND account_id = ?`,
         )
-        .run(firstName, lastName, exclude ? 1 : 0, preferredHandle, id);
+        .run(firstName, lastName, exclude ? 1 : 0, preferredHandle, id, accountId);
 
       if (patch.contactGroups) {
         writeDb
@@ -377,7 +408,7 @@ export function patchContact(
           `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
         );
         for (const name of contactGroups) {
-          const groupId = ensureGroupId(writeDb, name);
+          const groupId = ensureGroupId(writeDb, name, accountId);
           insert.run(id, groupId);
         }
       }
@@ -410,6 +441,7 @@ export function patchContact(
 /** Append a phone/email handle to an existing contact (for Unassigned assign). */
 export function addPhoneToContact(id: number, phone: string): ContactDetail {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const existing = getContact(id);
   if (!existing) throw new Error("contact not found");
   const trimmed = phone.trim();
@@ -421,17 +453,17 @@ export function addPhoneToContact(id: number, phone: string): ContactDetail {
   if (isEmailHandle(trimmed)) {
     const writeDb = new Database(dbPath());
     try {
-      const owner = phoneOwner(writeDb, trimmed);
+      const owner = phoneOwner(writeDb, trimmed, accountId);
       if (owner != null && owner !== id) {
         throw new Error(`phone ${trimmed} already belongs to another contact`);
       }
       if (owner == null) {
         writeDb
           .prepare(
-            `INSERT INTO contact_handles (handle, contact_id) VALUES (?, ?)`,
+            `INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?, ?, ?)`,
           )
-          .run(trimmed, id);
-        clearTrashedHandles(writeDb, [trimmed]);
+          .run(accountId, trimmed, id);
+        clearTrashedHandles(writeDb, [trimmed], accountId);
       }
     } finally {
       writeDb.close();
@@ -454,6 +486,7 @@ export function removePhoneFromContact(
   phone: string,
 ): ContactDetail {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const existing = getContact(id);
   if (!existing) throw new Error("contact not found");
   const trimmed = phone.trim();
@@ -465,17 +498,21 @@ export function removePhoneFromContact(
   if (isEmailHandle(trimmed)) {
     const writeDb = new Database(dbPath());
     try {
-      const owner = phoneOwner(writeDb, trimmed);
+      const owner = phoneOwner(writeDb, trimmed, accountId);
       if (owner != null && owner !== id) {
         throw new Error(`phone ${trimmed} already belongs to another contact`);
       }
-      writeDb.prepare(`DELETE FROM contact_handles WHERE handle = ?`).run(trimmed);
+      writeDb
+        .prepare(`DELETE FROM contact_handles WHERE account_id = ? AND handle = ?`)
+        .run(accountId, trimmed);
       const preferred = preferredPhoneHandle(
         existing.phones.filter((p) => p !== trimmed),
       );
       writeDb
-        .prepare(`UPDATE contacts SET preferred_handle = ? WHERE id = ?`)
-        .run(preferred, id);
+        .prepare(
+          `UPDATE contacts SET preferred_handle = ? WHERE id = ? AND account_id = ?`,
+        )
+        .run(preferred, id, accountId);
     } finally {
       writeDb.close();
     }
@@ -526,6 +563,7 @@ export function restoreGroup(
 /** Delete contacts from SQLite and contacts.csv. */
 export function deleteContacts(ids: number[]): number {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
 
@@ -549,10 +587,12 @@ export function deleteContacts(ids: number[]): number {
 
   const writeDb = new Database(dbPath());
   try {
-    const del = writeDb.prepare(`DELETE FROM contacts WHERE id = ?`);
+    const del = writeDb.prepare(
+      `DELETE FROM contacts WHERE id = ? AND account_id = ?`,
+    );
     const tx = writeDb.transaction(() => {
       for (const id of unique) {
-        del.run(id);
+        del.run(id, accountId);
       }
     });
     tx();

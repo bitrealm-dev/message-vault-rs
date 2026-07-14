@@ -3,6 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { resetDb } from "@/lib/db";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { assertVaultWritable } from "@/lib/owner";
 import { configTomlPath, repoRoot } from "@/lib/paths";
 import { NextResponse } from "next/server";
@@ -68,44 +72,56 @@ function parseStats(stdout: string) {
   };
 }
 
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
+
 export async function GET() {
   return NextResponse.json({ available: demoBundleEnabled() });
 }
 
 export async function POST() {
   try {
-    assertVaultWritable();
+    return await withAccountHandler(async () => {
+      assertVaultWritable();
+
+      if (!demoBundleEnabled()) {
+        return NextResponse.json(
+          { ok: false, error: "Demo reset is not available (missing demo/ bundle)." },
+          { status: 403 },
+        );
+      }
+
+      resetDb();
+
+      const started = Date.now();
+      const result = runResetDemo();
+      const durationMs = Date.now() - started;
+
+      if (!result.ok) {
+        const err = (result.stderr || result.stdout || "reset-demo failed").trim();
+        return NextResponse.json(
+          { ok: false, error: err.slice(0, 2000), durationMs },
+          { status: 500 },
+        );
+      }
+
+      resetDb();
+
+      return NextResponse.json({
+        ok: true,
+        durationMs,
+        stats: parseStats(result.stdout),
+      });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "read-only";
-    return NextResponse.json({ ok: false, error: message }, { status: 403 });
+    const status = message.includes("read-only") ? 403 : 500;
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
-
-  if (!demoBundleEnabled()) {
-    return NextResponse.json(
-      { ok: false, error: "Demo reset is not available (missing demo/ bundle)." },
-      { status: 403 },
-    );
-  }
-
-  resetDb();
-
-  const started = Date.now();
-  const result = runResetDemo();
-  const durationMs = Date.now() - started;
-
-  if (!result.ok) {
-    const err = (result.stderr || result.stdout || "reset-demo failed").trim();
-    return NextResponse.json(
-      { ok: false, error: err.slice(0, 2000), durationMs },
-      { status: 500 },
-    );
-  }
-
-  resetDb();
-
-  return NextResponse.json({
-    ok: true,
-    durationMs,
-    stats: parseStats(result.stdout),
-  });
 }

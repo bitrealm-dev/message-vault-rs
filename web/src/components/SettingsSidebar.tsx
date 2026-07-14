@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 const navHeadingClass = "px-3 pb-1";
 const navItemPad = "pl-6 pr-3";
@@ -31,6 +32,21 @@ function SettingsNavLink({ href, label }: { href: string; label: string }) {
 }
 
 export function SettingsSidebar({ collapsed }: { collapsed: boolean }) {
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       {!collapsed && (
@@ -56,6 +72,17 @@ export function SettingsSidebar({ collapsed }: { collapsed: boolean }) {
             </span>
           </div>
           <SettingsNavLink href="/settings/display" label="Display options" />
+
+          <div className="mt-auto px-3 pt-4 pb-2">
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              disabled={signingOut}
+              className="w-full rounded-md border border-border px-3 py-2 text-left text-[14px] text-muted transition-colors hover:bg-white/20 hover:text-text disabled:opacity-50"
+            >
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
         </nav>
       )}
     </aside>

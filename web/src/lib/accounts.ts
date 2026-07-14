@@ -1,149 +1,287 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 
 import Database from "better-sqlite3";
-import { parse } from "smol-toml";
 
-import { configTomlPath, dbPath } from "./paths";
+import { dbPath } from "./paths";
+import { createVaultOwner } from "./vaultOwner";
+import { ensureVaultSchema } from "./vaultSchema";
 
-/** Web account stored in vault.db — `id` is stable when username/email change. */
+export type AccountEmail = {
+  email: string;
+  is_primary: boolean;
+};
+
 export type Account = {
   id: string;
   username: string;
-  email: string;
+  emails: AccountEmail[];
   read_only: boolean;
+};
+
+export type AccountSummary = {
+  id: string;
+  username: string;
+  primaryEmail: string;
 };
 
 type AccountRow = {
   id: string;
   username: string;
-  email: string;
   read_only: number;
 };
 
-type AccountToml = {
-  username?: string;
-  login_email?: string;
-  read_only?: boolean;
+type AccountEmailRow = {
+  email: string;
+  is_primary: number;
 };
 
-function rowToAccount(row: AccountRow): Account {
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function primaryEmail(account: Account): string {
+  const primary = account.emails.find((entry) => entry.is_primary);
+  if (!primary?.email.trim()) {
+    throw new Error("account must have a primary email");
+  }
+  return primary.email.trim();
+}
+
+function rowToAccount(row: AccountRow, emails: AccountEmailRow[]): Account {
+  const mapped = emails.map((entry) => ({
+    email: entry.email,
+    is_primary: entry.is_primary === 1,
+  }));
+
+  if (mapped.length === 0) {
+    throw new Error("account must have a primary email");
+  }
+
   return {
     id: row.id,
     username: row.username,
-    email: row.email,
+    emails: mapped,
     read_only: row.read_only === 1,
   };
 }
 
-function ensureAccountsTable(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS accounts (
-      id TEXT PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      read_only INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-}
-
-function loadAccountSeedFromToml(): Omit<Account, "id"> {
-  const text = fs.readFileSync(configTomlPath(), "utf8");
-  const cfg = parse(text) as { account?: AccountToml };
-  const account = cfg.account;
-  if (!account?.username?.trim() || !account.login_email?.trim()) {
-    throw new Error("[account] with username and login_email is required in config.toml");
-  }
-  return {
-    username: account.username.trim(),
-    email: account.login_email.trim(),
-    read_only: account.read_only === true,
-  };
-}
-
-function tomlString(value: string): string {
-  return JSON.stringify(value);
-}
-
-function syncAccountToToml(account: Account): void {
-  const section = `[account]
-username = ${tomlString(account.username)}
-login_email = ${tomlString(account.email)}
-read_only = ${account.read_only}
-`;
-  const path = configTomlPath();
-  let text = fs.readFileSync(path, "utf8");
-  if (/\[account\]/i.test(text)) {
-    text = text.replace(/\[account\][\s\S]*?(?=\n\[|\s*$)/, `${section.trim()}\n`);
-  } else {
-    text = `${text.trim()}\n\n${section}`;
-  }
-  fs.writeFileSync(path, text.endsWith("\n") ? text : `${text}\n`);
-}
-
-function seedAccountFromToml(db: Database.Database): Account {
-  const seed = loadAccountSeedFromToml();
-  const id = crypto.randomUUID();
-  db.prepare(
-    `INSERT INTO accounts (id, username, email, read_only)
-     VALUES (?, ?, ?, ?)`,
-  ).run(id, seed.username, seed.email, seed.read_only ? 1 : 0);
-  syncAccountToToml({ id, ...seed });
-  return { id, ...seed };
-}
-
-export function loadAccount(): Account {
+function openDb(): Database.Database {
   const db = new Database(dbPath());
-  try {
-    ensureAccountsTable(db);
-    const row = db
-      .prepare(`SELECT id, username, email, read_only FROM accounts LIMIT 1`)
-      .get() as AccountRow | undefined;
-    if (!row) {
-      return seedAccountFromToml(db);
+  ensureVaultSchema(db);
+  return db;
+}
+
+function friendlyDbError(err: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("UNIQUE constraint failed: accounts.username")) {
+    return new Error("That username is already taken. Select it from the list above and click Continue.");
+  }
+  if (message.includes("UNIQUE constraint failed: account_emails.email")) {
+    return new Error("That email is already used by another account.");
+  }
+  if (err instanceof Error) return err;
+  return new Error(message);
+}
+
+function findAccountIdByUsername(db: Database.Database, username: string): string | null {
+  const row = db
+    .prepare(`SELECT id FROM accounts WHERE username = ? COLLATE NOCASE`)
+    .get(username) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+function validateEmails(emails: AccountEmail[]): AccountEmail[] {
+  if (emails.length === 0) {
+    throw new Error("account must have a primary email");
+  }
+
+  const normalized = emails.map((entry) => ({
+    email: entry.email.trim(),
+    is_primary: entry.is_primary,
+  }));
+
+  if (normalized.some((entry) => !entry.email)) {
+    throw new Error("email addresses cannot be empty");
+  }
+
+  const primaryCount = normalized.filter((entry) => entry.is_primary).length;
+  if (primaryCount !== 1) {
+    throw new Error("account must have exactly one primary email");
+  }
+
+  const seen = new Set<string>();
+  for (const entry of normalized) {
+    const key = normalizeEmail(entry.email);
+    if (seen.has(key)) {
+      throw new Error("duplicate email addresses are not allowed");
     }
-    return rowToAccount(row);
+    seen.add(key);
+  }
+
+  return normalized;
+}
+
+function readAccountEmails(db: Database.Database, accountId: string): AccountEmailRow[] {
+  return db
+    .prepare(
+      `SELECT email, is_primary
+       FROM account_emails
+       WHERE account_id = ?
+       ORDER BY is_primary DESC, email COLLATE NOCASE`,
+    )
+    .all(accountId) as AccountEmailRow[];
+}
+
+function writeAccountEmails(
+  db: Database.Database,
+  accountId: string,
+  emails: AccountEmail[],
+): void {
+  db.prepare(`DELETE FROM account_emails WHERE account_id = ?`).run(accountId);
+  const insert = db.prepare(
+    `INSERT INTO account_emails (account_id, email, is_primary)
+     VALUES (?, ?, ?)`,
+  );
+  for (const entry of emails) {
+    insert.run(accountId, entry.email, entry.is_primary ? 1 : 0);
+  }
+}
+
+function getAccountRow(db: Database.Database, accountId: string): AccountRow | undefined {
+  return db
+    .prepare(`SELECT id, username, read_only FROM accounts WHERE id = ?`)
+    .get(accountId) as AccountRow | undefined;
+}
+
+export function listAccounts(): AccountSummary[] {
+  const db = openDb();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, username FROM accounts ORDER BY username COLLATE NOCASE`,
+      )
+      .all() as Array<{ id: string; username: string }>;
+
+    return rows.map((row) => {
+      const emails = readAccountEmails(db, row.id);
+      const account = rowToAccount(
+        { ...row, read_only: 0 },
+        emails,
+      );
+      return {
+        id: row.id,
+        username: row.username,
+        primaryEmail: primaryEmail(account),
+      };
+    });
   } finally {
     db.close();
   }
 }
 
-export function saveAccount(patch: Partial<Pick<Account, "username" | "email" | "read_only">>): Account {
-  const db = new Database(dbPath());
+export function getAccount(accountId: string): Account | null {
+  const db = openDb();
   try {
-    ensureAccountsTable(db);
-    let current = db
-      .prepare(`SELECT id, username, email, read_only FROM accounts LIMIT 1`)
-      .get() as AccountRow | undefined;
-    if (!current) {
-      const seeded = seedAccountFromToml(db);
-      current = {
-        id: seeded.id,
-        username: seeded.username,
-        email: seeded.email,
-        read_only: seeded.read_only ? 1 : 0,
-      };
+    const row = getAccountRow(db, accountId);
+    if (!row) return null;
+    const emails = readAccountEmails(db, accountId);
+    return rowToAccount(row, emails);
+  } finally {
+    db.close();
+  }
+}
+
+export function createAccount(input: {
+  username: string;
+  primaryEmail: string;
+  displayName: string;
+  phone: string;
+}): Account {
+  const username = input.username.trim();
+  const email = input.primaryEmail.trim();
+  const displayName = input.displayName.trim();
+  const phone = input.phone.trim();
+  if (!username) throw new Error("username is required");
+  if (!email) throw new Error("primary email is required");
+  if (!displayName) throw new Error("display name is required");
+  if (!phone) throw new Error("phone is required for importing messages");
+
+  const db = openDb();
+  try {
+    const existingId = findAccountIdByUsername(db, username);
+    if (existingId) {
+      throw new Error(
+        "That username is already taken. Select it from the list above and click Continue.",
+      );
     }
 
-    const next: Account = {
-      id: current.id,
-      username: patch.username?.trim() || current.username,
-      email: patch.email?.trim() || current.email,
-      read_only: patch.read_only ?? current.read_only === 1,
+    const id = crypto.randomUUID();
+    const emails = [{ email, is_primary: true }];
+
+    try {
+      db.prepare(
+        `INSERT INTO accounts (id, username, read_only) VALUES (?, ?, 0)`,
+      ).run(id, username);
+      writeAccountEmails(db, id, emails);
+      createVaultOwner(db, id, { display_name: displayName, phones: [phone] });
+    } catch (err) {
+      throw friendlyDbError(err);
+    }
+
+    return {
+      id,
+      username,
+      emails,
+      read_only: false,
     };
-    if (!next.username || !next.email) {
-      throw new Error("username and email are required");
+  } finally {
+    db.close();
+  }
+}
+
+export function saveAccount(
+  accountId: string,
+  patch: Partial<Pick<Account, "username" | "read_only" | "emails">>,
+): Account {
+  const db = openDb();
+  try {
+    const row = getAccountRow(db, accountId);
+    if (!row) {
+      throw new Error("account not found");
+    }
+
+    const currentEmails = readAccountEmails(db, accountId);
+    const current = rowToAccount(row, currentEmails);
+
+    const nextEmails =
+      patch.emails !== undefined ? validateEmails(patch.emails) : current.emails;
+    const next: Account = {
+      id: accountId,
+      username: patch.username?.trim() || current.username,
+      emails: nextEmails,
+      read_only: patch.read_only ?? current.read_only,
+    };
+
+    if (!next.username) {
+      throw new Error("username is required");
     }
 
     db.prepare(
-      `UPDATE accounts
-       SET username = ?, email = ?, read_only = ?
-       WHERE id = ?`,
-    ).run(next.username, next.email, next.read_only ? 1 : 0, next.id);
+      `UPDATE accounts SET username = ?, read_only = ? WHERE id = ?`,
+    ).run(next.username, next.read_only ? 1 : 0, accountId);
 
-    syncAccountToToml(next);
+    writeAccountEmails(db, accountId, next.emails);
     return next;
   } finally {
     db.close();
   }
+}
+
+/** @deprecated Use getAccount(accountId) with session context. */
+export function loadAccount(accountId: string): Account {
+  const account = getAccount(accountId);
+  if (!account) {
+    throw new Error("account not found");
+  }
+  return account;
 }

@@ -1,6 +1,7 @@
 import { loadAccount } from "./accounts";
-import { loadOwner } from "./config";
+import { currentAccountId } from "./accountScope";
 import { isEmailHandle } from "./handleKind";
+import { loadVaultOwner } from "./vaultOwner";
 
 /** Strip non-digits; drop leading US country code 1 when 11 digits. */
 export function phoneDigits(handle: string): string {
@@ -12,7 +13,7 @@ export function phoneDigits(handle: string): string {
 }
 
 export function isVaultReadOnly(): boolean {
-  return loadAccount().read_only;
+  return loadAccount(currentAccountId()).read_only;
 }
 
 export function assertVaultWritable(): void {
@@ -21,19 +22,22 @@ export function assertVaultWritable(): void {
   }
 }
 
-/** True when handle belongs to the vault owner or web account login email. */
+/** True when handle belongs to the vault owner or web account email. */
 export function isOwnerHandle(handle: string): boolean {
   const trimmed = handle.trim();
   if (!trimmed) return false;
 
-  const account = loadAccount();
+  const accountId = currentAccountId();
+  const account = loadAccount(accountId);
   if (isEmailHandle(trimmed)) {
-    return trimmed.toLowerCase() === account.email.toLowerCase();
+    return account.emails.some(
+      (entry) => entry.email.toLowerCase() === trimmed.toLowerCase(),
+    );
   }
 
   const digits = phoneDigits(trimmed);
   if (!digits) return false;
-  const owner = loadOwner();
+  const owner = loadVaultOwner(accountId);
   return owner.phones.some((p) => phoneDigits(p) === digits);
 }
 

@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use rusqlite::{params, params_from_iter, Connection};
 
-use crate::config::OwnerConfig;
 use crate::schema;
+use crate::vault_owner::{self, VaultOwner};
 
 #[derive(Debug, Default)]
 pub struct ExportStats {
@@ -26,7 +26,8 @@ pub struct ExportStats {
 /// (typically `data/<source>/assets`).
 pub fn export_markdown(
     conn: &Connection,
-    owner: &OwnerConfig,
+    owner: &VaultOwner,
+    account_id: &str,
     assets_by_source: &HashMap<String, PathBuf>,
     out_dir: &Path,
     snippet_css: &Path,
@@ -42,12 +43,12 @@ pub fn export_markdown(
 
     install_snippet(out_dir, snippet_css)?;
 
-    let contacts = list_export_contacts(conn)?;
+    let contacts = list_export_contacts(conn, account_id)?;
     let mut person_index: Vec<(String, String)> = Vec::new(); // (folder, display)
 
     let total = contacts.len();
     for (idx, contact) in contacts.iter().enumerate() {
-        let years = contact_yearly_threads(conn, &contact.phones)?;
+        let years = contact_yearly_threads(conn, account_id, &contact.phones)?;
         if years.is_empty() {
             continue;
         }
@@ -61,6 +62,7 @@ pub fn export_markdown(
             let page = render_year_page(
                 conn,
                 owner,
+                account_id,
                 contact,
                 yt,
                 assets_by_source,
@@ -107,7 +109,7 @@ pub fn export_markdown(
 
 pub fn run_export(
     db_path: &Path,
-    owner: &OwnerConfig,
+    account_id: &str,
     assets_by_source: &HashMap<String, PathBuf>,
     out_dir: &Path,
     snippet_css: &Path,
@@ -115,9 +117,18 @@ pub fn run_export(
     let conn = Connection::open(db_path)
         .with_context(|| format!("failed to open database {}", db_path.display()))?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    schema::ensure_vault_schema(&conn)?;
     schema::ensure_messages_schema(&conn)?;
     schema::ensure_contacts_schema(&conn)?;
-    export_markdown(&conn, owner, assets_by_source, out_dir, snippet_css)
+    let owner = vault_owner::load_vault_owner(&conn, account_id)?;
+    export_markdown(
+        &conn,
+        &owner,
+        account_id,
+        assets_by_source,
+        out_dir,
+        snippet_css,
+    )
 }
 
 fn install_snippet(out_dir: &Path, snippet_css: &Path) -> Result<()> {
@@ -180,18 +191,18 @@ struct ExportTapback {
     sender: Option<String>,
 }
 
-fn list_export_contacts(conn: &Connection) -> Result<Vec<ExportContact>> {
+fn list_export_contacts(conn: &Connection, account_id: &str) -> Result<Vec<ExportContact>> {
     let mut stmt = conn.prepare(
         r#"
         SELECT id, first_name, last_name, preferred_handle
         FROM contacts
-        WHERE exclude = 0
+        WHERE account_id = ?1 AND exclude = 0
         ORDER BY
           LOWER(COALESCE(NULLIF(TRIM(last_name), ''), first_name, preferred_handle, '')),
           LOWER(COALESCE(NULLIF(TRIM(first_name), ''), preferred_handle, ''))
         "#,
     )?;
-    let rows = stmt.query_map([], |row| {
+    let rows = stmt.query_map(params![account_id], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, Option<String>>(1)?,
@@ -235,7 +246,11 @@ fn display_name(first: Option<&str>, last: Option<&str>, fallback: Option<&str>)
     fallback.unwrap_or("Unknown").to_string()
 }
 
-fn contact_yearly_threads(conn: &Connection, phones: &[String]) -> Result<Vec<YearThread>> {
+fn contact_yearly_threads(
+    conn: &Connection,
+    account_id: &str,
+    phones: &[String],
+) -> Result<Vec<YearThread>> {
     if phones.is_empty() {
         return Ok(Vec::new());
     }
@@ -251,15 +266,19 @@ fn contact_yearly_threads(conn: &Connection, phones: &[String]) -> Result<Vec<Ye
                GROUP_CONCAT(DISTINCT c.id) AS conversation_ids
         FROM conversations c
         JOIN messages m ON m.conversation_id = c.id
-        WHERE c.conversation_type = 'individual'
+        WHERE c.account_id = ?
+          AND c.conversation_type = 'individual'
           AND c.chat_identifier IN ({placeholders})
           AND m.duplicate_of IS NULL
         GROUP BY year
         ORDER BY year ASC
         "#
     );
+    let mut params: Vec<rusqlite::types::Value> =
+        vec![rusqlite::types::Value::Text(account_id.to_string())];
+    params.extend(phones.iter().map(|p| rusqlite::types::Value::Text(p.clone())));
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_from_iter(phones.iter()), |row| {
+    let rows = stmt.query_map(params_from_iter(params), |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, i64>(1)?,
@@ -292,7 +311,8 @@ fn contact_yearly_threads(conn: &Connection, phones: &[String]) -> Result<Vec<Ye
 
 fn load_year_messages(
     conn: &Connection,
-    owner: &OwnerConfig,
+    owner: &VaultOwner,
+    account_id: &str,
     contact: &ExportContact,
     yt: &YearThread,
 ) -> Result<Vec<ExportMessage>> {
@@ -307,8 +327,8 @@ fn load_year_messages(
         SELECT m.id, m.source, m.timestamp, m.is_from_me, m.sender, m.body,
                c.first_name, c.last_name, c.preferred_handle, p.name_hint
         FROM messages m
-        LEFT JOIN contact_handles cp ON cp.handle = m.sender
-        LEFT JOIN contacts c ON c.id = cp.contact_id
+        LEFT JOIN contact_handles cp ON cp.account_id = ? AND cp.handle = m.sender
+        LEFT JOIN contacts c ON c.id = cp.contact_id AND c.account_id = ?
         LEFT JOIN participants p
           ON p.conversation_id = m.conversation_id AND p.handle = m.sender
         WHERE m.conversation_id IN ({placeholders})
@@ -317,11 +337,15 @@ fn load_year_messages(
         ORDER BY m.timestamp, m.sort_order
         "#
     );
-    let mut params: Vec<rusqlite::types::Value> = yt
-        .conversation_ids
-        .iter()
-        .map(|id| rusqlite::types::Value::Integer(*id))
-        .collect();
+    let mut params: Vec<rusqlite::types::Value> = vec![
+        rusqlite::types::Value::Text(account_id.to_string()),
+        rusqlite::types::Value::Text(account_id.to_string()),
+    ];
+    params.extend(
+        yt.conversation_ids
+            .iter()
+            .map(|id| rusqlite::types::Value::Integer(*id)),
+    );
     params.push(rusqlite::types::Value::Integer(yt.year));
 
     let mut stmt = conn.prepare(&sql)?;
@@ -446,7 +470,8 @@ fn looks_like_phone(value: &str) -> bool {
 
 fn render_year_page(
     conn: &Connection,
-    owner: &OwnerConfig,
+    owner: &VaultOwner,
+    account_id: &str,
     contact: &ExportContact,
     yt: &YearThread,
     assets_by_source: &HashMap<String, PathBuf>,
@@ -454,7 +479,7 @@ fn render_year_page(
     person_dir: &Path,
     stats: &mut ExportStats,
 ) -> Result<String> {
-    let messages = load_year_messages(conn, owner, contact, yt)?;
+    let messages = load_year_messages(conn, owner, account_id, contact, yt)?;
     stats.messages += messages.len() as u64;
 
     let sources: BTreeSet<&str> = messages.iter().map(|m| m.source.as_str()).collect();
@@ -544,7 +569,7 @@ fn render_year_page(
 
 fn render_message_html(
     msg: &ExportMessage,
-    owner: &OwnerConfig,
+    owner: &VaultOwner,
     assets_by_source: &HashMap<String, PathBuf>,
     assets_out: &Path,
     person_dir: &Path,
@@ -869,6 +894,8 @@ mod tests {
         dir
     }
 
+    const TEST_ACCOUNT_ID: &str = "00000000-0000-0000-0000-000000000001";
+
     #[test]
     fn export_person_year_hides_dupes_and_copies_assets() {
         let conn = Connection::open_in_memory().unwrap();
@@ -877,25 +904,38 @@ mod tests {
         schema::ensure_contacts_schema(&conn).unwrap();
 
         conn.execute(
+            "INSERT INTO accounts (id, username, read_only) VALUES (?1, 'test', 0)",
+            params![TEST_ACCOUNT_ID],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vault_owners (account_id, display_name) VALUES (?1, 'Matt Beisser')",
+            params![TEST_ACCOUNT_ID],
+        )
+        .unwrap();
+
+        conn.execute(
             r#"
-            INSERT INTO contacts (first_name, last_name, exclude, preferred_handle)
-            VALUES ('Zach', 'Henson', 0, '+18285532527')
+            INSERT INTO contacts (account_id, first_name, last_name, exclude, preferred_handle)
+            VALUES (?1, 'Zach', 'Henson', 0, '+18285532527')
             "#,
-            [],
+            params![TEST_ACCOUNT_ID],
         )
         .unwrap();
         let contact_id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO contact_handles (handle, contact_id) VALUES (?1, ?2)",
-            params!["+18285532527", contact_id],
+            "INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?1, ?2, ?3)",
+            params![TEST_ACCOUNT_ID, "+18285532527", contact_id],
         )
         .unwrap();
         conn.execute(
             r#"
-            INSERT INTO conversations (chat_identifier, service, conversation_type, group_title, exported_at, source_file)
-            VALUES ('+18285532527', 'SMS', 'individual', NULL, NULL, 't.json')
+            INSERT INTO conversations (
+                account_id, chat_identifier, service, conversation_type, group_title, exported_at, source_file
+            )
+            VALUES (?1, '+18285532527', 'SMS', 'individual', NULL, NULL, 't.json')
             "#,
-            [],
+            params![TEST_ACCOUNT_ID],
         )
         .unwrap();
         let conv_id = conn.last_insert_rowid();
@@ -952,7 +992,7 @@ mod tests {
         let out = tmp.join("export");
         let snippet = tmp.join("snippet.css");
         fs::write(&snippet, "/* test */").unwrap();
-        let owner = OwnerConfig {
+        let owner = VaultOwner {
             display_name: "Matt Beisser".into(),
             phones: vec!["+19412660605".into()],
             emails: vec![],
@@ -960,7 +1000,8 @@ mod tests {
         let mut assets = HashMap::new();
         assets.insert("imessage".into(), assets_root);
 
-        let stats = export_markdown(&conn, &owner, &assets, &out, &snippet).unwrap();
+        let stats =
+            export_markdown(&conn, &owner, TEST_ACCOUNT_ID, &assets, &out, &snippet).unwrap();
         assert_eq!(stats.people, 1);
         assert_eq!(stats.year_pages, 2);
         assert_eq!(stats.messages, 2); // soft-hidden excluded

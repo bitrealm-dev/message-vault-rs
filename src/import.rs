@@ -75,6 +75,7 @@ pub fn import_export(
     overwrite_contacts: bool,
     mode: ImportMode,
     source: &str,
+    account_id: &str,
 ) -> Result<ImportStats> {
     if source.trim().is_empty() {
         bail!("import source id must not be empty");
@@ -98,13 +99,20 @@ pub fn import_export(
     println!("  sql:      opened {}", db_path.display());
     let _ = io::stdout().flush();
 
+    schema::ensure_vault_schema(&conn)?;
+    crate::vault_owner::ensure_account_row(&conn, account_id)?;
+
     println!(
         "  sql:      loading contacts from {}…",
         contacts_csv.display()
     );
     let _ = io::stdout().flush();
-    let contact_stats =
-        contacts::load_contacts_if_needed(&mut conn, contacts_csv, overwrite_contacts)?;
+    let contact_stats = contacts::load_contacts_if_needed(
+        &mut conn,
+        contacts_csv,
+        overwrite_contacts,
+        account_id,
+    )?;
     if contact_stats.skipped {
         println!("  sql:      contacts skipped (already loaded)");
     } else {
@@ -126,7 +134,7 @@ pub fn import_export(
     if mode == ImportMode::Replace {
         println!("  sql:      deleting existing messages for source '{source}'…");
         let _ = io::stdout().flush();
-        schema::delete_messages_for_source(&conn, source)?;
+        schema::delete_messages_for_source(&conn, account_id, source)?;
         println!("  sql:      wipe complete");
     }
     let _ = io::stdout().flush();
@@ -175,7 +183,7 @@ pub fn import_export(
     const STAGING_COMMIT_EVERY: usize = 50;
 
     let mut tx = conn.transaction()?;
-    let mut stmts = StagingInserts::prepare(&tx)?;
+    let mut stmts = StagingInserts::prepare(&tx, account_id)?;
 
     for (idx, path) in paths.into_iter().enumerate() {
         let file_stats = import_file_to_staging(
@@ -220,7 +228,7 @@ pub fn import_export(
             drop(stmts);
             tx.commit()?;
             tx = conn.transaction()?;
-            stmts = StagingInserts::prepare(&tx)?;
+            stmts = StagingInserts::prepare(&tx, account_id)?;
         }
     }
     drop(stmts);
@@ -232,7 +240,7 @@ pub fn import_export(
         started.elapsed().as_secs_f64()
     );
     let _ = io::stdout().flush();
-    let promote_stats = promote_append(&mut conn, mode)?;
+    let promote_stats = promote_append(&mut conn, mode, account_id)?;
     stats.messages_deduped += promote_stats.messages_deduped;
     stats.messages_appended = promote_stats.messages_appended;
     if mode == ImportMode::Append {
@@ -289,6 +297,7 @@ fn prepare_attachments(
 }
 
 struct StagingInserts<'conn> {
+    account_id: String,
     conv: Statement<'conn>,
     part: Statement<'conn>,
     msg: Statement<'conn>,
@@ -297,13 +306,14 @@ struct StagingInserts<'conn> {
 }
 
 impl<'conn> StagingInserts<'conn> {
-    fn prepare(tx: &'conn Transaction<'_>) -> Result<Self> {
+    fn prepare(tx: &'conn Transaction<'_>, account_id: &str) -> Result<Self> {
         Ok(Self {
+            account_id: account_id.to_string(),
             conv: tx.prepare(
                 r#"
                 INSERT INTO staging_conversations (
-                    chat_identifier, service, conversation_type, group_title, exported_at, source_file
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    account_id, chat_identifier, service, conversation_type, group_title, exported_at, source_file
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                 "#,
             )?,
             part: tx.prepare(
@@ -471,6 +481,7 @@ fn import_file_to_staging(
     }
 
     stmts.conv.execute(params![
+        stmts.account_id,
         chat_identifier,
         service,
         conversation_type,
@@ -573,7 +584,11 @@ struct PromoteStats {
     messages_appended: u64,
 }
 
-fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStats> {
+fn promote_append(
+    conn: &mut Connection,
+    mode: ImportMode,
+    account_id: &str,
+) -> Result<PromoteStats> {
     let mut stats = PromoteStats::default();
     let started = Instant::now();
 
@@ -593,6 +608,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         r#"
         SELECT id, chat_identifier, service, conversation_type, group_title, exported_at, source_file
         FROM staging_conversations
+        WHERE account_id = ?1
         ORDER BY id
         "#,
     )?;
@@ -606,7 +622,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         Option<String>,
         String,
     )> = staging_convs
-        .query_map([], |row| {
+        .query_map(params![account_id], |row| {
             Ok((
                 row.get(0)?,
                 row.get(1)?,
@@ -626,7 +642,9 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
     let _ = io::stdout().flush();
 
     let mut conv_map: HashMap<i64, i64> = HashMap::new();
-    let mut find_conv = tx.prepare("SELECT id FROM conversations WHERE chat_identifier = ?1")?;
+    let mut find_conv = tx.prepare(
+        "SELECT id FROM conversations WHERE account_id = ?1 AND chat_identifier = ?2",
+    )?;
     let mut update_conv = tx.prepare(
         r#"
         UPDATE conversations SET
@@ -641,8 +659,8 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
     let mut insert_conv = tx.prepare(
         r#"
         INSERT INTO conversations (
-            chat_identifier, service, conversation_type, group_title, exported_at, source_file
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            account_id, chat_identifier, service, conversation_type, group_title, exported_at, source_file
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         "#,
     )?;
 
@@ -650,7 +668,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         staging_conv_rows
     {
         let existing: Option<i64> = find_conv
-            .query_row(params![chat_identifier], |row| row.get(0))
+            .query_row(params![account_id, chat_identifier], |row| row.get(0))
             .optional()?;
 
         let prod_id = if let Some(id) = existing {
@@ -665,6 +683,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
             id
         } else {
             insert_conv.execute(params![
+                account_id,
                 chat_identifier,
                 service,
                 conversation_type,
@@ -689,10 +708,17 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
     println!("  sql:      promote: reading staging participants…");
     let _ = io::stdout().flush();
     let mut staging_parts = tx.prepare(
-        "SELECT conversation_id, handle, name_hint FROM staging_participants ORDER BY id",
+        r#"
+        SELECT conversation_id, handle, name_hint
+        FROM staging_participants
+        WHERE conversation_id IN (
+            SELECT id FROM staging_conversations WHERE account_id = ?1
+        )
+        ORDER BY id
+        "#,
     )?;
     let staging_part_rows: Vec<(i64, String, Option<String>)> = staging_parts
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map(params![account_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
     drop(staging_parts);
     println!(
@@ -742,7 +768,16 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         }
     }
 
-    let total_msgs: i64 = tx.query_row("SELECT COUNT(*) FROM staging_messages", [], |r| r.get(0))?;
+    let total_msgs: i64 = tx.query_row(
+        r#"
+        SELECT COUNT(*) FROM staging_messages
+        WHERE conversation_id IN (
+            SELECT id FROM staging_conversations WHERE account_id = ?1
+        )
+        "#,
+        params![account_id],
+        |r| r.get(0),
+    )?;
     println!(
         "  sql:      promote: {total_msgs} staging messages → production ({})…",
         mode.as_str()
@@ -774,7 +809,14 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         stats.messages_appended = inserted as u64;
 
         let staging_ids: Vec<i64> = tx
-            .prepare("SELECT id FROM staging_messages ORDER BY id")?
+            .prepare(
+                r#"
+                SELECT sm.id
+                FROM staging_messages sm
+                JOIN _promote_conv_map cm ON cm.staging_id = sm.conversation_id
+                ORDER BY sm.id
+                "#,
+            )?
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
         let prod_ids: Vec<i64> = tx
@@ -795,13 +837,16 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
         let max_before: i64 =
             tx.query_row("SELECT IFNULL(MAX(id), 0) FROM messages", [], |r| r.get(0))?;
 
-        let new_filter = r#"
+        let new_filter = format!(
+            r#"
             (sm.guid IS NULL OR sm.guid = '')
             OR NOT EXISTS (
                 SELECT 1 FROM messages m
-                WHERE m.source = sm.source AND m.guid = sm.guid
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE m.source = sm.source AND m.guid = sm.guid AND c.account_id = '{account_id}'
             )
-        "#;
+            "#
+        );
 
         let staging_ids: Vec<i64> = tx
             .prepare(&format!(
@@ -924,7 +969,7 @@ fn promote_append(conn: &mut Connection, mode: ImportMode) -> Result<PromoteStat
 
     println!("  sql:      promote: filling content keys…");
     let _ = io::stdout().flush();
-    let keys = crate::dedupe::fill_missing_content_keys(&tx)?;
+    let keys = crate::dedupe::fill_missing_content_keys(&tx, account_id)?;
     println!(
         "  sql:      promote: content keys filled={keys}  ({:.1}s)",
         started.elapsed().as_secs_f64()

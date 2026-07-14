@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import { parse } from "smol-toml";
 
+import { currentAccountId } from "./accountScope";
+
 const DEFAULT_DB = "data/vault.db";
 const DEFAULT_DATA_DIR = "data";
 const DEFAULT_ASSETS_DIR = "assets";
@@ -90,8 +92,9 @@ export function assetsConvertedDirName(): string {
   );
 }
 
-/** Configured import sources with resolved asset roots. */
+/** Configured import sources with resolved asset roots for the current account. */
 export function loadSources(): SourcePaths[] {
+  const accountId = currentAccountId();
   const cfg = loadRawConfig();
   const root = repoRoot();
   const data = dataDir();
@@ -105,8 +108,8 @@ export function loadSources(): SourcePaths[] {
       {
         id,
         exportDir: resolveConfiguredPath(cfg.paths.export_dir, "staging/default"),
-        assetsDir: path.join(data, id, assetsName),
-        assetsConvertedDir: path.join(data, id, convertedName),
+        assetsDir: path.join(data, accountId, id, assetsName),
+        assetsConvertedDir: path.join(data, accountId, id, convertedName),
       },
     ];
   }
@@ -122,10 +125,13 @@ export function loadSources(): SourcePaths[] {
       return {
         id,
         exportDir: resolveConfiguredPath(s.export_dir, `staging/${id}`),
-        assetsDir: resolveOptional(s.assets_dir, path.join(data, id, assetsName)),
+        assetsDir: resolveOptional(
+          s.assets_dir,
+          path.join(data, accountId, id, assetsName),
+        ),
         assetsConvertedDir: resolveOptional(
           s.assets_converted_dir,
-          path.join(data, id, convertedName),
+          path.join(data, accountId, id, convertedName),
         ),
       };
     });

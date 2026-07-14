@@ -1,7 +1,18 @@
 import { listGroupMemberContactIds } from "@/lib/db";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
 
 /** Members of a contact group (for undo snapshot / create-group undo guard). */
 export async function GET(req: Request) {
@@ -9,6 +20,16 @@ export async function GET(req: Request) {
   if (!name) {
     return NextResponse.json({ error: "name required" }, { status: 400 });
   }
-  const memberContactIds = listGroupMemberContactIds(name);
-  return NextResponse.json({ name, memberContactIds });
+
+  try {
+    return await withAccountHandler(async () => {
+      const memberContactIds = listGroupMemberContactIds(name);
+      return NextResponse.json({ name, memberContactIds });
+    });
+  } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
+    const message = err instanceof Error ? err.message : "load failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

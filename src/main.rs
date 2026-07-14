@@ -10,6 +10,7 @@ mod models;
 mod ndjson;
 mod reset_demo;
 mod schema;
+mod vault_owner;
 mod vcf;
 mod vcf_to_contacts;
 
@@ -64,6 +65,10 @@ enum Commands {
         /// Near-time window in seconds for Pass B (default 2)
         #[arg(long, default_value_t = 2)]
         window_secs: i64,
+
+        /// Account UUID (scopes ingest to this vault tenant)
+        #[arg(long)]
+        account: String,
     },
 
     /// Import NDJSON export(s) into SQLite
@@ -107,6 +112,10 @@ enum Commands {
         /// Import mode: replace (wipe this source's messages) or append (dedupe by source+guid)
         #[arg(long, default_value = "replace")]
         mode: String,
+
+        /// Account UUID (scopes import to this vault tenant)
+        #[arg(long)]
+        account: String,
     },
 
     /// Soft-hide the same SMS when it appears under more than one import source
@@ -122,9 +131,11 @@ enum Commands {
         /// Near-time window in seconds for Pass B (default 2)
         #[arg(long, default_value_t = 2)]
         window_secs: i64,
-    },
 
-    /// Load contacts from config/contacts.csv (or --contacts-csv) into the database
+        /// Account UUID (scopes dedupe to this vault tenant)
+        #[arg(long)]
+        account: String,
+    },
     ImportContacts {
         /// Path to config.toml
         #[arg(long, default_value = "config/config.toml")]
@@ -137,9 +148,11 @@ enum Commands {
         /// Output SQLite database path (overrides config)
         #[arg(long)]
         db: Option<PathBuf>,
-    },
 
-    /// Export 1:1 contacts as Obsidian bubble markdown (combined / soft-deduped)
+        /// Account UUID (scopes contacts to this vault tenant)
+        #[arg(long)]
+        account: String,
+    },
     ExportMarkdown {
         /// Output directory (required; written fresh under this path)
         #[arg(long)]
@@ -156,9 +169,11 @@ enum Commands {
         /// Path to Obsidian bubble CSS snippet (default config/obsidian-message-vault.css)
         #[arg(long)]
         snippet_css: Option<PathBuf>,
-    },
 
-    /// Convert a message-vault contacts.vcf into contacts.csv
+        /// Account UUID (scopes export to this vault tenant)
+        #[arg(long)]
+        account: String,
+    },
     VcfToContacts {
         /// Path to config.toml (used for default --out / --exclude)
         #[arg(long, default_value = "config/config.toml")]
@@ -206,6 +221,7 @@ fn main() -> Result<()> {
             overwrite_contacts,
             skip_dedupe,
             window_secs,
+            account,
         } => {
             let cfg = Config::load(&config)?;
             if window_secs < 0 {
@@ -232,6 +248,7 @@ fn main() -> Result<()> {
                 &cfg,
                 &ingest::IngestOptions {
                     source_id: source,
+                    account_id: account,
                     from,
                     staging_dir,
                     mode,
@@ -279,6 +296,7 @@ fn main() -> Result<()> {
             exclude_csv,
             overwrite_contacts,
             mode,
+            account,
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
@@ -313,12 +331,15 @@ fn main() -> Result<()> {
 
             println!("Importing into {}", db.display());
             println!("  config:        {}", config.display());
+            println!("  account:       {}", account);
             println!("  mode:          {}", mode.as_str());
-            println!(
-                "  owner:         {} ({})",
-                cfg.owner.display_name,
-                cfg.owner.phones.join(", ")
-            );
+            if let Some(owner) = &cfg.owner {
+                println!(
+                    "  owner (legacy):{} ({})",
+                    owner.display_name,
+                    owner.phones.join(", ")
+                );
+            }
             println!("  contacts csv:  {}", contacts_csv.display());
             println!("  exclude csv:   {}", exclude_csv.display());
 
@@ -327,9 +348,9 @@ fn main() -> Result<()> {
                 let export = export_dir
                     .clone()
                     .unwrap_or_else(|| src.export_dir.clone());
-                let assets = assets_dir
-                    .clone()
-                    .unwrap_or_else(|| src.resolved_assets_dir(&cfg.paths));
+                let assets = assets_dir.clone().unwrap_or_else(|| {
+                    src.resolved_assets_dir_for_account(&cfg.paths, &account)
+                });
 
                 let stats = import::import_export(
                     &export,
@@ -340,6 +361,7 @@ fn main() -> Result<()> {
                     overwrite,
                     mode,
                     &src.id,
+                    &account,
                 )?;
                 // Only overwrite contacts on the first source of a batch.
                 overwrite = false;
@@ -378,6 +400,7 @@ fn main() -> Result<()> {
             config,
             db,
             window_secs,
+            account,
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
@@ -388,10 +411,11 @@ fn main() -> Result<()> {
 
             println!("Cross-source dedupe on {}", db.display());
             println!("  config:       {}", config.display());
+            println!("  account:      {}", account);
             println!("  window_secs:  {}", window_secs);
             println!("  priority:     {}", priority.join(", "));
 
-            let stats = dedupe::run_dedupe(&db, &priority, window_secs)?;
+            let stats = dedupe::run_dedupe(&db, &account, &priority, window_secs)?;
             println!("  keys filled:  {}", stats.keys_filled);
             println!("  exact groups: {}", stats.exact_groups);
             println!("  exact flagged:{}", stats.exact_flagged);
@@ -402,6 +426,7 @@ fn main() -> Result<()> {
             config,
             contacts_csv,
             db,
+            account,
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or(cfg.paths.db);
@@ -415,10 +440,12 @@ fn main() -> Result<()> {
 
             let mut conn = rusqlite::Connection::open(&db)?;
             conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-            let stats = contacts::load_contacts_if_needed(&mut conn, &contacts_csv, true)?;
+            let stats =
+                contacts::load_contacts_if_needed(&mut conn, &contacts_csv, true, &account)?;
 
             println!("Imported contacts into {}", db.display());
             println!("  config:       {}", config.display());
+            println!("  account:      {}", account);
             println!("  contacts csv: {}", contacts_csv.display());
             println!("  contacts:     {}", stats.contacts);
             println!("  phones:       {}", stats.phones);
@@ -430,6 +457,7 @@ fn main() -> Result<()> {
             config,
             db,
             snippet_css,
+            account,
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
@@ -445,18 +473,21 @@ fn main() -> Result<()> {
 
             let mut assets_by_source = std::collections::HashMap::new();
             for src in &cfg.sources {
-                assets_by_source
-                    .insert(src.id.clone(), src.resolved_assets_dir(&cfg.paths));
+                assets_by_source.insert(
+                    src.id.clone(),
+                    src.resolved_assets_dir_for_account(&cfg.paths, &account),
+                );
             }
 
             println!("Export markdown → {}", out.display());
             println!("  config:  {}", config.display());
+            println!("  account: {}", account);
             println!("  db:      {}", db.display());
             println!("  snippet: {}", snippet_css.display());
 
             let stats = export_markdown::run_export(
                 &db,
-                &cfg.owner,
+                &account,
                 &assets_by_source,
                 &out,
                 &snippet_css,

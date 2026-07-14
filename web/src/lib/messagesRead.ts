@@ -1,4 +1,5 @@
-import { loadOwner } from "./config";
+import { currentAccountId } from "./accountScope";
+import { loadVaultOwner } from "./vaultOwner";
 import {
   combinedDedupeSql,
   displayName,
@@ -38,12 +39,13 @@ function loadConversationMessages(
     order: "asc" | "desc";
   },
 ): MessageRow[] {
+  const accountId = currentAccountId();
   const ids = (
     Array.isArray(conversationIds) ? conversationIds : [conversationIds]
   ).filter((id) => Number.isFinite(id));
   if (!ids.length) return [];
   const db = getDb();
-  const owner = loadOwner();
+  const owner = loadVaultOwner(accountId);
   const placeholders = ids.map(() => "?").join(",");
   const sourceSql = opts.source ? " AND m.source = ?" : "";
   const yearSql =
@@ -53,7 +55,7 @@ function loadConversationMessages(
       ? "ORDER BY m.timestamp DESC, m.sort_order DESC"
       : "ORDER BY m.timestamp, m.sort_order";
 
-  const params: Array<string | number> = [...ids];
+  const params: Array<string | number> = [accountId, ...ids];
   if (opts.year != null) {
     params.push(`${opts.year}-`, `${opts.year + 1}-`);
   }
@@ -65,11 +67,12 @@ function loadConversationMessages(
               c.first_name, c.last_name, c.preferred_handle,
               p.name_hint
        FROM messages m
-       LEFT JOIN contact_handles cp ON cp.handle = m.sender
-       LEFT JOIN contacts c ON c.id = cp.contact_id
+       JOIN conversations conv ON conv.id = m.conversation_id
+       LEFT JOIN contact_handles cp ON cp.handle = m.sender AND cp.account_id = conv.account_id
+       LEFT JOIN contacts c ON c.id = cp.contact_id AND c.account_id = cp.account_id
        LEFT JOIN participants p
          ON p.conversation_id = m.conversation_id AND p.handle = m.sender
-       WHERE m.conversation_id IN (${placeholders})${yearSql}${sourceSql}${combinedDedupeSql(opts.source, "m")}
+       WHERE conv.account_id = ? AND m.conversation_id IN (${placeholders})${yearSql}${sourceSql}${combinedDedupeSql(opts.source, "m")}
        ${orderSql}`,
     )
     .all(...params) as Array<{
@@ -171,4 +174,3 @@ function loadConversationMessages(
     };
   });
 }
-

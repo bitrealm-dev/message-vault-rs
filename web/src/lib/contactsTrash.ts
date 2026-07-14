@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { currentAccountId } from "./accountScope";
 import { dbPath } from "./paths";
 import { getContact, resetDb } from "./db";
 import { deleteContacts } from "./contactsWrite";
@@ -8,8 +9,10 @@ import { assertVaultWritable } from "./owner";
 function ensureTrashedContactsTable(db: Database.Database): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS trashed_contacts (
-       contact_id INTEGER PRIMARY KEY,
-       trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
+       account_id TEXT NOT NULL,
+       contact_id INTEGER NOT NULL,
+       trashed_at TEXT NOT NULL DEFAULT (datetime('now')),
+       PRIMARY KEY (account_id, contact_id)
      )`,
   );
 }
@@ -17,17 +20,25 @@ function ensureTrashedContactsTable(db: Database.Database): void {
 function ensureTrashedHandlesTable(db: Database.Database): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS trashed_handles (
-       handle TEXT PRIMARY KEY,
-       trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
+       account_id TEXT NOT NULL,
+       handle TEXT NOT NULL,
+       trashed_at TEXT NOT NULL DEFAULT (datetime('now')),
+       PRIMARY KEY (account_id, handle)
      )`,
   );
 }
 
-function contactHandles(db: Database.Database, contactId: number): string[] {
+function contactHandles(
+  db: Database.Database,
+  contactId: number,
+  accountId: string,
+): string[] {
   return (
     db
-      .prepare(`SELECT handle FROM contact_handles WHERE contact_id = ?`)
-      .all(contactId) as Array<{ handle: string }>
+      .prepare(
+        `SELECT handle FROM contact_handles WHERE contact_id = ? AND account_id = ?`,
+      )
+      .all(contactId, accountId) as Array<{ handle: string }>
   ).map((r) => r.handle);
 }
 
@@ -35,22 +46,24 @@ function contactHandles(db: Database.Database, contactId: number): string[] {
 function contactHandlesWithMessages(
   db: Database.Database,
   contactId: number,
+  accountId: string,
 ): string[] {
   return (
     db
       .prepare(
         `SELECT cp.handle AS handle
          FROM contact_handles cp
-         WHERE cp.contact_id = ?
+         WHERE cp.contact_id = ? AND cp.account_id = ?
            AND EXISTS (
              SELECT 1
              FROM conversations c
              JOIN messages m ON m.conversation_id = c.id
              WHERE c.conversation_type = 'individual'
                AND c.chat_identifier = cp.handle
+               AND c.account_id = cp.account_id
            )`,
       )
-      .all(contactId) as Array<{ handle: string }>
+      .all(contactId, accountId) as Array<{ handle: string }>
   ).map((r) => r.handle);
 }
 
@@ -65,6 +78,7 @@ function assertContactsExist(ids: number[]): void {
 /** Soft-trash contacts and all of their 1:1 handles. */
 export function trashContactWithMessages(ids: number[]): number {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
   assertContactsExist(unique);
@@ -74,14 +88,18 @@ export function trashContactWithMessages(ids: number[]): number {
     ensureTrashedContactsTable(writeDb);
     ensureTrashedHandlesTable(writeDb);
     const upsertContact = writeDb.prepare(
-      `INSERT INTO trashed_contacts (contact_id, trashed_at)
-       VALUES (?, datetime('now'))
-       ON CONFLICT(contact_id) DO UPDATE SET trashed_at = excluded.trashed_at`,
+      `INSERT INTO trashed_contacts (account_id, contact_id, trashed_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(account_id, contact_id) DO UPDATE SET trashed_at = excluded.trashed_at`,
     );
     const tx = writeDb.transaction(() => {
       for (const id of unique) {
-        upsertContact.run(id);
-        trashHandlesInDb(writeDb, contactHandles(writeDb, id));
+        upsertContact.run(accountId, id);
+        trashHandlesInDb(
+          writeDb,
+          contactHandles(writeDb, id, accountId),
+          accountId,
+        );
       }
     });
     tx();
@@ -98,6 +116,7 @@ export function trashContactMessagesOnly(ids: number[]): {
   handles: string[];
 } {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return { count: 0, handles: [] };
   assertContactsExist(unique);
@@ -108,9 +127,9 @@ export function trashContactMessagesOnly(ids: number[]): {
     ensureTrashedHandlesTable(writeDb);
     const tx = writeDb.transaction(() => {
       for (const id of unique) {
-        const next = contactHandlesWithMessages(writeDb, id);
+        const next = contactHandlesWithMessages(writeDb, id, accountId);
         handles.push(...next);
-        trashHandlesInDb(writeDb, next);
+        trashHandlesInDb(writeDb, next, accountId);
       }
     });
     tx();
@@ -124,6 +143,7 @@ export function trashContactMessagesOnly(ids: number[]): {
 /** Restore soft-trashed contacts and their handles. */
 export function restoreTrashedContacts(ids: number[]): number {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
 
@@ -132,23 +152,25 @@ export function restoreTrashedContacts(ids: number[]): number {
     ensureTrashedContactsTable(writeDb);
     ensureTrashedHandlesTable(writeDb);
     const delContact = writeDb.prepare(
-      `DELETE FROM trashed_contacts WHERE contact_id = ?`,
+      `DELETE FROM trashed_contacts WHERE account_id = ? AND contact_id = ?`,
     );
     const delHandle = writeDb.prepare(
-      `DELETE FROM trashed_handles WHERE handle = ?`,
+      `DELETE FROM trashed_handles WHERE account_id = ? AND handle = ?`,
     );
     const tx = writeDb.transaction(() => {
       for (const id of unique) {
         const trashed = writeDb
-          .prepare(`SELECT 1 AS ok FROM trashed_contacts WHERE contact_id = ?`)
-          .get(id) as { ok: number } | undefined;
+          .prepare(
+            `SELECT 1 AS ok FROM trashed_contacts WHERE account_id = ? AND contact_id = ?`,
+          )
+          .get(accountId, id) as { ok: number } | undefined;
         if (!trashed) {
           throw new Error(`contact ${id} is not in trash`);
         }
-        const handles = contactHandles(writeDb, id);
-        delContact.run(id);
+        const handles = contactHandles(writeDb, id, accountId);
+        delContact.run(accountId, id);
         for (const handle of handles) {
-          delHandle.run(handle);
+          delHandle.run(accountId, handle);
         }
       }
     });
@@ -166,6 +188,7 @@ export function restoreTrashedContacts(ids: number[]): number {
  */
 export function permanentlyDeleteTrashedContacts(ids: number[]): number {
   assertVaultWritable();
+  const accountId = currentAccountId();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
 
@@ -176,28 +199,30 @@ export function permanentlyDeleteTrashedContacts(ids: number[]): number {
     writeDb.pragma("foreign_keys = ON");
     const delConv = writeDb.prepare(
       `DELETE FROM conversations
-       WHERE conversation_type = 'individual' AND chat_identifier = ?`,
+       WHERE account_id = ? AND conversation_type = 'individual' AND chat_identifier = ?`,
     );
     const delHandle = writeDb.prepare(
-      `DELETE FROM trashed_handles WHERE handle = ?`,
+      `DELETE FROM trashed_handles WHERE account_id = ? AND handle = ?`,
     );
     const delContactTrash = writeDb.prepare(
-      `DELETE FROM trashed_contacts WHERE contact_id = ?`,
+      `DELETE FROM trashed_contacts WHERE account_id = ? AND contact_id = ?`,
     );
     const tx = writeDb.transaction(() => {
       for (const id of unique) {
         const trashed = writeDb
-          .prepare(`SELECT 1 AS ok FROM trashed_contacts WHERE contact_id = ?`)
-          .get(id) as { ok: number } | undefined;
+          .prepare(
+            `SELECT 1 AS ok FROM trashed_contacts WHERE account_id = ? AND contact_id = ?`,
+          )
+          .get(accountId, id) as { ok: number } | undefined;
         if (!trashed) {
           throw new Error(`contact ${id} is not in trash`);
         }
-        const handles = contactHandles(writeDb, id);
+        const handles = contactHandles(writeDb, id, accountId);
         for (const handle of handles) {
-          delConv.run(handle);
-          delHandle.run(handle);
+          delConv.run(accountId, handle);
+          delHandle.run(accountId, handle);
         }
-        delContactTrash.run(id);
+        delContactTrash.run(accountId, id);
       }
     });
     tx();

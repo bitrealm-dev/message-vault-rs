@@ -6,14 +6,18 @@ use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
+use rusqlite::Connection;
 
 use crate::config::Config;
 use crate::dedupe;
 use crate::import::{self, ImportMode};
+use crate::schema;
+use crate::vault_owner::{self, VaultOwner};
 
 #[derive(Debug)]
 pub struct IngestOptions {
     pub source_id: String,
+    pub account_id: String,
     /// One or more raw input roots (merged for exporters that support multi-input).
     pub from: Vec<PathBuf>,
     pub staging_dir: Option<PathBuf>,
@@ -53,6 +57,7 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         .with_context(|| format!("failed to create staging dir {}", staging.display()))?;
 
     println!("Ingest source '{}'", src.id);
+    println!("  account:  {}", opts.account_id);
     for p in from {
         println!("  from:     {}", p.display());
     }
@@ -64,10 +69,12 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         println!("  rotated:  {}", archive.display());
     }
 
-    println!("  phase:    export");
-    export_source(cfg, &src.id, from, &staging)?;
+    let owner = load_owner_for_export(cfg, &opts.account_id)?;
 
-    let assets = src.resolved_assets_dir(&cfg.paths);
+    println!("  phase:    export");
+    export_source(cfg, &src.id, from, &staging, &owner)?;
+
+    let assets = src.resolved_assets_dir_for_account(&cfg.paths, &opts.account_id);
     println!("  phase:    import → {}", cfg.paths.db.display());
     println!("  assets:   {}", assets.display());
     let import_stats = import::import_export(
@@ -79,6 +86,7 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         opts.overwrite_contacts,
         opts.mode,
         &src.id,
+        &opts.account_id,
     )?;
 
     let dedupe_stats = if opts.skip_dedupe {
@@ -89,6 +97,7 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         let priority: Vec<String> = cfg.sources.iter().map(|s| s.id.clone()).collect();
         Some(dedupe::run_dedupe(
             &cfg.paths.db,
+            &opts.account_id,
             &priority,
             opts.window_secs,
         )?)
@@ -102,6 +111,30 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
         import: import_stats,
         dedupe: dedupe_stats,
     })
+}
+
+fn load_owner_for_export(cfg: &Config, account_id: &str) -> Result<VaultOwner> {
+    let conn = Connection::open(&cfg.paths.db)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    schema::ensure_vault_schema(&conn)?;
+    vault_owner::ensure_account_row(&conn, account_id)?;
+    let owner = vault_owner::load_vault_owner(&conn, account_id)?;
+    if !owner.phones.is_empty() {
+        return Ok(owner);
+    }
+    if let Some(legacy) = &cfg.owner {
+        if !legacy.phones.is_empty() {
+            return Ok(VaultOwner {
+                display_name: legacy.display_name.clone(),
+                phones: legacy.phones.clone(),
+                emails: legacy.emails.clone(),
+            });
+        }
+    }
+    bail!(
+        "vault owner for account {account_id} has no phones; set vault_owner_phones in the DB \
+         or legacy [owner].phones in config.toml"
+    );
 }
 
 /// Known ingest export backends. Add new sources here (and a match arm below).
@@ -127,7 +160,13 @@ fn lookup_export_backend(source_id: &str) -> Option<ExportBackend> {
         .map(|(_, backend)| *backend)
 }
 
-fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path) -> Result<()> {
+fn export_source(
+    _cfg: &Config,
+    source_id: &str,
+    from: &[PathBuf],
+    staging: &Path,
+    owner: &VaultOwner,
+) -> Result<()> {
     let Some(backend) = lookup_export_backend(source_id) else {
         bail!(
             "ingest does not know how to export source '{source_id}' \
@@ -138,8 +177,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
     match backend {
         ExportBackend::GoSmsPro => {
             let from = require_single_input(source_id, from)?;
-            let report =
-                go_sms_pro_exporter::convert_export(from, staging, &cfg.owner.phones)?;
+            let report = go_sms_pro_exporter::convert_export(from, staging, &owner.phones)?;
             println!(
                 "  export:   conversations={} xml={} pdu={} attachments={}",
                 report.conversations,
@@ -150,11 +188,8 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
         }
         ExportBackend::SmsBackupRestore => {
             let from = require_single_input(source_id, from)?;
-            let report = sms_backup_restore_exporter::convert_export(
-                from,
-                staging,
-                &cfg.owner.phones,
-            )?;
+            let report =
+                sms_backup_restore_exporter::convert_export(from, staging, &owner.phones)?;
             println!(
                 "  export:   conversations={} sms={} mms={} attachments={}",
                 report.conversations,
@@ -164,10 +199,10 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
             );
         }
         ExportBackend::SmsBackupPlus => {
-            let emails = if cfg.owner.emails.is_empty() {
+            let emails = if owner.emails.is_empty() {
                 vec!["owner@example.com".to_string()]
             } else {
-                cfg.owner.emails.clone()
+                owner.emails.clone()
             };
             let contacts = optional_file("config/contacts.csv");
             let name_mapping = optional_file("config/name-mapping.csv")
@@ -175,7 +210,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
             let report = sms_backup_plus_exporter::convert_export(
                 from,
                 staging,
-                &cfg.owner.phones,
+                &owner.phones,
                 &emails,
                 contacts.as_deref(),
                 name_mapping.as_deref(),

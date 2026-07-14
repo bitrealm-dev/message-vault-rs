@@ -1,7 +1,18 @@
 import { createContact, deleteContacts } from "@/lib/contactsWrite";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
 
 export async function POST(req: Request) {
   let body: Record<string, unknown>;
@@ -31,15 +42,19 @@ export async function POST(req: Request) {
       : undefined;
 
   try {
-    const contact = createContact({
-      firstName,
-      lastName,
-      phones,
-      exclude,
-      contactGroups,
+    return await withAccountHandler(async () => {
+      const contact = createContact({
+        firstName,
+        lastName,
+        phones,
+        exclude,
+        contactGroups,
+      });
+      return NextResponse.json({ contact });
     });
-    return NextResponse.json({ contact });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "create failed";
     const status =
       message.includes("required") || message.includes("already belongs")
@@ -67,9 +82,13 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    const deleted = deleteContacts(ids);
-    return NextResponse.json({ deleted });
+    return await withAccountHandler(async () => {
+      const deleted = deleteContacts(ids);
+      return NextResponse.json({ deleted });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "delete failed";
     const status = message.includes("not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status });

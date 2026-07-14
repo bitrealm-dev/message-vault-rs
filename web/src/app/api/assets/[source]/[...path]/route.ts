@@ -1,4 +1,8 @@
 import { sourceById } from "@/lib/paths";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
@@ -44,11 +48,27 @@ function serveFromRoot(root: string, parts: string[]) {
   });
 }
 
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
+
 export async function GET(_req: Request, { params }: Params) {
   const { source, path: parts } = await params;
-  const src = sourceById(source);
-  if (!src) {
-    return NextResponse.json({ error: "unknown source" }, { status: 404 });
+  try {
+    return await withAccountHandler(async () => {
+      const src = sourceById(source);
+      if (!src) {
+        return NextResponse.json({ error: "unknown source" }, { status: 404 });
+      }
+      return serveFromRoot(src.assetsDir, parts);
+    });
+  } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
+    const message = err instanceof Error ? err.message : "serve failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-  return serveFromRoot(src.assetsDir, parts);
 }

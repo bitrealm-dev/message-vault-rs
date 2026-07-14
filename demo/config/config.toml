@@ -1,3 +1,4 @@
+# Legacy owner/account — seeded into SQLite by `reset-demo`.
 [owner]
 display_name = "Demo User"
 phones = ["+14155559000"]

@@ -5,8 +5,12 @@
 #
 # Real config/contacts/exclude files are gitignored.
 #
-# [owner] — message / vault owner: whose backups this vault contains.
-# [account] — web account: credentials for logging into the Message Vault site.
+# Instance config: paths and import sources only. Vault owner profile and web login
+# accounts live in SQLite (`vault_owners`, `accounts`). CLI commands require `--account <uuid>`.
+#
+# Optional legacy sections (used by `reset-demo` seeding when present):
+# [owner] — message / vault owner for exporters
+# [account] — web login account stub
 #
 # contacts.csv: phone numbers only (semicolon-separated). Set exclude=true to hide from
 # Contacts/groups (All still lists them). iMessage emails attach in the UI into
@@ -14,15 +18,15 @@
 # Older contact_phones / preferred_phone DBs are not upgraded — wipe vault.db and re-ingest.
 # exclude.csv: handles skipped entirely on import (short codes, banks, etc.).
 
-[owner]
-display_name = "Your Name"
-phones = ["+15555550100"]
-emails = ["you@backup.example.com"]
-
-[account]
-username = "yourname"
-login_email = "you@example.com"
-read_only = false
+# [owner]
+# display_name = "Your Name"
+# phones = ["+15555550100"]
+# emails = ["you@backup.example.com"]
+#
+# [account]
+# username = "yourname"
+# login_email = "you@example.com"
+# read_only = false
 
 [paths]
 db = "data/vault.db"

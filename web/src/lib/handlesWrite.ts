@@ -1,12 +1,15 @@
 import Database from "better-sqlite3";
+import { currentAccountId } from "./accountScope";
 import { dbPath } from "./paths";
 import { resetDb } from "./db";
 
 function ensureTrashedHandlesTable(db: Database.Database): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS trashed_handles (
-       handle TEXT PRIMARY KEY,
-       trashed_at TEXT NOT NULL DEFAULT (datetime('now'))
+       account_id TEXT NOT NULL,
+       handle TEXT NOT NULL,
+       trashed_at TEXT NOT NULL DEFAULT (datetime('now')),
+       PRIMARY KEY (account_id, handle)
      )`,
   );
 }
@@ -15,13 +18,16 @@ function ensureTrashedHandlesTable(db: Database.Database): void {
 export function clearTrashedHandles(
   db: Database.Database,
   handles: string[],
+  accountId: string = currentAccountId(),
 ): void {
   const trimmed = handles.map((h) => h.trim()).filter(Boolean);
   if (trimmed.length === 0) return;
   ensureTrashedHandlesTable(db);
-  const del = db.prepare(`DELETE FROM trashed_handles WHERE handle = ?`);
+  const del = db.prepare(
+    `DELETE FROM trashed_handles WHERE account_id = ? AND handle = ?`,
+  );
   for (const handle of trimmed) {
-    del.run(handle);
+    del.run(accountId, handle);
   }
 }
 
@@ -29,28 +35,30 @@ export function clearTrashedHandles(
 export function trashHandlesInDb(
   db: Database.Database,
   handles: string[],
+  accountId: string = currentAccountId(),
 ): void {
   const trimmed = [...new Set(handles.map((h) => h.trim()).filter(Boolean))];
   if (trimmed.length === 0) return;
   ensureTrashedHandlesTable(db);
   const upsert = db.prepare(
-    `INSERT INTO trashed_handles (handle, trashed_at)
-     VALUES (?, datetime('now'))
-     ON CONFLICT(handle) DO UPDATE SET trashed_at = excluded.trashed_at`,
+    `INSERT INTO trashed_handles (account_id, handle, trashed_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(account_id, handle) DO UPDATE SET trashed_at = excluded.trashed_at`,
   );
   for (const handle of trimmed) {
-    upsert.run(handle);
+    upsert.run(accountId, handle);
   }
 }
 
 /** Move a handle into Trash (may still belong to a contact). */
 export function trashHandle(handle: string): void {
+  const accountId = currentAccountId();
   const trimmed = handle.trim();
   if (!trimmed) throw new Error("handle required");
 
   const writeDb = new Database(dbPath());
   try {
-    trashHandlesInDb(writeDb, [trimmed]);
+    trashHandlesInDb(writeDb, [trimmed], accountId);
   } finally {
     writeDb.close();
   }
@@ -59,13 +67,16 @@ export function trashHandle(handle: string): void {
 
 /** Restore a handle from Trash. */
 export function restoreHandle(handle: string): void {
+  const accountId = currentAccountId();
   const trimmed = handle.trim();
   if (!trimmed) throw new Error("handle required");
 
   const writeDb = new Database(dbPath());
   try {
     ensureTrashedHandlesTable(writeDb);
-    writeDb.prepare(`DELETE FROM trashed_handles WHERE handle = ?`).run(trimmed);
+    writeDb
+      .prepare(`DELETE FROM trashed_handles WHERE account_id = ? AND handle = ?`)
+      .run(accountId, trimmed);
   } finally {
     writeDb.close();
   }
@@ -78,6 +89,7 @@ export function restoreHandle(handle: string): void {
  * (messages-only trash for a live contact).
  */
 export function permanentlyDeleteHandle(handle: string): void {
+  const accountId = currentAccountId();
   const trimmed = handle.trim();
   if (!trimmed) throw new Error("handle required");
 
@@ -85,8 +97,10 @@ export function permanentlyDeleteHandle(handle: string): void {
   try {
     ensureTrashedHandlesTable(writeDb);
     const trashed = writeDb
-      .prepare(`SELECT 1 AS ok FROM trashed_handles WHERE handle = ?`)
-      .get(trimmed) as { ok: number } | undefined;
+      .prepare(
+        `SELECT 1 AS ok FROM trashed_handles WHERE account_id = ? AND handle = ?`,
+      )
+      .get(accountId, trimmed) as { ok: number } | undefined;
     if (!trashed) {
       throw new Error("handle is not in trash");
     }
@@ -96,12 +110,12 @@ export function permanentlyDeleteHandle(handle: string): void {
       writeDb
         .prepare(
           `DELETE FROM conversations
-           WHERE conversation_type = 'individual' AND chat_identifier = ?`,
+           WHERE account_id = ? AND conversation_type = 'individual' AND chat_identifier = ?`,
         )
-        .run(trimmed);
+        .run(accountId, trimmed);
       writeDb
-        .prepare(`DELETE FROM trashed_handles WHERE handle = ?`)
-        .run(trimmed);
+        .prepare(`DELETE FROM trashed_handles WHERE account_id = ? AND handle = ?`)
+        .run(accountId, trimmed);
     });
     tx();
   } finally {

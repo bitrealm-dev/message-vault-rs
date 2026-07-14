@@ -3,9 +3,20 @@ import {
   restoreHandle,
   trashHandle,
 } from "@/lib/handlesWrite";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
 
 export async function POST(req: Request) {
   let body: { handle?: string };
@@ -19,9 +30,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "handle required" }, { status: 400 });
   }
   try {
-    trashHandle(handle);
-    return NextResponse.json({ ok: true, handle });
+    return await withAccountHandler(async () => {
+      trashHandle(handle);
+      return NextResponse.json({ ok: true, handle });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "trash failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
@@ -39,13 +54,17 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "handle required" }, { status: 400 });
   }
   try {
-    if (body.permanent) {
-      permanentlyDeleteHandle(handle);
-      return NextResponse.json({ ok: true, handle, permanent: true });
-    }
-    restoreHandle(handle);
-    return NextResponse.json({ ok: true, handle });
+    return await withAccountHandler(async () => {
+      if (body.permanent) {
+        permanentlyDeleteHandle(handle);
+        return NextResponse.json({ ok: true, handle, permanent: true });
+      }
+      restoreHandle(handle);
+      return NextResponse.json({ ok: true, handle });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message =
       err instanceof Error
         ? err.message

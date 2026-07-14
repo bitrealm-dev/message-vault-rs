@@ -1,4 +1,8 @@
 import { addPhoneToContact, removePhoneFromContact } from "@/lib/contactsWrite";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -9,6 +13,13 @@ function parseHandle(body: Record<string, unknown>): string {
   if (typeof body.handle === "string") return body.handle.trim();
   if (typeof body.phone === "string") return body.phone.trim();
   return "";
+}
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
 }
 
 export async function POST(req: Request, { params }: Params) {
@@ -31,9 +42,13 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   try {
-    const contact = addPhoneToContact(id, handle);
-    return NextResponse.json({ contact });
+    return await withAccountHandler(async () => {
+      const contact = addPhoneToContact(id, handle);
+      return NextResponse.json({ contact });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "update failed";
     const status = message.includes("not found")
       ? 404
@@ -64,9 +79,13 @@ export async function DELETE(req: Request, { params }: Params) {
   }
 
   try {
-    const contact = removePhoneFromContact(id, handle);
-    return NextResponse.json({ contact });
+    return await withAccountHandler(async () => {
+      const contact = removePhoneFromContact(id, handle);
+      return NextResponse.json({ contact });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "update failed";
     const status = message.includes("not found")
       ? 404

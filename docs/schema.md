@@ -35,6 +35,7 @@ One row = one chat thread.
 | Column | Plain meaning |
 |--------|----------------|
 | `id` | Internal number for this chat |
+| `account_id` | Which vault tenant owns this chat (points to `accounts.id`) |
 | `chat_identifier` | How the chat is named in the backup (often a phone number for a 1:1 chat, or a group id) |
 | `service` | Optional service label from the export |
 | `conversation_type` | Kind of chat, such as individual or group |
@@ -111,12 +112,36 @@ One row = one web login account for the Message Vault site.
 
 | Column | Plain meaning |
 |--------|----------------|
-| `id` | Stable account identifier (UUID). Does not change when username or email is updated. |
+| `id` | Stable account identifier (UUID). Does not change when username or emails are updated. |
 | `username` | Login username (unique, mutable) |
-| `email` | User email for signing in (unique, mutable) |
 | `read_only` | When set, blocks edits to contacts, groups, and messages |
 
-On first access, the row is seeded from `config.toml` `[account]` if the table is empty. Username and email updates are applied by `id`, not by the previous username or email.
+### `account_emails`
+
+One row = one email address for a web account.
+
+| Column | Plain meaning |
+|--------|----------------|
+| `account_id` | Points to `accounts.id` |
+| `email` | Email address (unique across all accounts, mutable only by editing the row) |
+| `is_primary` | Exactly one row per account is primary; the primary email cannot be deleted |
+
+An account must always have one primary email. Additional emails can be added or removed; a non-primary email can be promoted to primary.
+
+On first access, the account row is seeded from legacy `config.toml` `[account]` when present.
+
+### `vault_owners`
+
+Per-account message / vault owner profile (whose backups this tenant holds).
+
+| Column | Plain meaning |
+|--------|----------------|
+| `account_id` | Points to `accounts.id` |
+| `display_name` | Display name for “you” in exports and the UI |
+
+### `vault_owner_phones` / `vault_owner_emails`
+
+Phone numbers and emails for the vault owner, scoped by `account_id`.
 
 ### `contacts`
 
@@ -125,6 +150,7 @@ One row = one person in the vault address book.
 | Column | Plain meaning |
 |--------|----------------|
 | `id` | Internal number for this person |
+| `account_id` | Which vault tenant owns this contact |
 | `first_name` / `last_name` | Their name |
 | `exclude` | Flag used to mark someone as excluded in the UI |
 | `preferred_handle` | Optional main phone or email to show |
@@ -135,10 +161,11 @@ One row = one phone number or email that belongs to one contact.
 
 | Column | Plain meaning |
 |--------|----------------|
-| `handle` | The phone or email (this is the primary key) |
+| `account_id` | Which vault tenant owns this handle |
+| `handle` | The phone or email |
 | `contact_id` | Which contact owns it (points to `contacts.id`) |
 
-One contact can have many handles. Each handle points to only one contact.
+One contact can have many handles. Each handle points to only one contact per account (`PRIMARY KEY (account_id, handle)`).
 
 ### `contact_groups`
 
@@ -147,7 +174,8 @@ One row = one named group label (for example Family).
 | Column | Plain meaning |
 |--------|----------------|
 | `id` | Internal number |
-| `name` | Group name (unique) |
+| `account_id` | Which vault tenant owns this group |
+| `name` | Group name (unique per account) |
 
 ### `contact_group_members`
 
@@ -190,7 +218,7 @@ During import, data is first written into mirror tables, then moved into the rea
 
 | Staging table | Matches |
 |---------------|---------|
-| `staging_conversations` | `conversations` |
+| `staging_conversations` | `conversations` (includes `account_id`) |
 | `staging_participants` | `participants` |
 | `staging_messages` | `messages` (without cross-source duplicate fields) |
 | `staging_attachments` | `attachments` |
@@ -208,6 +236,7 @@ These tables do not store the chat or contact themselves. They mark an id or han
 
 | Column | Plain meaning |
 |--------|----------------|
+| `account_id` | Which vault tenant trashed this handle |
 | `handle` | Phone or email marked trashed |
 | `trashed_at` | When it was marked |
 
@@ -215,6 +244,7 @@ These tables do not store the chat or contact themselves. They mark an id or han
 
 | Column | Plain meaning |
 |--------|----------------|
+| `account_id` | Which vault tenant trashed this chat |
 | `conversation_id` | Chat id marked trashed |
 | `trashed_at` | When it was marked |
 
@@ -222,6 +252,7 @@ These tables do not store the chat or contact themselves. They mark an id or han
 
 | Column | Plain meaning |
 |--------|----------------|
+| `account_id` | Which vault tenant trashed this contact |
 | `contact_id` | Contact id marked trashed |
 | `trashed_at` | When it was marked |
 
@@ -242,6 +273,8 @@ These tables do not store the chat or contact themselves. They mark an id or han
 | Group labels | `contact_groups` + `contact_group_members` |
 | Soft-deleted items | `trashed_*` |
 | Import scratch space | `staging_*` |
+
+Legacy single-tenant databases without `account_id` on `conversations` are wiped on first access (fresh start). See `ensure_vault_schema` in [`src/schema.rs`](../src/schema.rs).
 
 Table definitions in code: [`src/schema.rs`](../src/schema.rs).
 

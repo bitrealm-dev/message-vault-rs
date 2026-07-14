@@ -8,6 +8,10 @@ import {
   permanentlyDeleteHandle,
   restoreHandle,
 } from "@/lib/handlesWrite";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -20,6 +24,13 @@ function parseIds(body: Record<string, unknown>): number[] | null {
     return null;
   }
   return body.ids as number[];
+}
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -44,13 +55,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    if (mode === "contact_and_messages") {
-      const count = trashContactWithMessages(ids);
-      return NextResponse.json({ ok: true, count, mode });
-    }
-    const { count, handles } = trashContactMessagesOnly(ids);
-    return NextResponse.json({ ok: true, count, mode, handles });
+    return await withAccountHandler(async () => {
+      if (mode === "contact_and_messages") {
+        const count = trashContactWithMessages(ids);
+        return NextResponse.json({ ok: true, count, mode });
+      }
+      const { count, handles } = trashContactMessagesOnly(ids);
+      return NextResponse.json({ ok: true, count, mode, handles });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "trash failed";
     const status = message.includes("not found") ? 404 : 400;
     return NextResponse.json({ error: message }, { status });
@@ -72,13 +87,17 @@ export async function DELETE(req: Request) {
 
   if (handle) {
     try {
-      if (permanent) {
-        permanentlyDeleteHandle(handle);
-        return NextResponse.json({ ok: true, handle, permanent: true });
-      }
-      restoreHandle(handle);
-      return NextResponse.json({ ok: true, handle });
+      return await withAccountHandler(async () => {
+        if (permanent) {
+          permanentlyDeleteHandle(handle);
+          return NextResponse.json({ ok: true, handle, permanent: true });
+        }
+        restoreHandle(handle);
+        return NextResponse.json({ ok: true, handle });
+      });
     } catch (err) {
+      const auth = authError(err);
+      if (auth) return auth;
       const message =
         err instanceof Error
           ? err.message
@@ -97,13 +116,17 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    if (permanent) {
-      const count = permanentlyDeleteTrashedContacts(ids);
-      return NextResponse.json({ ok: true, count, permanent: true });
-    }
-    const count = restoreTrashedContacts(ids);
-    return NextResponse.json({ ok: true, count });
+    return await withAccountHandler(async () => {
+      if (permanent) {
+        const count = permanentlyDeleteTrashedContacts(ids);
+        return NextResponse.json({ ok: true, count, permanent: true });
+      }
+      const count = restoreTrashedContacts(ids);
+      return NextResponse.json({ ok: true, count });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message =
       err instanceof Error
         ? err.message

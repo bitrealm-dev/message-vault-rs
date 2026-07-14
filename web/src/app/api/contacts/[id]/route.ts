@@ -1,10 +1,21 @@
 import { getContact } from "@/lib/db";
 import { patchContact, type ContactPatch } from "@/lib/contactsWrite";
+import {
+  unauthorizedResponse,
+  withAccountHandler,
+} from "@/lib/accountContext";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 type Params = { params: Promise<{ id: string }> };
+
+function authError(err: unknown): NextResponse | null {
+  if (err instanceof Error && err.message === "Not signed in") {
+    return unauthorizedResponse();
+  }
+  return null;
+}
 
 export async function GET(_req: Request, { params }: Params) {
   const { id: idStr } = await params;
@@ -12,11 +23,21 @@ export async function GET(_req: Request, { params }: Params) {
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
-  const contact = getContact(id);
-  if (!contact) {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  try {
+    return await withAccountHandler(async () => {
+      const contact = getContact(id);
+      if (!contact) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
+      return NextResponse.json({ contact });
+    });
+  } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
+    const message = err instanceof Error ? err.message : "load failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-  return NextResponse.json({ contact });
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -73,9 +94,13 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   try {
-    const contact = patchContact(id, patch);
-    return NextResponse.json({ contact });
+    return await withAccountHandler(async () => {
+      const contact = patchContact(id, patch);
+      return NextResponse.json({ contact });
+    });
   } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
     const message = err instanceof Error ? err.message : "update failed";
     const status = message.includes("not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status });

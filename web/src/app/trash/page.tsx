@@ -7,6 +7,7 @@ import {
   listTrashedGroupYearRows,
   listTrashedHandles,
 } from "@/lib/db";
+import { withServerAccount } from "@/lib/serverAccount";
 
 export const dynamic = "force-dynamic";
 
@@ -21,23 +22,26 @@ export default async function TrashPage({
   const initialConversationId = Number.isFinite(rawG) ? rawG : null;
   const rawY = sp.y ? Number(sp.y) : null;
   const initialYear = Number.isFinite(rawY) ? rawY : null;
-  const handles = listTrashedHandles();
-  const groupChats = listTrashedGroupYearRows();
-  const trashedContacts = listTrashedContacts();
-  const trashedContactMessages = listTrashedContactMessages();
-  const contactGroups = listGroups();
 
-  return (
-    <BrowsePageLayout active="/trash" groups={contactGroups}>
-      <TrashShell
-        handles={handles}
-        groupChats={groupChats}
-        trashedContacts={trashedContacts}
-        trashedContactMessages={trashedContactMessages}
-        initialHandle={initialHandle}
-        initialConversationId={initialConversationId}
-        initialYear={initialYear}
-      />
-    </BrowsePageLayout>
-  );
+  return withServerAccount(async () => {
+    const handles = listTrashedHandles();
+    const groupChats = listTrashedGroupYearRows();
+    const trashedContacts = listTrashedContacts();
+    const trashedContactMessages = listTrashedContactMessages();
+    const contactGroups = listGroups();
+
+    return (
+      <BrowsePageLayout active="/trash" groups={contactGroups}>
+        <TrashShell
+          handles={handles}
+          groupChats={groupChats}
+          trashedContacts={trashedContacts}
+          trashedContactMessages={trashedContactMessages}
+          initialHandle={initialHandle}
+          initialConversationId={initialConversationId}
+          initialYear={initialYear}
+        />
+      </BrowsePageLayout>
+    );
+  });
 }

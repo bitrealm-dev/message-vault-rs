@@ -1,9 +1,10 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { BrowseShell } from "@/components/BrowseShell";
 import { listContacts, listGroups, groupSlug } from "@/lib/db";
+import { withServerAccount } from "@/lib/serverAccount";
 import type { ContactSection } from "@/lib/types";
 
-export function ContactBrowsePage({
+export async function ContactBrowsePage({
   section,
   label,
   nav,
@@ -14,23 +15,25 @@ export function ContactBrowsePage({
   nav: string;
   contactId: number | null;
 }) {
-  const contacts = listContacts(section);
-  const groups = listGroups();
-  const paneKey =
-    typeof section === "object" ? `group-${groupSlug(section.group)}` : section;
+  return withServerAccount(async () => {
+    const contacts = listContacts(section);
+    const groups = listGroups();
+    const paneKey =
+      typeof section === "object" ? `group-${groupSlug(section.group)}` : section;
 
-  return (
-    <BrowsePageLayout active={nav} groups={groups}>
-      <BrowseShell
-        paneStorageKey={paneKey}
-        sectionLabel={label}
-        contactSection={section}
-        contacts={contacts}
-        allGroups={groups}
-        initialContactId={contactId}
-      />
-    </BrowsePageLayout>
-  );
+    return (
+      <BrowsePageLayout active={nav} groups={groups}>
+        <BrowseShell
+          paneStorageKey={paneKey}
+          sectionLabel={label}
+          contactSection={section}
+          contacts={contacts}
+          allGroups={groups}
+          initialContactId={contactId}
+        />
+      </BrowsePageLayout>
+    );
+  });
 }
 
 export function parseContactId(raw: string | undefined): number | null {

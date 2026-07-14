@@ -78,13 +78,13 @@ struct EmailSnapshot {
     entries: Vec<(HashSet<String>, Vec<String>)>,
 }
 
-fn snapshot_email_handles(conn: &Connection) -> Result<EmailSnapshot> {
+fn snapshot_email_handles(conn: &Connection, account_id: &str) -> Result<EmailSnapshot> {
     let mut by_contact: HashMap<i64, (HashSet<String>, Vec<String>)> = HashMap::new();
 
     let mut stmt = conn.prepare(
-        "SELECT contact_id, handle FROM contact_handles ORDER BY contact_id, handle",
+        "SELECT contact_id, handle FROM contact_handles WHERE account_id = ?1 ORDER BY contact_id, handle",
     )?;
-    let rows = stmt.query_map([], |row| {
+    let rows = stmt.query_map(params![account_id], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
     for row in rows {
@@ -106,6 +106,7 @@ fn snapshot_email_handles(conn: &Connection) -> Result<EmailSnapshot> {
 
 fn restore_email_handles(
     conn: &Connection,
+    account_id: &str,
     snapshot: &EmailSnapshot,
 ) -> Result<u64> {
     if snapshot.entries.is_empty() {
@@ -118,8 +119,8 @@ fn restore_email_handles(
         for phone in phones {
             let found: Option<i64> = conn
                 .query_row(
-                    "SELECT contact_id FROM contact_handles WHERE handle = ?1",
-                    params![phone],
+                    "SELECT contact_id FROM contact_handles WHERE account_id = ?1 AND handle = ?2",
+                    params![account_id, phone],
                     |row| row.get(0),
                 )
                 .optional()?;
@@ -134,8 +135,8 @@ fn restore_email_handles(
         for email in emails {
             let owner: Option<i64> = conn
                 .query_row(
-                    "SELECT contact_id FROM contact_handles WHERE handle = ?1",
-                    params![email],
+                    "SELECT contact_id FROM contact_handles WHERE account_id = ?1 AND handle = ?2",
+                    params![account_id, email],
                     |row| row.get(0),
                 )
                 .optional()?;
@@ -148,8 +149,8 @@ fn restore_email_handles(
                 continue;
             }
             conn.execute(
-                "INSERT INTO contact_handles (handle, contact_id) VALUES (?1, ?2)",
-                params![email, id],
+                "INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?1, ?2, ?3)",
+                params![account_id, email, id],
             )?;
             restored += 1;
         }
@@ -157,7 +158,7 @@ fn restore_email_handles(
     Ok(restored)
 }
 
-/// Load contacts from CSV when the table is empty or when `overwrite` is true.
+/// Load contacts from CSV when the account table is empty or when `overwrite` is true.
 ///
 /// On overwrite, email handles already in SQLite are snapshotted by phone set
 /// and reattached after CSV reload (contacts.csv is phone-only).
@@ -165,15 +166,21 @@ pub fn load_contacts_if_needed(
     conn: &mut Connection,
     csv_path: &Path,
     overwrite: bool,
+    account_id: &str,
 ) -> Result<ContactLoadStats> {
     crate::schema::ensure_contacts_schema(conn)?;
+    crate::vault_owner::ensure_account_row(conn, account_id)?;
     if !crate::schema::contacts_schema_ready(conn)? {
         eprintln!("contacts: schema not current; recreating tables before CSV load");
         crate::schema::recreate_contacts(conn)?;
     }
 
     let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM contacts", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM contacts WHERE account_id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        )
         .unwrap_or(0);
 
     if count > 0 && !overwrite {
@@ -184,12 +191,12 @@ pub fn load_contacts_if_needed(
     }
 
     let email_snapshot = if count > 0 && overwrite {
-        snapshot_email_handles(conn)?
+        snapshot_email_handles(conn, account_id)?
     } else {
         EmailSnapshot::default()
     };
 
-    crate::schema::recreate_contacts(conn)?;
+    delete_account_contacts(conn, account_id)?;
 
     if !csv_path.exists() {
         eprintln!(
@@ -199,8 +206,8 @@ pub fn load_contacts_if_needed(
         return Ok(ContactLoadStats::default());
     }
 
-    let mut stats = load_from_csv(conn, csv_path)?;
-    stats.emails_restored = restore_email_handles(conn, &email_snapshot)?;
+    let mut stats = load_from_csv(conn, csv_path, account_id)?;
+    stats.emails_restored = restore_email_handles(conn, account_id, &email_snapshot)?;
     if stats.emails_restored > 0 {
         eprintln!(
             "contacts: restored {} email handle(s) from previous DB (CSV is phone-only)",
@@ -210,7 +217,31 @@ pub fn load_contacts_if_needed(
     Ok(stats)
 }
 
-fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadStats> {
+fn delete_account_contacts(conn: &Connection, account_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM contact_group_members WHERE contact_id IN (SELECT id FROM contacts WHERE account_id = ?1)",
+        params![account_id],
+    )?;
+    conn.execute(
+        "DELETE FROM contact_handles WHERE account_id = ?1",
+        params![account_id],
+    )?;
+    conn.execute(
+        "DELETE FROM contact_groups WHERE account_id = ?1",
+        params![account_id],
+    )?;
+    conn.execute(
+        "DELETE FROM contacts WHERE account_id = ?1",
+        params![account_id],
+    )?;
+    Ok(())
+}
+
+fn load_from_csv(
+    conn: &mut Connection,
+    csv_path: &Path,
+    account_id: &str,
+) -> Result<ContactLoadStats> {
     let file = File::open(csv_path)
         .with_context(|| format!("failed to open contacts CSV {}", csv_path.display()))?;
     let mut reader = csv::Reader::from_reader(file);
@@ -262,24 +293,24 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
         tx.execute(
             r#"
             INSERT INTO contacts (
-                first_name, last_name, exclude, preferred_handle
-            ) VALUES (?1, ?2, ?3, ?4)
+                account_id, first_name, last_name, exclude, preferred_handle
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
             "#,
-            params![first_name, last_name, exclude as i64, preferred],
+            params![account_id, first_name, last_name, exclude as i64, preferred],
         )?;
         let contact_id = tx.last_insert_rowid();
         stats.contacts += 1;
 
         for phone in &phones {
             tx.execute(
-                "INSERT INTO contact_handles (handle, contact_id) VALUES (?1, ?2)",
-                params![phone, contact_id],
+                "INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?1, ?2, ?3)",
+                params![account_id, phone, contact_id],
             )?;
             stats.phones += 1;
         }
 
         for group_name in row_groups(&row) {
-            let group_id = ensure_group(&tx, &group_name)?;
+            let group_id = ensure_group(&tx, account_id, &group_name)?;
             tx.execute(
                 "INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?1, ?2)",
                 params![contact_id, group_id],
@@ -292,30 +323,34 @@ fn load_from_csv(conn: &mut Connection, csv_path: &Path) -> Result<ContactLoadSt
     Ok(stats)
 }
 
-fn ensure_group(conn: &Connection, name: &str) -> Result<i64> {
+fn ensure_group(conn: &Connection, account_id: &str, name: &str) -> Result<i64> {
     conn.execute(
-        "INSERT OR IGNORE INTO contact_groups (name) VALUES (?1)",
-        params![name],
+        "INSERT OR IGNORE INTO contact_groups (account_id, name) VALUES (?1, ?2)",
+        params![account_id, name],
     )?;
     let id: i64 = conn.query_row(
-        "SELECT id FROM contact_groups WHERE name = ?1",
-        params![name],
+        "SELECT id FROM contact_groups WHERE account_id = ?1 AND name = ?2",
+        params![account_id, name],
         |row| row.get(0),
     )?;
     Ok(id)
 }
 
 #[allow(dead_code)]
-pub fn lookup_by_phone(conn: &Connection, handle: &str) -> Result<Option<Contact>> {
+pub fn lookup_by_phone(
+    conn: &Connection,
+    account_id: &str,
+    handle: &str,
+) -> Result<Option<Contact>> {
     let contact = conn
         .query_row(
             r#"
             SELECT c.id, c.first_name, c.last_name, c.exclude, c.preferred_handle
             FROM contact_handles p
             JOIN contacts c ON c.id = p.contact_id
-            WHERE p.handle = ?1
+            WHERE p.account_id = ?1 AND p.handle = ?2
             "#,
-            params![handle],
+            params![account_id, handle],
             |row| {
                 Ok(Contact {
                     id: row.get(0)?,

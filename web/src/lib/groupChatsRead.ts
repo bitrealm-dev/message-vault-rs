@@ -1,4 +1,5 @@
-import { loadOwner } from "./config";
+import { currentAccountId } from "./accountScope";
+import { loadVaultOwner } from "./vaultOwner";
 import {
   combinedDedupeSql,
   getDb,
@@ -103,8 +104,9 @@ function groupPeopleTitles(
   const out = new Map<number, GroupPeopleTitle>();
   if (!conversationIds.length) return out;
 
+  const accountId = currentAccountId();
   const db = getDb();
-  const owner = loadOwner();
+  const owner = loadVaultOwner(accountId);
   const exclude = new Set(
     [...owner.phones, ...excludePhones].filter(Boolean).map((p) => p.trim()),
   );
@@ -112,9 +114,10 @@ function groupPeopleTitles(
   const placeholders = conversationIds.map(() => "?").join(",");
   const meta = db
     .prepare(
-      `SELECT id, group_title FROM conversations WHERE id IN (${placeholders})`,
+      `SELECT id, group_title FROM conversations
+       WHERE account_id = ? AND id IN (${placeholders})`,
     )
-    .all(...conversationIds) as Array<{ id: number; group_title: string | null }>;
+    .all(accountId, ...conversationIds) as Array<{ id: number; group_title: string | null }>;
   const namedById = new Map(
     meta.map((r) => [
       r.id,
@@ -127,11 +130,12 @@ function groupPeopleTitles(
       `SELECT p.conversation_id, p.handle, p.name_hint,
               c.first_name, c.last_name
        FROM participants p
-       LEFT JOIN contact_handles cp ON cp.handle = p.handle
-       LEFT JOIN contacts c ON c.id = cp.contact_id
-       WHERE p.conversation_id IN (${placeholders})`,
+       JOIN conversations conv ON conv.id = p.conversation_id
+       LEFT JOIN contact_handles cp ON cp.handle = p.handle AND cp.account_id = conv.account_id
+       LEFT JOIN contacts c ON c.id = cp.contact_id AND c.account_id = cp.account_id
+       WHERE conv.account_id = ? AND p.conversation_id IN (${placeholders})`,
     )
-    .all(...conversationIds) as Array<{
+    .all(accountId, ...conversationIds) as Array<{
     conversation_id: number;
     handle: string;
     name_hint: string | null;
@@ -186,15 +190,17 @@ export function contactGroupChatThreadsForPhones(
   source?: string | null,
 ): GroupChatThread[] {
   if (!phones.length) return [];
+  const accountId = currentAccountId();
   const db = getDb();
   const placeholders = phones.map(() => "?").join(",");
   const sourceSql = source ? " AND m.source = ?" : "";
-  const params: Array<string | number> = [...phones];
+  const params: Array<string | number> = [accountId, ...phones];
   if (source) params.push(source);
   const hasTrash = hasTrashedConversationsTable(db);
   const trashFilter = hasTrash
     ? `AND NOT EXISTS (
-         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+         SELECT 1 FROM trashed_conversations tc
+         WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
        )`
     : "";
   const rows = db
@@ -206,7 +212,8 @@ export function contactGroupChatThreadsForPhones(
               MAX(substr(m.timestamp, 1, 10)) AS date_end
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
-       WHERE c.conversation_type = 'group'
+       WHERE c.account_id = ?
+         AND c.conversation_type = 'group'
          AND EXISTS (
            SELECT 1 FROM participants p
            WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
@@ -307,17 +314,19 @@ function groupParticipantFingerprints(
 ): Map<number, string> {
   const out = new Map<number, string>();
   if (!conversationIds.length) return out;
+  const accountId = currentAccountId();
   const db = getDb();
   const placeholders = conversationIds.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT conversation_id, handle
-       FROM participants
-       WHERE conversation_id IN (${placeholders})
-         AND handle IS NOT NULL AND handle != ''
-       ORDER BY conversation_id, handle`,
+      `SELECT p.conversation_id, p.handle
+       FROM participants p
+       JOIN conversations c ON c.id = p.conversation_id
+       WHERE c.account_id = ? AND p.conversation_id IN (${placeholders})
+         AND p.handle IS NOT NULL AND p.handle != ''
+       ORDER BY p.conversation_id, p.handle`,
     )
-    .all(...conversationIds) as Array<{ conversation_id: number; handle: string }>;
+    .all(accountId, ...conversationIds) as Array<{ conversation_id: number; handle: string }>;
   const byConv = new Map<number, string[]>();
   for (const r of rows) {
     const list = byConv.get(r.conversation_id) ?? [];
@@ -336,10 +345,12 @@ function groupYearStatsForConversations(
   year: number,
   source?: string | null,
 ): { messageCount: number; dateStart: string; dateEnd: string } {
+  const accountId = currentAccountId();
   const db = getDb();
   const placeholders = conversationIds.map(() => "?").join(",");
-  const sourceSql = source ? " AND source = ?" : "";
+  const sourceSql = source ? " AND m.source = ?" : "";
   const params: Array<string | number> = [
+    accountId,
     ...conversationIds,
     `${year}-`,
     `${year + 1}-`,
@@ -348,11 +359,12 @@ function groupYearStatsForConversations(
   const row = db
     .prepare(
       `SELECT COUNT(*) AS message_count,
-              MIN(substr(timestamp, 1, 10)) AS date_start,
-              MAX(substr(timestamp, 1, 10)) AS date_end
-       FROM messages
-       WHERE conversation_id IN (${placeholders})
-         AND timestamp >= ? AND timestamp < ?${sourceSql}${combinedDedupeSql(source)}`,
+              MIN(substr(m.timestamp, 1, 10)) AS date_start,
+              MAX(substr(m.timestamp, 1, 10)) AS date_end
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.account_id = ? AND m.conversation_id IN (${placeholders})
+         AND m.timestamp >= ? AND m.timestamp < ?${sourceSql}${combinedDedupeSql(source, "m")}`,
     )
     .get(...params) as {
     message_count: number;
@@ -384,6 +396,7 @@ export function listTrashedGroupYearRows(): GroupYearRow[] {
 function listGroupYearRowsSection(
   section: "active" | "trash",
 ): GroupYearRow[] {
+  const accountId = currentAccountId();
   const db = getDb();
   const joinDupes = hasDuplicateOfColumn()
     ? " AND m.duplicate_of IS NULL"
@@ -395,10 +408,12 @@ function listGroupYearRowsSection(
     ? ""
     : section === "trash"
       ? `AND EXISTS (
-           SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+           SELECT 1 FROM trashed_conversations tc
+           WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
          )`
       : `AND NOT EXISTS (
-           SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+           SELECT 1 FROM trashed_conversations tc
+           WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
          )`;
 
   const rows = db
@@ -410,12 +425,13 @@ function listGroupYearRowsSection(
               MAX(substr(m.timestamp, 1, 10)) AS date_end
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id${joinDupes}
-       WHERE c.conversation_type = 'group'
+       WHERE c.account_id = ?
+         AND c.conversation_type = 'group'
          ${trashFilter}
        GROUP BY c.id, year
        HAVING message_count > 0`,
     )
-    .all() as Array<{
+    .all(accountId) as Array<{
     id: number;
     year: number;
     message_count: number;
@@ -494,11 +510,13 @@ function listGroupYearRowsSection(
 
 
 export function countGroupChats(): number {
+  const accountId = currentAccountId();
   const db = getDb();
   const hasTrash = hasTrashedConversationsTable(db);
   const trashFilter = hasTrash
     ? `AND NOT EXISTS (
-         SELECT 1 FROM trashed_conversations tc WHERE tc.conversation_id = c.id
+         SELECT 1 FROM trashed_conversations tc
+         WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
        )`
     : "";
   const joinDupes = hasDuplicateOfColumn()
@@ -510,13 +528,13 @@ export function countGroupChats(): number {
          SELECT c.id
          FROM conversations c
          LEFT JOIN messages m ON m.conversation_id = c.id${joinDupes}
-         WHERE c.conversation_type = 'group'
+         WHERE c.account_id = ?
+           AND c.conversation_type = 'group'
            ${trashFilter}
          GROUP BY c.id
          HAVING COUNT(m.id) > 0
        )`,
     )
-    .get() as { n: number };
+    .get(accountId) as { n: number };
   return groupsRow.n;
 }
-
