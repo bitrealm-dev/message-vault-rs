@@ -128,7 +128,8 @@ export function GroupChatsMessagesPane({
         conversationSelected &&
         !selectedRow &&
         focusYear == null &&
-        !loading && (
+        !loading &&
+        !prominentHeader && (
           <p className="pt-8 text-center text-[13px] text-muted">
             Select a year to read messages.
           </p>

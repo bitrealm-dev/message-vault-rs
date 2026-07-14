@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useConfirmDialog } from "./useConfirmDialog";
 
 type TrashStatusMessages = {
   trashedOne: string;
@@ -37,6 +38,7 @@ export function useTrashActions<TId extends string | number>(options: {
   moveToTrash: (override?: TId) => Promise<void>;
   restoreFromTrash: (override?: TId) => Promise<void>;
   permanentlyDeleteFromTrash: (override?: TId) => Promise<void>;
+  confirmDialog: ReactNode;
 } {
   const {
     endpoint,
@@ -58,6 +60,7 @@ export function useTrashActions<TId extends string | number>(options: {
 
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirmDialog();
 
   const runLoop = useCallback(
     async (
@@ -102,7 +105,7 @@ export function useTrashActions<TId extends string | number>(options: {
       const targets = getTargets(override);
       if (targets.length === 0) return;
       const confirmMsg = confirmTrash?.(targets) ?? null;
-      if (confirmMsg != null && !window.confirm(confirmMsg)) return;
+      if (confirmMsg != null && !(await askConfirm(confirmMsg))) return;
       await runLoop(
         targets,
         "POST",
@@ -117,6 +120,7 @@ export function useTrashActions<TId extends string | number>(options: {
     },
     [
       afterTrash,
+      askConfirm,
       canTrash,
       confirmTrash,
       getTargets,
@@ -159,7 +163,8 @@ export function useTrashActions<TId extends string | number>(options: {
       const targets = getTargets(override);
       if (targets.length === 0) return;
       const confirmMsg = confirmPermanent?.(targets) ?? null;
-      if (confirmMsg != null && !window.confirm(confirmMsg)) return;
+      if (confirmMsg != null && !(await askConfirm(confirmMsg, "Delete")))
+        return;
       await runLoop(
         targets,
         "DELETE",
@@ -173,6 +178,7 @@ export function useTrashActions<TId extends string | number>(options: {
     },
     [
       afterPermanent,
+      askConfirm,
       canRestoreOrDelete,
       confirmPermanent,
       getTargets,
@@ -187,5 +193,6 @@ export function useTrashActions<TId extends string | number>(options: {
     moveToTrash,
     restoreFromTrash,
     permanentlyDeleteFromTrash,
+    confirmDialog,
   };
 }

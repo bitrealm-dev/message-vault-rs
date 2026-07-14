@@ -88,11 +88,12 @@ export function UnassignedDetailPane({
           </ul>
         </div>
       ) : !selected ? (
-        <p className="text-[13px] text-muted">
-          {mode === "trash"
-            ? "Choose a trashed contact or number to read messages, or right-click a row for Undelete / Delete forever."
-            : "Choose an unassigned number or email to create a contact or add the handle to someone existing."}
-        </p>
+        mode === "trash" ? null : (
+          <p className="text-[13px] text-muted">
+            Choose an unassigned number or email to create a contact or add the
+            handle to someone existing.
+          </p>
+        )
       ) : (
         <>
           {creating && isEmailHandle(selected.handle) && (

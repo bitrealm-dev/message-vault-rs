@@ -10,6 +10,7 @@ export function UnassignedMessagesPane({
   loadingMessages,
   messages,
   activeYearMeta,
+  emptyHint = "Select a year to read messages.",
 }: {
   multiSelected: boolean;
   activeYear: number | null;
@@ -21,6 +22,8 @@ export function UnassignedMessagesPane({
     dateEnd: string;
     attachmentCount?: number;
   } | null;
+  /** Shown when no year is selected (omit / empty to hide). */
+  emptyHint?: string | null;
 }) {
   return (
     <section className="h-full min-h-0 overflow-y-auto bg-bg px-4 py-4">
@@ -30,11 +33,9 @@ export function UnassignedMessagesPane({
         </p>
       ) : (
         <>
-          {!activeYear && (
-            <p className="pt-8 text-center text-[13px] text-muted">
-              Select a year to read messages.
-            </p>
-          )}
+          {!activeYear && emptyHint ? (
+            <p className="pt-8 text-center text-[13px] text-muted">{emptyHint}</p>
+          ) : null}
           {loadingMessages && activeYear && messages.length === 0 && (
             <p className="pt-8 text-center text-[13px] text-muted">Loading…</p>
           )}

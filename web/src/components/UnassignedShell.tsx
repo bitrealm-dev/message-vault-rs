@@ -36,6 +36,7 @@ import { PaneSeparator } from "./PaneSeparator";
 import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { fetchThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
+import { useConfirmDialog } from "./useConfirmDialog";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const UNASSIGNED_SORT_ORDER_KEY = "mv-unassigned-sort-order";
@@ -604,6 +605,21 @@ export function UnassignedShell({
             .finally(() => {
               if (!cancelled) setLoadingMessages(false);
             });
+        } else if (mode === "trash" && nextYearly.length > 0) {
+          const y = nextYearly[0]!;
+          setActiveYear(y.year);
+          setLoadingMessages(true);
+          const ids = y.conversationIds.join(",");
+          fetch(
+            `/api/messages?conversationIds=${ids}&year=${y.year}${sourceQuery}`,
+          )
+            .then((r) => r.json())
+            .then((msgData) => {
+              if (!cancelled) setMessages(msgData.messages ?? []);
+            })
+            .finally(() => {
+              if (!cancelled) setLoadingMessages(false);
+            });
         } else {
           setActiveYear(null);
           setMessages([]);
@@ -683,15 +699,18 @@ export function UnassignedShell({
     [actionTargets, multiSelected],
   );
 
+  const { confirm: askConfirm, dialog: permanentConfirmDialog } =
+    useConfirmDialog();
+
   const runMixedTrashRestoreOrDelete = useCallback(
     async (targets: string[], permanent: boolean) => {
       if (targets.length === 0) return;
       if (permanent) {
         const msg =
           targets.length === 1
-            ? "Delete forever? This cannot be undone."
-            : `Delete ${targets.length} items forever? This cannot be undone.`;
-        if (!window.confirm(msg)) return;
+            ? "Delete forever?"
+            : `Delete ${targets.length} items forever?`;
+        if (!(await askConfirm(msg, "Delete"))) return;
       }
       setSaving(true);
       setCtxMenu(null);
@@ -753,6 +772,7 @@ export function UnassignedShell({
       }
     },
     [
+      askConfirm,
       handles,
       clearFocusAfterRemoval,
       clearHistory,
@@ -763,6 +783,7 @@ export function UnassignedShell({
   const {
     saving: trashSaving,
     moveToTrash,
+    confirmDialog: trashConfirmDialog,
   } = useTrashActions<string>({
     endpoint: "/api/unassigned/trash",
     idField: "handle",
@@ -775,8 +796,8 @@ export function UnassignedShell({
         : `Move ${targets.length} numbers/emails to Trash?`,
     confirmPermanent: (targets) =>
       targets.length === 1
-        ? "Delete this number or email forever? This cannot be undone."
-        : `Delete ${targets.length} numbers/emails forever? This cannot be undone.`,
+        ? "Delete forever?"
+        : `Delete ${targets.length} items forever?`,
     status: {
       trashedOne: "Moved to Trash",
       trashedMany: (n) => `Moved ${n} to Trash`,
@@ -1407,6 +1428,9 @@ export function UnassignedShell({
                 loadingMessages={loadingMessages}
                 messages={messages}
                 activeYearMeta={activeYearMeta}
+                emptyHint={
+                  mode === "trash" ? null : "Select a year to read messages."
+                }
               />
             </Panel>
           </Group>
@@ -1561,6 +1585,8 @@ export function UnassignedShell({
           {assignSearch}
         </div>
       )}
+      {trashConfirmDialog}
+      {permanentConfirmDialog}
     </>
   );
 }

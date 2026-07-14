@@ -400,6 +400,7 @@ export function GroupChatsShell({
     moveToTrash,
     restoreFromTrash,
     permanentlyDeleteFromTrash,
+    confirmDialog,
   } = useTrashActions<number>({
     endpoint: "/api/group-chats/trash",
     idField: "conversationId",
@@ -418,15 +419,8 @@ export function GroupChatsShell({
       return `Move ${targets.length} group chats to Trash? Each chat will be removed from every year it appears under.`;
     },
     confirmPermanent: (targets) => {
-      const multiYear =
-        targets.length === 1 &&
-        conversationSpansMultipleYears(targets[0]!);
-      if (targets.length === 1) {
-        return multiYear
-          ? "Delete this group chat forever? It appears under multiple years and will be removed from all of them. This cannot be undone."
-          : "Delete this group chat forever? This cannot be undone.";
-      }
-      return `Delete ${targets.length} group chats forever? Each chat will be removed from every year it appears under. This cannot be undone.`;
+      if (targets.length === 1) return "Delete forever?";
+      return `Delete ${targets.length} group chats forever?`;
     },
     status: {
       trashedOne: "Moved to Trash",
@@ -738,6 +732,7 @@ export function GroupChatsShell({
           </button>
         </div>
       )}
+      {confirmDialog}
     </>
   );
 }

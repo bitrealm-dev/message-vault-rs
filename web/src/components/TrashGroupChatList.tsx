@@ -22,16 +22,23 @@ export type TrashGroupConversation = {
 };
 
 const NAME_SEP = "  ·  ";
-const NAME_COLS = 2;
-const NAME_ROWS = 3;
-const NAME_SLOTS = NAME_COLS * NAME_ROWS;
+const MAX_VISIBLE_NAMES = 8;
 
-/** Cap at NAME_SLOTS; last slot becomes +n when overflowing. */
+/** Visible gap around · — flex items trim ordinary spaces. */
+function NameSep() {
+  return (
+    <span className="px-1.5 font-normal text-muted" aria-hidden>
+      ·
+    </span>
+  );
+}
+
+/** Show up to 8 names; 9+ adds +n for the remainder. */
 function visibleParticipantLabels(labels: string[]): string[] {
-  if (labels.length <= NAME_SLOTS) return labels;
+  if (labels.length <= MAX_VISIBLE_NAMES) return labels;
   return [
-    ...labels.slice(0, NAME_SLOTS - 1),
-    `+${labels.length - (NAME_SLOTS - 1)}`,
+    ...labels.slice(0, MAX_VISIBLE_NAMES),
+    `+${labels.length - MAX_VISIBLE_NAMES}`,
   ];
 }
 
@@ -191,18 +198,16 @@ export function TrashGroupChatList({
                       </div>
                     ) : null}
                     <div
-                      className="grid w-full grid-cols-2 gap-x-3 gap-y-0.5 text-[13px] leading-snug font-medium text-text"
-                      style={{
-                        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                      }}
+                      className="flex min-w-0 flex-wrap gap-y-0.5 text-[13px] leading-snug font-medium text-text"
                       title={namesTitle}
                     >
                       {names.map((name, idx) => (
                         <span
                           key={`${g.id}-name-${idx}`}
-                          className="min-w-0 truncate whitespace-nowrap"
+                          className="whitespace-nowrap"
                         >
                           {name}
+                          {idx < names.length - 1 ? <NameSep /> : null}
                         </span>
                       ))}
                     </div>
