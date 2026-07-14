@@ -1,14 +1,17 @@
-import { loadAccount, primaryEmail, saveAccount, type AccountEmail } from "@/lib/accounts";
+import { deleteAccount, loadAccount, primaryEmail, saveAccount, type AccountEmail } from "@/lib/accounts";
 import {
   unauthorizedResponse,
   withAccountHandler,
 } from "@/lib/accountContext";
+import { isDemoAccount } from "@/lib/demoAccount";
 import { loadVaultOwner } from "@/lib/vaultOwner";
+import { clearAccountCookieOptions } from "@/lib/session";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-function accountJson(account: ReturnType<typeof loadAccount>) {
+function accountJson(account: ReturnType<typeof loadAccount>, accountId: string) {
   return {
     id: account.id,
     username: account.username,
@@ -18,6 +21,7 @@ function accountJson(account: ReturnType<typeof loadAccount>) {
       isPrimary: entry.is_primary,
     })),
     readOnly: account.read_only,
+    isDemo: isDemoAccount(accountId),
   };
 }
 
@@ -50,8 +54,10 @@ export async function GET() {
       const account = loadAccount(accountId);
       const owner = loadVaultOwner(accountId);
       return NextResponse.json({
-        ...accountJson(account),
+        ...accountJson(account, accountId),
         vaultOwner: {
+          firstName: owner.first_name,
+          lastName: owner.last_name,
           displayName: owner.display_name,
           phones: owner.phones,
         },
@@ -111,8 +117,10 @@ export async function PATCH(req: Request) {
       const account = saveAccount(accountId, patch);
       const owner = loadVaultOwner(accountId);
       return NextResponse.json({
-        ...accountJson(account),
+        ...accountJson(account, accountId),
         vaultOwner: {
+          firstName: owner.first_name,
+          lastName: owner.last_name,
           displayName: owner.display_name,
           phones: owner.phones,
         },
@@ -122,6 +130,22 @@ export async function PATCH(req: Request) {
     const auth = authError(err);
     if (auth) return auth;
     const message = err instanceof Error ? err.message : "update failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  try {
+    return await withAccountHandler(async (accountId) => {
+      deleteAccount(accountId);
+      const store = await cookies();
+      store.set(clearAccountCookieOptions());
+      return NextResponse.json({ ok: true });
+    });
+  } catch (err) {
+    const auth = authError(err);
+    if (auth) return auth;
+    const message = err instanceof Error ? err.message : "delete failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

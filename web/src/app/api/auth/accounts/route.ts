@@ -32,19 +32,26 @@ export async function POST(req: Request) {
   const username = typeof body.username === "string" ? body.username.trim() : "";
   const primaryEmail =
     typeof body.primaryEmail === "string" ? body.primaryEmail.trim() : "";
-  const displayName =
-    typeof body.displayName === "string" ? body.displayName.trim() : "";
+  const firstName =
+    typeof body.firstName === "string" ? body.firstName.trim() : "";
+  const lastName = typeof body.lastName === "string" ? body.lastName.trim() : "";
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
 
-  if (!username || !primaryEmail || !displayName || !phone) {
+  if (!username || !primaryEmail || !firstName || !phone) {
     return NextResponse.json(
-      { error: "username, primaryEmail, displayName, and phone are required" },
+      { error: "username, primaryEmail, firstName, and phone are required" },
       { status: 400 },
     );
   }
 
   try {
-    const account = createAccount({ username, primaryEmail, displayName, phone });
+    const account = createAccount({
+      username,
+      primaryEmail,
+      firstName,
+      lastName,
+      phone,
+    });
     const store = await cookies();
     store.set(accountCookieOptions(account.id));
     return NextResponse.json({
@@ -54,9 +61,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "create failed";
-    const status = message.includes("already taken") || message.includes("already used")
-      ? 409
-      : 500;
+    const status =
+      message.includes("already taken") ||
+      message.includes("already used") ||
+      message.includes("E.164")
+        ? 409
+        : message.includes("required") || message.includes("valid phone")
+          ? 400
+          : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

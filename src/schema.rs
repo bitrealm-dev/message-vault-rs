@@ -522,6 +522,8 @@ pub fn ensure_accounts_schema(conn: &Connection) -> Result<()> {
 
         CREATE TABLE IF NOT EXISTS vault_owners (
             account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+            first_name TEXT NOT NULL DEFAULT '',
+            last_name TEXT NOT NULL DEFAULT '',
             display_name TEXT NOT NULL
         );
 
@@ -539,6 +541,29 @@ pub fn ensure_accounts_schema(conn: &Connection) -> Result<()> {
         "#,
     )?;
     migrate_legacy_accounts_email(conn)?;
+    migrate_vault_owner_name_columns(conn)?;
+    Ok(())
+}
+
+fn migrate_vault_owner_name_columns(conn: &Connection) -> Result<()> {
+    let has_first_name: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('vault_owners') WHERE name = 'first_name'",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_first_name {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        r#"
+        ALTER TABLE vault_owners ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE vault_owners ADD COLUMN last_name TEXT NOT NULL DEFAULT '';
+        UPDATE vault_owners
+        SET first_name = trim(display_name)
+        WHERE first_name = '' OR first_name IS NULL;
+        "#,
+    )?;
     Ok(())
 }
 

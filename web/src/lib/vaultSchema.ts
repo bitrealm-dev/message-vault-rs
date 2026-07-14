@@ -73,6 +73,8 @@ export function ensureVaultSchema(db: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS vault_owners (
       account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+      first_name TEXT NOT NULL DEFAULT '',
+      last_name TEXT NOT NULL DEFAULT '',
       display_name TEXT NOT NULL
     );
 
@@ -308,6 +310,7 @@ export function ensureVaultSchema(db: Database.Database): void {
   `);
 
   migrateLegacyAccountsEmailColumn(db);
+  migrateVaultOwnerNameColumns(db);
 }
 
 /** Rebuild accounts without legacy email column; emails live in account_emails. */
@@ -345,4 +348,17 @@ function migrateLegacyAccountsEmailColumn(db: Database.Database): void {
   `);
 
   db.exec(`PRAGMA foreign_keys = ON;`);
+}
+
+function migrateVaultOwnerNameColumns(db: Database.Database): void {
+  if (!tableExists(db, "vault_owners")) return;
+  if (tableHasColumn(db, "vault_owners", "first_name")) return;
+
+  db.exec(`
+    ALTER TABLE vault_owners ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE vault_owners ADD COLUMN last_name TEXT NOT NULL DEFAULT '';
+    UPDATE vault_owners
+    SET first_name = trim(display_name)
+    WHERE first_name = '' OR first_name IS NULL;
+  `);
 }

@@ -3,20 +3,30 @@ use rusqlite::{params, Connection};
 
 #[derive(Debug, Clone)]
 pub struct VaultOwner {
+    pub first_name: String,
+    pub last_name: String,
     pub display_name: String,
     pub phones: Vec<String>,
     pub emails: Vec<String>,
 }
 
+fn format_owner_name(first_name: &str, last_name: &str) -> String {
+    [first_name.trim(), last_name.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Load vault owner profile for one account from `vault_owners` tables.
 pub fn load_vault_owner(conn: &Connection, account_id: &str) -> Result<VaultOwner> {
-    let display_name: String = conn
+    let row: (String, String, String) = conn
         .query_row(
-            "SELECT display_name FROM vault_owners WHERE account_id = ?1",
+            "SELECT first_name, last_name, display_name FROM vault_owners WHERE account_id = ?1",
             params![account_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .unwrap_or_else(|_| "Me".to_string());
+        .unwrap_or_else(|_| (String::new(), String::new(), "Me".to_string()));
 
     let mut phone_stmt = conn.prepare(
         "SELECT phone FROM vault_owner_phones WHERE account_id = ?1 ORDER BY phone",
@@ -32,13 +42,24 @@ pub fn load_vault_owner(conn: &Connection, account_id: &str) -> Result<VaultOwne
         .query_map(params![account_id], |row| row.get(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
-    let display_name = display_name.trim();
-    Ok(VaultOwner {
-        display_name: if display_name.is_empty() {
+    let first_name = row.0.trim().to_string();
+    let last_name = row.1.trim().to_string();
+    let display_name = format_owner_name(&first_name, &last_name);
+    let display_name = if display_name.is_empty() {
+        let legacy = row.2.trim();
+        if legacy.is_empty() {
             "Me".to_string()
         } else {
-            display_name.to_string()
-        },
+            legacy.to_string()
+        }
+    } else {
+        display_name
+    };
+
+    Ok(VaultOwner {
+        first_name,
+        last_name,
+        display_name,
         phones,
         emails,
     })

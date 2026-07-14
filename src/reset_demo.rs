@@ -132,9 +132,12 @@ fn seed_demo_account(db_path: &Path, account_id: &str, cfg: &Config) -> Result<(
     if let Some(owner) = &cfg.owner {
         conn.execute(
             r#"
-            INSERT INTO vault_owners (account_id, display_name)
-            VALUES (?1, ?2)
-            ON CONFLICT(account_id) DO UPDATE SET display_name = excluded.display_name
+            INSERT INTO vault_owners (account_id, first_name, last_name, display_name)
+            VALUES (?1, ?2, '', ?2)
+            ON CONFLICT(account_id) DO UPDATE SET
+              first_name = excluded.first_name,
+              last_name = excluded.last_name,
+              display_name = excluded.display_name
             "#,
             params![account_id, owner.display_name],
         )?;

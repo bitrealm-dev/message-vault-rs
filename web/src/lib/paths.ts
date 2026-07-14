@@ -81,6 +81,10 @@ export function dataDir(): string {
   return resolveConfiguredPath(cfg.paths?.data_dir, DEFAULT_DATA_DIR);
 }
 
+export function accountDataDir(accountId: string): string {
+  return path.join(dataDir(), accountId);
+}
+
 export function assetsDirName(): string {
   return loadRawConfig().paths?.assets_dir?.trim() || DEFAULT_ASSETS_DIR;
 }

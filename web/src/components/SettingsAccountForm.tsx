@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { EllipsisIcon } from "./icons";
+import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
 
 type AccountEmail = {
@@ -14,7 +16,10 @@ type AccountData = {
   primaryEmail: string;
   emails: AccountEmail[];
   readOnly: boolean;
+  isDemo: boolean;
   vaultOwner: {
+    firstName: string;
+    lastName: string;
     displayName: string;
     phones: string[];
   };
@@ -25,6 +30,8 @@ function normalizeEmail(email: string): string {
 }
 
 export function SettingsAccountForm() {
+  const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [data, setData] = useState<AccountData | null>(null);
   const [username, setUsername] = useState("");
   const [primaryEmail, setPrimaryEmail] = useState("");
@@ -33,6 +40,7 @@ export function SettingsAccountForm() {
   const [readOnly, setReadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -118,6 +126,31 @@ export function SettingsAccountForm() {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    const label = username.trim() || "this account";
+    const ok = await confirm(
+      `Delete ${label} and all associated data — messages, contacts, groups, vault owner profile, and uploaded assets. This cannot be undone.`,
+      "Delete account",
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/account", { method: "DELETE" });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error ?? "Delete failed");
+      }
+      router.replace("/login");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -215,8 +248,16 @@ export function SettingsAccountForm() {
 
           <dl className="mt-4 space-y-3 text-[14px]">
             <div>
-              <dt className="text-[12px] text-muted">Display name</dt>
-              <dd className="mt-0.5 text-text">{data.vaultOwner.displayName}</dd>
+              <dt className="text-[12px] text-muted">First name</dt>
+              <dd className="mt-0.5 text-text">
+                {data.vaultOwner.firstName || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-muted">Last name</dt>
+              <dd className="mt-0.5 text-text">
+                {data.vaultOwner.lastName || "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-[12px] text-muted">Phones</dt>
@@ -232,7 +273,7 @@ export function SettingsAccountForm() {
                 )}
               </dd>
               <p className="mt-1 text-[12px] text-muted">
-                Taken from config.toml. Reingest after changing.
+                Stored in E.164 format. Reingest after changing.
               </p>
             </div>
           </dl>
@@ -242,7 +283,7 @@ export function SettingsAccountForm() {
       <div className="flex items-center gap-3">
         <button
           type="button"
-          disabled={saving}
+          disabled={saving || deleting}
           onClick={() => void save()}
           className="rounded-md border border-border bg-elevated px-4 py-2 text-[13px] text-text transition-colors hover:bg-white/10 disabled:opacity-50"
         >
@@ -255,6 +296,27 @@ export function SettingsAccountForm() {
           </span>
         )}
       </div>
+
+      {!data?.isDemo && (
+        <section className="border-t border-border pt-8">
+          <h2 className="text-[12px] font-semibold tracking-wider text-muted uppercase">
+            Danger zone
+          </h2>
+          <p className="mt-2 text-[13px] text-muted">
+            Permanently delete this account and all vault data tied to it.
+          </p>
+          <button
+            type="button"
+            disabled={saving || deleting}
+            onClick={() => void deleteAccount()}
+            className="mt-4 rounded-md border border-red-500/40 bg-red-500/15 px-4 py-2 text-[13px] text-red-100 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete account"}
+          </button>
+        </section>
+      )}
+
+      {confirmDialog}
     </div>
   );
 }

@@ -125,6 +125,8 @@ fn load_owner_for_export(cfg: &Config, account_id: &str) -> Result<VaultOwner> {
     if let Some(legacy) = &cfg.owner {
         if !legacy.phones.is_empty() {
             return Ok(VaultOwner {
+                first_name: legacy.display_name.clone(),
+                last_name: String::new(),
                 display_name: legacy.display_name.clone(),
                 phones: legacy.phones.clone(),
                 emails: legacy.emails.clone(),

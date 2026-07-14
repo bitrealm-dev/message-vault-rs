@@ -1,5 +1,6 @@
 "use client";
 
+import { toPhoneE164 } from "@/lib/phoneE164";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -15,11 +16,14 @@ export function LoginScreen() {
   const [selectedId, setSelectedId] = useState("");
   const [username, setUsername] = useState("");
   const [primaryEmail, setPrimaryEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const normalizedPhone = toPhoneE164(phone);
 
   const loadAccounts = useCallback(async (): Promise<AccountOption[]> => {
     setLoading(true);
@@ -75,7 +79,13 @@ export function LoginScreen() {
       const res = await fetch("/api/auth/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, primaryEmail, displayName, phone }),
+        body: JSON.stringify({
+          username,
+          primaryEmail,
+          firstName,
+          lastName,
+          phone,
+        }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -149,7 +159,7 @@ export function LoginScreen() {
             <p className="mb-4 text-[12px] text-muted">Or create a user</p>
           )}
           <p className="mb-4 text-[12px] text-muted">
-            Display name and phone identify you in imported messages and are required
+            Your name and phone identify you in imported messages and are required
             before ingest.
           </p>
           <div className="space-y-4">
@@ -171,25 +181,51 @@ export function LoginScreen() {
                 className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none focus:border-accent"
               />
             </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-[13px] text-text">First name</span>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Matt"
+                  className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[13px] text-text">Last name</span>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Beisser"
+                  className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
+                />
+              </label>
+            </div>
             <label className="block">
-              <span className="text-[13px] text-text">Display name</span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name in message threads"
-                className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[13px] text-text">Phone</span>
+              <span className="text-[13px] text-text">Phone (E.164)</span>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="+15555550100"
+                placeholder="+14075551234"
                 className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
               />
+              <p className="mt-1.5 text-[12px] text-muted">
+                International format: <span className="text-text">+</span> country
+                code, then your number with no spaces. US numbers use{" "}
+                <span className="text-text">+1</span> plus 10 digits — e.g.{" "}
+                <span className="text-text">+14075551234</span> for (407)
+                555-1234. You can paste a US number with parentheses or dashes
+                and we will normalize it.
+              </p>
+              {phone.trim() && normalizedPhone && normalizedPhone !== phone.trim() && (
+                <p className="mt-1 text-[12px] text-muted">
+                  Will save as{" "}
+                  <span className="font-mono text-text">{normalizedPhone}</span>
+                </p>
+              )}
             </label>
             <button
               type="button"
@@ -197,8 +233,9 @@ export function LoginScreen() {
                 submitting ||
                 !username.trim() ||
                 !primaryEmail.trim() ||
-                !displayName.trim() ||
-                !phone.trim()
+                !firstName.trim() ||
+                !phone.trim() ||
+                !normalizedPhone
               }
               onClick={() => void createAndContinue()}
               className="w-full rounded-md border border-border bg-bg px-4 py-2 text-[13px] text-text transition-colors hover:bg-white/10 disabled:opacity-50"

@@ -909,7 +909,7 @@ mod tests {
         )
         .unwrap();
         conn.execute(
-            "INSERT INTO vault_owners (account_id, display_name) VALUES (?1, 'Matt Beisser')",
+            "INSERT INTO vault_owners (account_id, first_name, last_name, display_name) VALUES (?1, 'Matt', 'Beisser', 'Matt Beisser')",
             params![TEST_ACCOUNT_ID],
         )
         .unwrap();
@@ -993,6 +993,8 @@ mod tests {
         let snippet = tmp.join("snippet.css");
         fs::write(&snippet, "/* test */").unwrap();
         let owner = VaultOwner {
+            first_name: "Matt".into(),
+            last_name: "Beisser".into(),
             display_name: "Matt Beisser".into(),
             phones: vec!["+19412660605".into()],
             emails: vec![],

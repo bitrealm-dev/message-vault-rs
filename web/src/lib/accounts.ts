@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 
 import Database from "better-sqlite3";
 
-import { dbPath } from "./paths";
+import { accountDataDir, dbPath } from "./paths";
 import { createVaultOwner } from "./vaultOwner";
 import { ensureVaultSchema } from "./vaultSchema";
 
@@ -194,17 +195,17 @@ export function getAccount(accountId: string): Account | null {
 export function createAccount(input: {
   username: string;
   primaryEmail: string;
-  displayName: string;
+  firstName: string;
+  lastName: string;
   phone: string;
 }): Account {
   const username = input.username.trim();
   const email = input.primaryEmail.trim();
-  const displayName = input.displayName.trim();
-  const phone = input.phone.trim();
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
   if (!username) throw new Error("username is required");
   if (!email) throw new Error("primary email is required");
-  if (!displayName) throw new Error("display name is required");
-  if (!phone) throw new Error("phone is required for importing messages");
+  if (!firstName) throw new Error("first name is required");
 
   const db = openDb();
   try {
@@ -223,7 +224,11 @@ export function createAccount(input: {
         `INSERT INTO accounts (id, username, read_only) VALUES (?, ?, 0)`,
       ).run(id, username);
       writeAccountEmails(db, id, emails);
-      createVaultOwner(db, id, { display_name: displayName, phones: [phone] });
+      createVaultOwner(db, id, {
+        first_name: firstName,
+        last_name: lastName,
+        phones: [input.phone],
+      });
     } catch (err) {
       throw friendlyDbError(err);
     }
@@ -274,6 +279,26 @@ export function saveAccount(
     return next;
   } finally {
     db.close();
+  }
+}
+
+export function deleteAccount(accountId: string): void {
+  const db = openDb();
+  try {
+    const row = getAccountRow(db, accountId);
+    if (!row) {
+      throw new Error("account not found");
+    }
+
+    db.pragma("foreign_keys = ON");
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+  } finally {
+    db.close();
+  }
+
+  const accountPath = accountDataDir(accountId);
+  if (fs.existsSync(accountPath)) {
+    fs.rmSync(accountPath, { recursive: true, force: true });
   }
 }
 
