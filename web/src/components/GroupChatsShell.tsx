@@ -182,12 +182,7 @@ export function GroupChatsShell({
   });
   const trashSideLayout = useDefaultLayout({
     id: "mv-trash-groups-side",
-    panelIds: ["list", "right"],
-    storage,
-  });
-  const trashThreadsLayout = useDefaultLayout({
-    id: "mv-trash-groups-threads",
-    panelIds: ["detail", "messages"],
+    panelIds: ["list", "messages"],
     storage,
   });
   const messagesPaneRef = useRef<HTMLElement>(null);
@@ -646,6 +641,7 @@ export function GroupChatsShell({
       loading={loading}
       messages={messages}
       conversationSelected={conversationId != null}
+      prominentHeader={trashEmbedded}
     />
   );
 
@@ -682,52 +678,8 @@ export function GroupChatsShell({
 
               <PaneSeparator orientation="vertical" />
 
-              <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
-                <div className="flex h-full min-h-0 min-w-0 flex-col">
-                  <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-panel px-5">
-                    {multiSelected ? (
-                      <span className="text-[13px] text-muted">
-                        {selectedIds.size} group
-                        {selectedIds.size === 1 ? "" : "s"} selected
-                      </span>
-                    ) : selectedRow ? (
-                      <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-                        {selectedRow.namedTitle || selectedRow.title}
-                      </h1>
-                    ) : (
-                      <span className="text-[13px] text-muted">
-                        Choose a trashed group chat
-                      </span>
-                    )}
-                  </div>
-                  <Group
-                    id="mv-trash-groups-threads"
-                    orientation="vertical"
-                    className="min-h-0 flex-1"
-                    defaultLayout={trashThreadsLayout.defaultLayout}
-                    onLayoutChanged={trashThreadsLayout.onLayoutChanged}
-                  >
-                    <Panel
-                      id="detail"
-                      defaultSize="30%"
-                      minSize="15%"
-                      maxSize="60%"
-                      className="min-h-0"
-                    >
-                      <div className="flex h-full items-center justify-center bg-bg px-5">
-                        {!conversationId && !multiSelected ? (
-                          <p className="text-center text-[13px] text-muted">
-                            Select a group to read messages
-                          </p>
-                        ) : null}
-                      </div>
-                    </Panel>
-                    <PaneSeparator orientation="horizontal" />
-                    <Panel id="messages" minSize="25%" className="min-h-0">
-                      {messagesPane}
-                    </Panel>
-                  </Group>
-                </div>
+              <Panel id="messages" minSize="30%" className="min-h-0 min-w-0">
+                {messagesPane}
               </Panel>
             </Group>
           ) : (
