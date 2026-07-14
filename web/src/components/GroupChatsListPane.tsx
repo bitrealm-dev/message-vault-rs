@@ -7,6 +7,7 @@ import {
 } from "@/lib/groupDateFormat";
 import type { RefObject, MouseEvent, ReactNode } from "react";
 import { MessageIcon, PeopleCountIcon } from "./icons";
+import { YearFilterMenu } from "./YearFilterMenu";
 
 function dateColClass(style: GroupDateFormat): string {
   switch (style) {
@@ -111,8 +112,8 @@ export function GroupChatsListPane({
   status,
   canAct,
   years,
-  listYear,
-  onJumpToYear,
+  filterYear,
+  onFilterYearChange,
   groupDateFormat,
   onGroupDateFormatChange,
   onMoveToTrash,
@@ -140,8 +141,9 @@ export function GroupChatsListPane({
   status: string | null;
   canAct: boolean;
   years: number[];
-  listYear: number | null;
-  onJumpToYear: (y: number) => void;
+  /** null = All years */
+  filterYear: number | null;
+  onFilterYearChange: (year: number | null) => void;
   groupDateFormat: GroupDateFormat;
   onGroupDateFormatChange: (next: GroupDateFormat) => void;
   onMoveToTrash: () => void;
@@ -155,41 +157,22 @@ export function GroupChatsListPane({
   onOpenCtxMenu: (id: number, x: number, y: number) => void;
 }) {
   const filters = (
-    <>
-      {years.length > 0 && (
-        <div
-          className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${
-            embedded ? "" : "mb-3"
-          }`}
-        >
-          {years.map((y) => (
-            <button
-              key={y}
-              type="button"
-              onClick={() => onJumpToYear(y)}
-              className={`text-[13px] font-medium ${
-                listYear === y
-                  ? "text-accent"
-                  : "text-text hover:text-accent"
-              }`}
-            >
-              {y}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="flex flex-col gap-3">
+      <YearFilterMenu
+        years={years}
+        value={filterYear}
+        onChange={onFilterYearChange}
+      />
       {!embedded && (
-        <div>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search by name or phone…"
-            className="w-full max-w-md rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
-          />
-        </div>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Search by name or phone…"
+          className="w-full max-w-md rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
+        />
       )}
-    </>
+    </div>
   );
 
   return (

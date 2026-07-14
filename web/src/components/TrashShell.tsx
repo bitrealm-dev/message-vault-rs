@@ -276,7 +276,7 @@ export function TrashShell({
           groupChats={groupChats}
           initialConversationId={initialConversationId}
           initialYear={initialYear}
-          embedded
+          listLayout="sidebar"
           trashTabBar={tabBar}
         />
       )}

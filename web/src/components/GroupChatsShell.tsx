@@ -25,7 +25,8 @@ import {
   type GroupTrashSortBy,
   type SortOrder,
 } from "./SortByMenu";
-import { useHistory } from "./history";
+import { YearFilterMenu } from "./YearFilterMenu";
+import { useHistory, ListHistoryMenu } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
@@ -37,15 +38,15 @@ import { useTrashActions } from "./useTrashActions";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
-const GROUP_TRASH_SORT_BY_KEY = "mv-group-trash-sort-by";
-const GROUP_TRASH_SORT_ORDER_KEY = "mv-group-trash-sort-order";
-const GROUP_TRASH_SORT_BY_ALLOWED = [
+const GROUP_SIDEBAR_SORT_BY_KEY = "mv-group-sidebar-sort-by";
+const GROUP_SIDEBAR_SORT_ORDER_KEY = "mv-group-sidebar-sort-order";
+const GROUP_SIDEBAR_SORT_BY_ALLOWED = [
   "start",
   "end",
   "people",
   "messages",
 ] as const;
-const GROUP_TRASH_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
+const GROUP_SIDEBAR_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 
 /** Newest calendar year for a conversation in the year-row list. */
 function newestYearForConversation(
@@ -123,14 +124,17 @@ export function GroupChatsShell({
   mode = "group-chats",
   trashTabBar = null,
   embedded = false,
+  listLayout,
 }: {
   groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
   trashTabBar?: ReactNode;
-  /** Trash: list | messages (chrome lives in the list column). */
+  /** @deprecated Prefer listLayout="sidebar". */
   embedded?: boolean;
+  /** years = stacked year table; sidebar = collapsed list | messages. */
+  listLayout?: "years" | "sidebar";
 }) {
   const router = useRouter();
 
@@ -145,28 +149,29 @@ export function GroupChatsShell({
   const [focusYear, setFocusYear] = useState<number | null>(initialYear);
   const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [listYear, setListYear] = useState<number | null>(null);
+  /** null = All years */
+  const [filterYear, setFilterYear] = useState<number | null>(null);
   const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
     GROUP_DATE_FORMAT_KEY,
     GROUP_DATE_ALLOWED,
     "md",
   );
-  const [groupTrashSortBy, setGroupTrashSortBy] = usePersistedEnum(
-    GROUP_TRASH_SORT_BY_KEY,
-    GROUP_TRASH_SORT_BY_ALLOWED,
+  const [groupSidebarSortBy, setGroupSidebarSortBy] = usePersistedEnum(
+    GROUP_SIDEBAR_SORT_BY_KEY,
+    GROUP_SIDEBAR_SORT_BY_ALLOWED,
     "end",
   );
-  const [groupTrashSortOrder, setGroupTrashSortOrder] = usePersistedEnum(
-    GROUP_TRASH_SORT_ORDER_KEY,
-    GROUP_TRASH_SORT_ORDER_ALLOWED,
+  const [groupSidebarSortOrder, setGroupSidebarSortOrder] = usePersistedEnum(
+    GROUP_SIDEBAR_SORT_ORDER_KEY,
+    GROUP_SIDEBAR_SORT_ORDER_ALLOWED,
     "desc",
   );
-  const setGroupTrashSort = useCallback(
+  const setGroupSidebarSort = useCallback(
     (next: { sortBy: GroupTrashSortBy; order: SortOrder }) => {
-      setGroupTrashSortBy(next.sortBy);
-      setGroupTrashSortOrder(next.order);
+      setGroupSidebarSortBy(next.sortBy);
+      setGroupSidebarSortOrder(next.order);
     },
-    [setGroupTrashSortBy, setGroupTrashSortOrder],
+    [setGroupSidebarSortBy, setGroupSidebarSortOrder],
   );
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
@@ -180,7 +185,7 @@ export function GroupChatsShell({
     storage,
   });
   const trashSideLayout = useDefaultLayout({
-    id: "mv-trash-groups-side",
+    id: mode === "trash" ? "mv-trash-groups-side" : "mv-group-chats-2-side",
     panelIds: ["list", "messages"],
     storage,
   });
@@ -188,36 +193,56 @@ export function GroupChatsShell({
   const pendingScrollYearRef = useRef<number | null>(initialYear);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
 
-  const trashEmbedded = mode === "trash" && embedded;
+  const sidebarLayout =
+    listLayout === "sidebar" || (listLayout == null && embedded);
 
-  const collapsed = useMemo(
-    () => collapseGroupConversations(groupChats),
-    [groupChats],
+  const years = useMemo(() => {
+    const set = new Set<number>();
+    for (const g of groupChats) set.add(g.year);
+    return [...set].sort((a, b) => b - a);
+  }, [groupChats]);
+
+  useEffect(() => {
+    if (filterYear == null) return;
+    if (!years.includes(filterYear)) setFilterYear(null);
+  }, [years, filterYear]);
+
+  const yearScoped = useMemo(
+    () =>
+      filterYear == null
+        ? groupChats
+        : groupChats.filter((g) => g.year === filterYear),
+    [groupChats, filterYear],
   );
 
-  const trashListItems = useMemo(() => {
-    if (!trashEmbedded) return [] as TrashGroupConversation[];
+  const collapsed = useMemo(
+    () => collapseGroupConversations(yearScoped),
+    [yearScoped],
+  );
+
+  const sidebarListItems = useMemo(() => {
+    if (!sidebarLayout) return [] as TrashGroupConversation[];
     return sortTrashGroups(
       searchCollapsedGroups(collapsed, query),
-      groupTrashSortBy,
-      groupTrashSortOrder,
+      groupSidebarSortBy,
+      groupSidebarSortOrder,
     );
   }, [
-    trashEmbedded,
+    sidebarLayout,
     collapsed,
     query,
-    groupTrashSortBy,
-    groupTrashSortOrder,
+    groupSidebarSortBy,
+    groupSidebarSortOrder,
   ]);
 
   const filtered = useMemo(
-    () => searchGroups(groupChats, query),
-    [groupChats, query],
+    () => searchGroups(yearScoped, query),
+    [yearScoped, query],
   );
 
   /** Unique conversation ids in filtered list order (first appearance). */
   const uniqueIds = useMemo(() => {
-    if (trashEmbedded) return trashListItems.map((g) => g.id);
+    if (sidebarLayout) return sidebarListItems.map((g) => g.id);
     const ids: number[] = [];
     const seen = new Set<number>();
     for (const g of filtered) {
@@ -226,12 +251,12 @@ export function GroupChatsShell({
       ids.push(g.id);
     }
     return ids;
-  }, [trashEmbedded, trashListItems, filtered]);
+  }, [sidebarLayout, sidebarListItems, filtered]);
 
   const validIds = useMemo(() => {
-    if (trashEmbedded) return collapsed.map((g) => g.id);
+    if (sidebarLayout) return collapsed.map((g) => g.id);
     return groupChats.map((g) => g.id);
-  }, [trashEmbedded, collapsed, groupChats]);
+  }, [sidebarLayout, collapsed, groupChats]);
 
   const {
     selectedIds,
@@ -251,7 +276,7 @@ export function GroupChatsShell({
     multiThreshold: "any",
     focusedId: conversationId,
     ctrlSeedSkipsTarget: false,
-    rowClickMode: trashEmbedded
+    rowClickMode: sidebarLayout
       ? "alwaysOpen"
       : "openWhenEmptyElseToggleIfSelected",
     checkboxEvents: "stopOnly",
@@ -259,23 +284,6 @@ export function GroupChatsShell({
     escapeBlocked: () => ctxMenu != null,
     selectAllSetsAnchor: false,
   });
-
-  const years = useMemo(() => {
-    const source = query.trim() ? filtered : groupChats;
-    const set = new Set<number>();
-    for (const g of source) set.add(g.year);
-    return [...set].sort((a, b) => b - a);
-  }, [groupChats, filtered, query]);
-
-  useEffect(() => {
-    if (years.length === 0) {
-      setListYear(null);
-      return;
-    }
-    setListYear((prev) =>
-      prev != null && years.includes(prev) ? prev : years[0]!,
-    );
-  }, [years]);
 
   const rowsByYear = useMemo(() => {
     const map = new Map<number, GroupYearRow[]>();
@@ -346,16 +354,6 @@ export function GroupChatsShell({
     refs: [ctxMenuRef],
     eventTarget: typeof window !== "undefined" ? window : undefined,
   });
-
-  const jumpToYearSection = useCallback((year: number) => {
-    setListYear(year);
-    const el = document.getElementById(`group-year-${year}`);
-    const pane = el?.closest(".overflow-y-auto") as HTMLElement | null;
-    if (!el || !pane) return;
-    const elTop = el.getBoundingClientRect().top;
-    const paneTop = pane.getBoundingClientRect().top;
-    pane.scrollTop += elTop - paneTop;
-  }, []);
 
   const clearFocusAfterRemoval = useCallback(
     (removedIds: number[]) => {
@@ -433,7 +431,13 @@ export function GroupChatsShell({
     setStatus,
     onRemoved: clearFocusAfterRemoval,
     onDismissMenus: () => setCtxMenu(null),
-    afterTrash: () => router.push("/trash?tab=group-chats"),
+    afterTrash: () => {
+      if (sidebarLayout && mode === "group-chats") {
+        router.refresh();
+        return;
+      }
+      router.push("/trash?tab=group-chats");
+    },
     onTrashed: (ids) => {
       pushHistory({
         type: "trashGroupThread",
@@ -497,7 +501,7 @@ export function GroupChatsShell({
     [onRowClickId, selectGroup, selectedIds.size],
   );
 
-  const onTrashListRowClick = useCallback(
+  const onSidebarListRowClick = useCallback(
     (g: TrashGroupConversation, e: MouseEvent) => {
       if (
         !e.shiftKey &&
@@ -505,7 +509,7 @@ export function GroupChatsShell({
         !e.ctrlKey &&
         selectedIds.size === 0
       ) {
-        const year = g.newestYear;
+        const year = filterYear ?? g.newestYear;
         setSelectedIds(new Set());
         selectionAnchorRef.current = g.id;
         setConversationId(g.id);
@@ -521,6 +525,7 @@ export function GroupChatsShell({
       onRowClickId(g.id, e);
     },
     [
+      filterYear,
       onRowClickId,
       pathname,
       router,
@@ -530,6 +535,14 @@ export function GroupChatsShell({
       setMessages,
       setSelectedIds,
     ],
+  );
+
+  const yearFilterMenu = (
+    <YearFilterMenu
+      years={years}
+      value={filterYear}
+      onChange={setFilterYear}
+    />
   );
 
   const clampMenu = (x: number, y: number, w: number, h: number) => ({
@@ -583,7 +596,7 @@ export function GroupChatsShell({
       loading={loading}
       messages={messages}
       conversationSelected={conversationId != null}
-      prominentHeader={trashEmbedded}
+      prominentHeader={sidebarLayout}
     />
   );
 
@@ -591,9 +604,13 @@ export function GroupChatsShell({
     <>
       <div className="flex h-full min-h-0 w-full flex-col bg-bg">
         <div className="min-h-0 flex-1">
-          {trashEmbedded ? (
+          {sidebarLayout ? (
             <Group
-              id="mv-trash-groups-side"
+              id={
+                mode === "trash"
+                  ? "mv-trash-groups-side"
+                  : "mv-group-chats-2-side"
+              }
               orientation="horizontal"
               className="h-full w-full"
               defaultLayout={trashSideLayout.defaultLayout}
@@ -608,39 +625,63 @@ export function GroupChatsShell({
               >
                 <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
                   <TrashListChrome
-                    tabBar={trashTabBar}
+                    variant={mode === "trash" ? "trash" : "active"}
+                    tabBar={
+                      <>
+                        {mode === "trash" ? trashTabBar : null}
+                        {yearFilterMenu}
+                      </>
+                    }
                     selectAllRef={selectAllRef}
                     allSelected={allSelected}
                     selectedCount={selectedIds.size}
-                    itemCount={trashListItems.length}
+                    itemCount={sidebarListItems.length}
                     query={query}
                     onQueryChange={setQuery}
                     saving={saving}
                     canDeleteForever={actionTargets.length > 0}
                     onToggleSelectAll={toggleSelectAll}
-                    onDeleteForever={() => void permanentlyDeleteFromTrash()}
-                    selectAllLabel="Select all trashed groups"
+                    onDeleteForever={() =>
+                      void (mode === "trash"
+                        ? permanentlyDeleteFromTrash()
+                        : moveToTrash())
+                    }
+                    selectAllLabel={
+                      mode === "trash"
+                        ? "Select all trashed groups"
+                        : "Select all groups"
+                    }
                     sort={{
                       kind: "groups",
-                      sortBy: groupTrashSortBy,
-                      order: groupTrashSortOrder,
+                      sortBy: groupSidebarSortBy,
+                      order: groupSidebarSortOrder,
                       onChange: (next) =>
-                        setGroupTrashSort({
+                        setGroupSidebarSort({
                           sortBy: next.sortBy as GroupTrashSortBy,
                           order: next.order,
                         }),
                     }}
+                    trailing={
+                      mode === "group-chats" ? <ListHistoryMenu /> : null
+                    }
                   />
                   <div className="min-h-0 flex-1">
                     <TrashGroupChatList
-                      items={trashListItems}
+                      items={sidebarListItems}
                       conversationId={conversationId}
                       selectedIds={selectedIds}
                       query={query}
                       groupDateFormat={groupDateFormat}
                       onSelectColumnClick={onSelectColumnClick}
-                      onRowClick={onTrashListRowClick}
-                      onOpenCtxMenu={openCtxMenu}
+                      onRowClick={onSidebarListRowClick}
+                      onOpenCtxMenu={
+                        mode === "trash" ? openCtxMenu : undefined
+                      }
+                      emptyLabel={
+                        mode === "trash"
+                          ? "No trashed group chats"
+                          : "No group chats"
+                      }
                     />
                   </div>
                 </div>
@@ -682,8 +723,8 @@ export function GroupChatsShell({
                   status={status}
                   canAct={canAct}
                   years={years}
-                  listYear={listYear}
-                  onJumpToYear={jumpToYearSection}
+                  filterYear={filterYear}
+                  onFilterYearChange={setFilterYear}
                   groupDateFormat={groupDateFormat}
                   onGroupDateFormatChange={setGroupDateFormat}
                   onMoveToTrash={() => void moveToTrash()}

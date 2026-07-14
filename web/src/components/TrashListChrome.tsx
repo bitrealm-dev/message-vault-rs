@@ -31,7 +31,7 @@ export type TrashChromeController = {
   };
 };
 
-/** Shared trash list toolbar + search (Contacts / Group chats tabs). */
+/** Shared list toolbar + search (trash forever, or active soft-delete). */
 export function TrashListChrome({
   tabBar,
   selectAllRef,
@@ -46,8 +46,13 @@ export function TrashListChrome({
   onDeleteForever,
   selectAllLabel = "Select all trash",
   sort,
+  trailing,
 }: TrashChromeController & {
   tabBar?: ReactNode;
+  /** trash = permanent delete; active = soft-delete (move to trash). */
+  variant?: "trash" | "active";
+  /** e.g. ListHistoryMenu — sits with sort on the right. */
+  trailing?: ReactNode;
 }) {
   const sortMenu =
     sort?.kind === "groups" ? (
@@ -86,18 +91,22 @@ export function TrashListChrome({
               {selectedCount > 0 ? selectedCount : ""}
             </span>
           </label>
-          <button
-            type="button"
-            disabled={saving || !canDeleteForever}
-            onClick={onDeleteForever}
-            className="inline-flex h-7 items-center gap-1 rounded-md bg-elevated px-2.5 text-[12px] leading-none text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
-          >
-            <XIcon className="size-3.5 shrink-0 opacity-80" />
-            Delete
-          </button>
           {tabBar}
         </div>
-        {sortMenu}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            aria-label="Delete"
+            title="Delete"
+            disabled={saving || !canDeleteForever}
+            onClick={onDeleteForever}
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted transition-colors hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
+          >
+            <XIcon className="size-3.5 shrink-0 opacity-80" />
+          </button>
+          {sortMenu}
+          {trailing}
+        </div>
       </div>
       <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-sidebar px-3">
         <input

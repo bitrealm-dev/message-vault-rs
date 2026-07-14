@@ -112,6 +112,8 @@ function looksLikePhone(value: string): boolean {
   return digits.length >= 7 && digits.length === t.replace(/[\s().+-]/g, "").length;
 }
 
+export { looksLikePhone };
+
 /** Prefer a real display hint; ignore phones and placeholder "(Unknown)" labels. */
 export function usefulNameHint(
   hint: string | null | undefined,

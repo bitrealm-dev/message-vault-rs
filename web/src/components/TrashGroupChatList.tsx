@@ -104,6 +104,7 @@ export function TrashGroupChatList({
   onSelectColumnClick,
   onRowClick,
   onOpenCtxMenu,
+  emptyLabel = "No trashed group chats",
 }: {
   items: TrashGroupConversation[];
   conversationId: number | null;
@@ -112,14 +113,15 @@ export function TrashGroupChatList({
   groupDateFormat: GroupDateFormat;
   onSelectColumnClick: (id: number, e: MouseEvent) => void;
   onRowClick: (g: TrashGroupConversation, e: MouseEvent) => void;
-  onOpenCtxMenu: (id: number, x: number, y: number) => void;
+  onOpenCtxMenu?: (id: number, x: number, y: number) => void;
+  emptyLabel?: string;
 }) {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {items.length === 0 && (
           <p className="px-3 py-4 text-[12px] text-muted">
-            {query.trim() ? "No matches" : "No trashed group chats"}
+            {query.trim() ? "No matches" : emptyLabel}
           </p>
         )}
         {items.map((g, i) => {
@@ -184,10 +186,14 @@ export function TrashGroupChatList({
                 onMouseDown={(e) => {
                   if (e.shiftKey) e.preventDefault();
                 }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  onOpenCtxMenu(g.id, e.clientX, e.clientY);
-                }}
+                onContextMenu={
+                  onOpenCtxMenu
+                    ? (e) => {
+                        e.preventDefault();
+                        onOpenCtxMenu(g.id, e.clientX, e.clientY);
+                      }
+                    : undefined
+                }
                 className="min-w-0 flex-1 text-left outline-none"
               >
                 <div className="flex w-full gap-2">
@@ -211,7 +217,7 @@ export function TrashGroupChatList({
                         </span>
                       ))}
                     </div>
-                    <div className="mt-1.5 truncate text-[11px] text-muted">
+                    <div className="mt-1.5 truncate font-mono text-[12px] text-muted">
                       {dateLabel}
                     </div>
                   </div>

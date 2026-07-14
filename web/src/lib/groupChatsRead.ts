@@ -4,6 +4,7 @@ import {
   getDb,
   hasDuplicateOfColumn,
   hasTrashedConversationsTable,
+  looksLikePhone,
   resetDb,
   usefulNameHint,
 } from "./dbCore";
@@ -17,6 +18,19 @@ function isGenericGroupTitle(title: string | null | undefined): boolean {
   if (!t) return true;
   // iMessage chat identifiers look like chat31771234567890...
   if (/^chat\d+/i.test(t)) return true;
+
+  // SMS Backup-style titles that are only phone numbers, e.g.
+  // "Group: +14073412612, +14073766590, and 6 others"
+  let rest = t.replace(/^group:\s*/i, "").trim();
+  rest = rest.replace(/,?\s*and\s+\d+\s+others?\.?$/i, "").trim();
+  if (!rest) return true;
+
+  const parts = rest
+    .split(/[,;]/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length > 0 && parts.every(looksLikePhone)) return true;
+
   return false;
 }
 

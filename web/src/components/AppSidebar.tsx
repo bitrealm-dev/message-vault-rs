@@ -613,6 +613,12 @@ export function AppSidebar({
             icon={groupIcon}
           />
           <NavLink
+            href="/group-chats-2"
+            label="Group Chats 2"
+            active={active === "/group-chats-2"}
+            icon={groupIcon}
+          />
+          <NavLink
             href="/trash"
             label="Trash"
             active={active === "/trash"}
