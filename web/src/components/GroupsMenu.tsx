@@ -241,7 +241,7 @@ export function GroupsMenu({
                 }}
                 className="size-3.5 rounded border-border accent-accent"
               />
-              <span className="truncate">Excluded</span>
+              <span className="truncate">Inactive</span>
             </label>
             <div className="mx-3 my-1 border-t border-border/60" />
             {filtered.length === 0 ? (

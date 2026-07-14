@@ -27,6 +27,10 @@ import { useHistory } from "./history";
 import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
 
+const navHeadingClass = "px-3 pb-1";
+const navItemPl = "pl-6";
+const navItemPad = `${navItemPl} pr-3`;
+
 function NavLink({
   href,
   label,
@@ -41,7 +45,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`relative flex items-center gap-2 py-1 pl-10 pr-3 text-[14px] transition-colors ${
+      className={`relative flex items-center gap-2 py-1 ${navItemPad} text-[14px] transition-colors ${
         active ? "bg-elevated text-text" : "text-muted hover:bg-white/20 hover:text-text"
       }`}
     >
@@ -324,7 +328,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
   return (
     <div>
       <div className="relative mt-3" ref={headerRef}>
-        <div className="flex items-center justify-between pl-10 pr-1.5 pb-1">
+        <div className={`flex items-center justify-between ${navHeadingClass}`}>
           <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
             Groups
           </span>
@@ -341,13 +345,13 @@ function GroupsNav({ groups }: { groups: string[] }) {
             }}
             className="rounded p-0.5 text-muted hover:bg-elevated hover:text-text disabled:opacity-40"
           >
-            <PlusIcon className="size-5" />
+            <PlusIcon className="size-4" />
           </button>
         </div>
       </div>
 
       {displayGroups.length === 0 ? (
-        <p className="pl-10 pr-3 py-1 text-[13px] text-muted">No groups</p>
+        <p className={`${navItemPad} py-1 text-[13px] text-muted`}>No groups</p>
       ) : (
         displayGroups.map((name) => {
           const href = `/group/${groupSlug(name)}`;
@@ -380,7 +384,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
                 )}
                 <Link
                   href={href}
-                  className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-1 pl-10"
+                  className={`flex min-w-0 flex-1 items-center gap-2 py-1 pr-1 ${navItemPl}`}
                 >
                   {groupIcon}
                   <span className="truncate">{name}</span>
@@ -545,17 +549,11 @@ export function AppSidebar({
 
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-          <div className="pl-10 pr-1.5 pb-1">
+          <div className={`mt-3 ${navHeadingClass}`}>
             <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
               Contacts
             </span>
           </div>
-          <NavLink
-            href="/contacts"
-            label="Contacts"
-            active={active === "/contacts"}
-            icon={<AddressBookIcon className="size-5 shrink-0 opacity-80" />}
-          />
           <NavLink
             href="/all"
             label="All"
@@ -563,19 +561,25 @@ export function AppSidebar({
             icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
           />
           <NavLink
+            href="/contacts"
+            label="Active"
+            active={active === "/contacts"}
+            icon={<AddressBookIcon className="size-5 shrink-0 opacity-80" />}
+          />
+          <NavLink
+            href="/excluded"
+            label="Inactive"
+            active={active === "/excluded"}
+            icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
+          />
+          <NavLink
             href="/no-messages"
             label="No Messages"
             active={active === "/no-messages"}
             icon={<EmptyChatIcon className="size-5 shrink-0 opacity-80" />}
           />
-          <NavLink
-            href="/excluded"
-            label="Excluded"
-            active={active === "/excluded"}
-            icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
-          />
 
-          <div className="mt-3 pl-10 pr-1.5 pb-1">
+          <div className={`mt-3 ${navHeadingClass}`}>
             <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
               Messages
             </span>

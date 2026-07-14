@@ -42,6 +42,7 @@ export function SortMenu<T extends string>({
       <IconHoverTarget
         label={`${sortLabel}, ${orderLabel}`}
         placement="bottom"
+        hidden={open}
       >
         <button
           type="button"

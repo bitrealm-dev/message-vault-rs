@@ -11,7 +11,7 @@ export default async function ExcludedPage({
   return (
     <ContactBrowsePage
       section="excluded"
-      label="Excluded"
+      label="Inactive"
       nav="/excluded"
       contactId={parseContactId(sp.c)}
     />

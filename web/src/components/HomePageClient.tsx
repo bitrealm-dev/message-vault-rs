@@ -41,7 +41,6 @@ export function HomePageClient({
   };
 }) {
   const otherCards = [
-    { href: "/no-messages", label: "No Messages", value: stats.noMessages },
     { href: "/unassigned", label: "Unassigned", value: stats.unassigned },
     { href: "/group-chats", label: "Group Chats", value: stats.groupChats },
   ];
@@ -62,13 +61,13 @@ export function HomePageClient({
             <StatCard href="/all" label="All" value={stats.all} />
             <StatCard
               href="/contacts"
-              label="Contacts"
+              label="Active"
               value={stats.included}
             />
             <StatCard
-              href="/excluded"
-              label="Excluded"
-              value={stats.excluded}
+              href="/no-messages"
+              label="No Messages"
+              value={stats.noMessages}
             />
           </div>
         </section>

@@ -21,7 +21,7 @@ export function ListHistoryMenu() {
 
   return (
     <div className="relative" ref={rootRef}>
-      <IconHoverTarget label="Actions" placement="bottom">
+      <IconHoverTarget label="Actions" placement="bottom" hidden={open}>
         <button
           type="button"
           aria-label="Actions"

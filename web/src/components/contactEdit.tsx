@@ -41,13 +41,13 @@ export function draftHasName(draft: ContactEditDraft): boolean {
   return draft.firstName.trim() !== "" || draft.lastName.trim() !== "";
 }
 
-/** Groups list for the contact card: Excluded first when set. */
+/** Groups list for the contact card: Inactive first when set. */
 export function displayGroupNames(
   contactGroups: string[],
   excluded: boolean,
 ): string[] {
   const rest = contactGroups.filter((g) => g.toLowerCase() !== "excluded");
-  return excluded ? ["Excluded", ...rest] : rest;
+  return excluded ? ["Inactive", ...rest] : rest;
 }
 
 /** Drop empty non-trailing rows; ensure exactly one trailing empty row. */

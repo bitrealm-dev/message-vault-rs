@@ -88,7 +88,7 @@ export function ContactDetailsCard({
                     <span
                       key={name}
                       className={
-                        name === "Excluded"
+                        name === "Inactive"
                           ? "truncate text-[13px] font-semibold leading-5 text-amber-400/90"
                           : "truncate text-[13px] leading-5 text-text"
                       }

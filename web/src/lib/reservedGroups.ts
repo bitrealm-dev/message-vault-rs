@@ -28,9 +28,9 @@ export function isReservedGroupName(name: string): boolean {
 
 export function reservedGroupError(name: string): string {
   const key = name.trim().toLowerCase();
-  if (key === "contacts") return "Contacts is a reserved group";
+  if (key === "contacts") return "Active is a reserved group";
   if (key === "all") return "All is a reserved group";
-  if (key === "excluded") return "Excluded is a reserved group";
+  if (key === "excluded") return "Inactive is a reserved group";
   if (key === "unassigned") return "Unassigned is a reserved group";
   if (key === "trash") return "Trash is a reserved group";
   if (key === "no messages" || key === "no-messages") {

@@ -2,12 +2,15 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+
+const HOVER_LABEL_DELAY_MS = 1000;
 
 function FloatingTooltip({
   label,
@@ -57,36 +60,71 @@ export function IconHoverTarget({
   label,
   placement = "bottom",
   className,
+  hidden = false,
 }: {
   children: ReactNode;
   label: ReactNode;
   placement?: "right" | "bottom";
   className?: string;
+  /** Hide while a menu/popover is open on the control. */
+  hidden?: boolean;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
+  const suppressShowRef = useRef(false);
+  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
-  const show = useCallback(() => {
-    const el = anchorRef.current;
-    if (!el) return;
-    setAnchorRect(el.getBoundingClientRect());
+  const clearShowTimer = useCallback(() => {
+    if (showTimerRef.current) {
+      clearTimeout(showTimerRef.current);
+      showTimerRef.current = null;
+    }
   }, []);
 
-  const hide = useCallback(() => setAnchorRect(null), []);
+  const hide = useCallback(() => {
+    clearShowTimer();
+    suppressShowRef.current = false;
+    setAnchorRect(null);
+  }, [clearShowTimer]);
+
+  const dismiss = useCallback(() => {
+    clearShowTimer();
+    suppressShowRef.current = true;
+    setAnchorRect(null);
+  }, [clearShowTimer]);
+
+  const scheduleShow = useCallback(() => {
+    if (suppressShowRef.current || hidden) return;
+    const el = anchorRef.current;
+    if (!el) return;
+    clearShowTimer();
+    showTimerRef.current = setTimeout(() => {
+      showTimerRef.current = null;
+      if (suppressShowRef.current || hidden) return;
+      setAnchorRect(el.getBoundingClientRect());
+    }, HOVER_LABEL_DELAY_MS);
+  }, [hidden, clearShowTimer]);
+
+  useEffect(() => {
+    if (hidden) dismiss();
+  }, [hidden, dismiss]);
+
+  useEffect(() => () => clearShowTimer(), [clearShowTimer]);
 
   return (
     <>
       <div
         ref={anchorRef}
         className={className}
-        onMouseEnter={show}
+        onMouseEnter={scheduleShow}
         onMouseLeave={hide}
-        onFocus={show}
+        onPointerDownCapture={dismiss}
+        onFocus={scheduleShow}
         onBlur={hide}
       >
         {children}
       </div>
-      {anchorRect &&
+      {anchorRect && !hidden &&
         createPortal(
           <FloatingTooltip
             label={label}

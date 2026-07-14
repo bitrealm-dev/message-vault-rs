@@ -1280,8 +1280,8 @@ export function BrowseShell({
     const noun = changed === 1 ? "contact" : "contacts";
     queueStatusMessage(
       excludeAll
-        ? `Excluded ${changed} ${noun}`
-        : `Included ${changed} ${noun}`,
+        ? `Made ${changed} ${noun} inactive`
+        : `Made ${changed} ${noun} active`,
     );
 
     try {

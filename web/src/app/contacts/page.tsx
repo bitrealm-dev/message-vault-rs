@@ -11,7 +11,7 @@ export default async function ContactsPage({
   return (
     <ContactBrowsePage
       section="contacts"
-      label="Contacts"
+      label="Active"
       nav="/contacts"
       contactId={parseContactId(sp.c)}
     />
