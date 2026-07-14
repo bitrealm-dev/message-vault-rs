@@ -207,7 +207,7 @@ export function GroupChatsListPane({
                       onClick={onPermanentDelete}
                       className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
                     >
-                      Delete permanently
+                      Delete forever
                     </button>
                   </>
                 )}

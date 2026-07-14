@@ -2,6 +2,7 @@
 
 import type { UnassignedHandle } from "@/lib/types";
 import type { MouseEvent, RefObject } from "react";
+import { ListHistoryMenu } from "./history";
 import { EllipsisIcon } from "./icons";
 import {
   UnassignedSortMenu,
@@ -69,11 +70,14 @@ export function UnassignedContactList({
             {selectedHandles.size > 0 ? selectedHandles.size : ""}
           </span>
         </label>
-        <UnassignedSortMenu
-          sortBy={sortBy}
-          order={sortOrder}
-          onChange={onSortChange}
-        />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <UnassignedSortMenu
+            sortBy={sortBy}
+            order={sortOrder}
+            onChange={onSortChange}
+          />
+          <ListHistoryMenu />
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {sortedHandles.length === 0 && (

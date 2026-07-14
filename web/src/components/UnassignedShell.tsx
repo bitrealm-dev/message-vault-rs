@@ -25,6 +25,7 @@ import {
 import { UnassignedContactList } from "./UnassignedContactList";
 import { UnassignedDetailPane } from "./UnassignedDetailPane";
 import { UnassignedMessagesPane } from "./UnassignedMessagesPane";
+import { useHistory } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
@@ -57,6 +58,7 @@ export function UnassignedShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { push: pushHistory, clear: clearHistory } = useHistory();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [handles, setHandles] = useState(initialHandles);
   const [sortBy, setSortBy] = usePersistedEnum(
@@ -529,21 +531,35 @@ export function UnassignedShell({
         : `Move ${targets.length} numbers/emails to Trash?`,
     confirmPermanent: (targets) =>
       targets.length === 1
-        ? "Permanently delete this number or email? This cannot be undone."
-        : `Permanently delete ${targets.length} numbers/emails? This cannot be undone.`,
+        ? "Delete this number or email forever? This cannot be undone."
+        : `Delete ${targets.length} numbers/emails forever? This cannot be undone.`,
     status: {
       trashedOne: "Moved to Trash",
       trashedMany: (n) => `Moved ${n} to Trash`,
       restoredOne: "Undeleted — back in Unassigned",
       restoredMany: (n) => `Undeleted ${n} handles`,
-      deletedOne: "Permanently deleted",
-      deletedMany: (n) => `Permanently deleted ${n} handles`,
+      deletedOne: "Deleted forever",
+      deletedMany: (n) => `Deleted ${n} handles forever`,
     },
     setStatus,
     onRemoved: clearFocusAfterRemoval,
     onDismissMenus: () => {
       setCtxMenu(null);
       setGroupsPanelPos(null);
+    },
+    onTrashed: (handles) => {
+      pushHistory({
+        type: "trashUnassignedHandles",
+        handles,
+        label:
+          handles.length === 1
+            ? `Delete ${handles[0]}`
+            : `Delete ${handles.length} unassigned handles`,
+      });
+    },
+    afterPermanent: () => {
+      clearHistory();
+      router.refresh();
     },
   });
 
@@ -589,6 +605,13 @@ export function UnassignedShell({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "create failed");
+      if (data.contact?.id != null) {
+        pushHistory({
+          type: "createContact",
+          contactId: data.contact.id,
+          label: `Create contact ${data.contact.displayName ?? handle}`,
+        });
+      }
       router.push(`/contacts?c=${data.contact.id}`);
       router.refresh();
     } catch (err) {
@@ -724,6 +747,15 @@ export function UnassignedShell({
         if (!res.ok) throw new Error(data.error ?? "assign failed");
         displayName = data.contact.displayName;
       }
+      pushHistory({
+        type: "assignHandles",
+        contactId,
+        handles: targets,
+        label:
+          targets.length === 1
+            ? `Add ${targets[0]} to ${displayName}`
+            : `Add ${targets.length} handles to ${displayName}`,
+      });
       setAssignMode(null);
       setStatus(
         targets.length === 1
@@ -1168,7 +1200,7 @@ export function UnassignedShell({
                 className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                 onClick={() => void permanentlyDeleteFromTrash(ctxMenu.handle)}
               >
-                Delete permanently
+                Delete forever
               </button>
             </>
           ) : multiSelected ? (

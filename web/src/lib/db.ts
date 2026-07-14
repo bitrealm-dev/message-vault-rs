@@ -2,6 +2,7 @@ export { resetDb } from "./dbCore";
 export { groupSlug } from "./groupSlug";
 export {
   listGroups,
+  listGroupMemberContactIds,
   groupFromSlug,
   listContacts,
   getContact,

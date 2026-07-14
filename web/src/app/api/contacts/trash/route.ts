@@ -44,11 +44,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const count =
-      mode === "contact_and_messages"
-        ? trashContactWithMessages(ids)
-        : trashContactMessagesOnly(ids);
-    return NextResponse.json({ ok: true, count, mode });
+    if (mode === "contact_and_messages") {
+      const count = trashContactWithMessages(ids);
+      return NextResponse.json({ ok: true, count, mode });
+    }
+    const { count, handles } = trashContactMessagesOnly(ids);
+    return NextResponse.json({ ok: true, count, mode, handles });
   } catch (err) {
     const message = err instanceof Error ? err.message : "trash failed";
     const status = message.includes("not found") ? 404 : 400;
@@ -82,7 +83,7 @@ export async function DELETE(req: Request) {
         err instanceof Error
           ? err.message
           : permanent
-            ? "permanent delete failed"
+            ? "delete forever failed"
             : "restore failed";
       return NextResponse.json({ error: message }, { status: 400 });
     }
@@ -107,7 +108,7 @@ export async function DELETE(req: Request) {
       err instanceof Error
         ? err.message
         : permanent
-          ? "permanent delete failed"
+          ? "delete forever failed"
           : "restore failed";
     const status = message.includes("not in trash") ? 400 : 500;
     return NextResponse.json({ error: message }, { status });

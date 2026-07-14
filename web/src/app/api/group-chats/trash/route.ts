@@ -60,7 +60,7 @@ export async function DELETE(req: Request) {
       err instanceof Error
         ? err.message
         : body.permanent
-          ? "permanent delete failed"
+          ? "delete forever failed"
           : "restore failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -14,6 +14,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
+import { useHistory } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
@@ -54,6 +55,7 @@ export function GroupChatsShell({
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { push: pushHistory, clear: clearHistory } = useHistory();
   const { sourceQuery } = useSourceFilter();
   const [groupChats, setGroupChats] = useState(initialGroupChats);
   const [conversationId, setConversationId] = useState<number | null>(
@@ -297,23 +299,37 @@ export function GroupChatsShell({
         conversationSpansMultipleYears(targets[0]!);
       if (targets.length === 1) {
         return multiYear
-          ? "Permanently delete this group chat? It appears under multiple years and will be removed from all of them. This cannot be undone."
-          : "Permanently delete this group chat? This cannot be undone.";
+          ? "Delete this group chat forever? It appears under multiple years and will be removed from all of them. This cannot be undone."
+          : "Delete this group chat forever? This cannot be undone.";
       }
-      return `Permanently delete ${targets.length} group chats? Each chat will be removed from every year it appears under. This cannot be undone.`;
+      return `Delete ${targets.length} group chats forever? Each chat will be removed from every year it appears under. This cannot be undone.`;
     },
     status: {
       trashedOne: "Moved to Trash",
       trashedMany: (n) => `Moved ${n} to Trash`,
       restoredOne: "Undeleted — back in Group Chats",
       restoredMany: (n) => `Undeleted ${n} group chats`,
-      deletedOne: "Permanently deleted",
-      deletedMany: (n) => `Permanently deleted ${n} group chats`,
+      deletedOne: "Deleted forever",
+      deletedMany: (n) => `Deleted ${n} group chats forever`,
     },
     setStatus,
     onRemoved: clearFocusAfterRemoval,
     onDismissMenus: () => setCtxMenu(null),
     afterTrash: () => router.push("/trash?tab=group-chats"),
+    onTrashed: (ids) => {
+      pushHistory({
+        type: "trashGroupThread",
+        conversationIds: ids,
+        label:
+          ids.length === 1
+            ? "Delete group chat"
+            : `Delete ${ids.length} group chats`,
+      });
+    },
+    afterPermanent: () => {
+      clearHistory();
+      router.refresh();
+    },
   });
 
   const canAct = actionTargets.length > 0 && !saving;
@@ -487,7 +503,7 @@ export function GroupChatsShell({
               void permanentlyDeleteFromTrash(ctxMenu.conversationId)
             }
           >
-            Delete permanently
+            Delete forever
           </button>
         </div>
       )}

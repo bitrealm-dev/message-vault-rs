@@ -30,6 +30,8 @@ export function useTrashActions<TId extends string | number>(options: {
   afterTrash?: () => void;
   afterRestore?: () => void;
   afterPermanent?: () => void;
+  /** Called with trashed ids after a successful move-to-trash. */
+  onTrashed?: (targets: TId[]) => void;
 }): {
   saving: boolean;
   moveToTrash: (override?: TId) => Promise<void>;
@@ -51,6 +53,7 @@ export function useTrashActions<TId extends string | number>(options: {
     afterTrash,
     afterRestore,
     afterPermanent,
+    onTrashed,
   } = options;
 
   const router = useRouter();
@@ -64,6 +67,7 @@ export function useTrashActions<TId extends string | number>(options: {
       successStatus: string,
       afterSuccess: (() => void) | undefined,
       failFallback: string,
+      onSuccessTargets?: (targets: TId[]) => void,
     ) => {
       setSaving(true);
       onDismissMenus?.();
@@ -79,6 +83,7 @@ export function useTrashActions<TId extends string | number>(options: {
         }
         setStatus(successStatus);
         onRemoved(targets);
+        onSuccessTargets?.(targets);
         (afterSuccess ?? (() => router.refresh()))();
       } catch (err) {
         console.error(err);
@@ -107,6 +112,7 @@ export function useTrashActions<TId extends string | number>(options: {
           : status.trashedMany(targets.length),
         afterTrash,
         "delete failed",
+        onTrashed,
       );
     },
     [
@@ -114,6 +120,7 @@ export function useTrashActions<TId extends string | number>(options: {
       canTrash,
       confirmTrash,
       getTargets,
+      onTrashed,
       runLoop,
       status.trashedMany,
       status.trashedOne,
@@ -161,7 +168,7 @@ export function useTrashActions<TId extends string | number>(options: {
           ? status.deletedOne
           : status.deletedMany(targets.length),
         afterPermanent,
-        "permanent delete failed",
+        "delete forever failed",
       );
     },
     [

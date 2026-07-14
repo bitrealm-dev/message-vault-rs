@@ -91,17 +91,23 @@ export function trashContactWithMessages(ids: number[]): number {
 }
 
 /** Soft-trash 1:1 handles for contacts; leave contacts visible. */
-export function trashContactMessagesOnly(ids: number[]): number {
+export function trashContactMessagesOnly(ids: number[]): {
+  count: number;
+  handles: string[];
+} {
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
-  if (unique.length === 0) return 0;
+  if (unique.length === 0) return { count: 0, handles: [] };
   assertContactsExist(unique);
 
+  const handles: string[] = [];
   const writeDb = new Database(dbPath());
   try {
     ensureTrashedHandlesTable(writeDb);
     const tx = writeDb.transaction(() => {
       for (const id of unique) {
-        trashHandlesInDb(writeDb, contactHandlesWithMessages(writeDb, id));
+        const next = contactHandlesWithMessages(writeDb, id);
+        handles.push(...next);
+        trashHandlesInDb(writeDb, next);
       }
     });
     tx();
@@ -109,7 +115,7 @@ export function trashContactMessagesOnly(ids: number[]): number {
     writeDb.close();
   }
   resetDb();
-  return unique.length;
+  return { count: unique.length, handles: [...new Set(handles)] };
 }
 
 /** Restore soft-trashed contacts and their handles. */

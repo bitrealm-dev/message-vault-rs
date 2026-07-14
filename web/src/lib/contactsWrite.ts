@@ -428,6 +428,81 @@ export function addPhoneToContact(id: number, phone: string): ContactDetail {
   return patchContact(id, { phones: [...existing.phones, trimmed] });
 }
 
+/**
+ * Remove a phone/email handle from a contact. Does not delete conversations
+ * or messages. Used to undo assign-from-unassigned.
+ */
+export function removePhoneFromContact(
+  id: number,
+  phone: string,
+): ContactDetail {
+  const existing = getContact(id);
+  if (!existing) throw new Error("contact not found");
+  const trimmed = phone.trim();
+  if (!trimmed) throw new Error("phone required");
+  if (!existing.phones.includes(trimmed)) {
+    throw new Error("handle not on contact");
+  }
+
+  if (isEmailHandle(trimmed)) {
+    const writeDb = new Database(dbPath());
+    try {
+      const owner = phoneOwner(writeDb, trimmed);
+      if (owner != null && owner !== id) {
+        throw new Error(`phone ${trimmed} already belongs to another contact`);
+      }
+      writeDb.prepare(`DELETE FROM contact_handles WHERE handle = ?`).run(trimmed);
+      const preferred = preferredPhoneHandle(
+        existing.phones.filter((p) => p !== trimmed),
+      );
+      writeDb
+        .prepare(`UPDATE contacts SET preferred_handle = ? WHERE id = ?`)
+        .run(preferred, id);
+    } finally {
+      writeDb.close();
+    }
+    resetDb();
+    const updated = getContact(id);
+    if (!updated) throw new Error("contact missing after update");
+    return updated;
+  }
+
+  const nextPhones = existing.phones.filter((p) => p !== trimmed);
+  if (phoneHandlesOnly(nextPhones).length === 0) {
+    throw new Error(
+      "cannot remove last phone number (emails alone cannot be a contact)",
+    );
+  }
+  return patchContact(id, { phones: nextPhones });
+}
+
+/**
+ * Recreate a deleted group and re-attach member contacts.
+ * Contacts that no longer exist are skipped.
+ */
+export function restoreGroup(
+  name: string,
+  memberContactIds: number[],
+): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("name required");
+  assertAllowedGroupName(trimmed);
+
+  const created = createGroup(trimmed);
+  for (const contactId of memberContactIds) {
+    const contact = getContact(contactId);
+    if (!contact) continue;
+    if (contact.contactGroups.some((g) => g.toLowerCase() === created.toLowerCase())) {
+      continue;
+    }
+    patchContact(contactId, {
+      contactGroups: [...contact.contactGroups, created].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" }),
+      ),
+    });
+  }
+  return created;
+}
 
 /** Delete contacts from SQLite and contacts.csv. */
 export function deleteContacts(ids: number[]): number {

@@ -26,6 +26,7 @@ import {
   QuestionHandleIcon,
   TrashIcon,
 } from "./icons";
+import { useHistory } from "./history";
 import { useDismissible } from "./useDismissible";
 
 function NavLink({
@@ -156,6 +157,7 @@ function GroupNamePopover({
 function GroupsNav({ groups }: { groups: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { push: pushHistory } = useHistory();
   const [create, setCreate] = useState<{ x: number; y: number } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [rename, setRename] = useState<{
@@ -239,6 +241,11 @@ function GroupsNav({ groups }: { groups: string[] }) {
           ? prev
           : [...prev, data.name],
       );
+      pushHistory({
+        type: "createGroup",
+        name: data.name,
+        label: `Create group ${data.name}`,
+      });
       router.refresh();
       router.push(`/group/${groupSlug(data.name)}`);
     } catch (err) {
@@ -274,6 +281,19 @@ function GroupsNav({ groups }: { groups: string[] }) {
   const deleteGroup = async (name: string) => {
     setBusy(true);
     try {
+      const membersRes = await fetch(
+        `/api/contact-groups/members?name=${encodeURIComponent(name)}`,
+      );
+      const membersData = await membersRes.json();
+      if (!membersRes.ok) {
+        throw new Error(membersData.error ?? "lookup failed");
+      }
+      const memberContactIds: number[] = Array.isArray(
+        membersData.memberContactIds,
+      )
+        ? membersData.memberContactIds
+        : [];
+
       const res = await fetch("/api/contact-groups", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -281,6 +301,12 @@ function GroupsNav({ groups }: { groups: string[] }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "delete failed");
+      pushHistory({
+        type: "deleteGroup",
+        name,
+        memberContactIds,
+        label: `Delete group ${name}`,
+      });
       setMenuFor(null);
       router.refresh();
       if (pathname === `/group/${groupSlug(name)}`) {

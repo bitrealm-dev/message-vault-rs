@@ -2,6 +2,7 @@
 
 import type { ContactListItem } from "@/lib/types";
 import type { MouseEvent, RefObject } from "react";
+import { ListHistoryMenu } from "./history";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
 export function BrowseContactList({
@@ -72,6 +73,7 @@ export function BrowseContactList({
             <NewContactIcon className="size-5" />
           </button>
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
+          <ListHistoryMenu />
         </div>
       </div>
       <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">

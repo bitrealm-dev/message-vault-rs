@@ -66,6 +66,42 @@ export function EllipsisIcon({ className }: { className?: string }) {
   );
 }
 
+export function UndoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9.5 7.5 5.5 11.5 9.5 15.5" />
+      <path d="M5.5 11.5h9.25a4.75 4.75 0 0 1 0 9.5H12" />
+    </svg>
+  );
+}
+
+export function RedoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M14.5 7.5 18.5 11.5 14.5 15.5" />
+      <path d="M18.5 11.5H9.25a4.75 4.75 0 0 0 0 9.5H12" />
+    </svg>
+  );
+}
+
 export function PlusIcon({ className }: { className?: string }) {
   return (
     <svg

@@ -6,6 +6,7 @@ import type {
 } from "@/lib/types";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useHistory } from "./history";
 import { useListSelection } from "./useListSelection";
 
 type Row = TrashedContactItem | TrashedContactMessagesItem;
@@ -22,6 +23,7 @@ export function ContactsTrashShell({
   messagesOnly: TrashedContactMessagesItem[];
 }) {
   const router = useRouter();
+  const { clear: clearHistory } = useHistory();
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState<Row[]>(() => [...contacts, ...messagesOnly]);
@@ -93,8 +95,8 @@ export function ContactsTrashShell({
       if (permanent) {
         const msg =
           ids.length === 1
-            ? "Permanently delete this contact and its 1:1 messages? This cannot be undone."
-            : `Permanently delete ${ids.length} contacts and their 1:1 messages? This cannot be undone.`;
+            ? "Delete this contact and its 1:1 messages forever? This cannot be undone."
+            : `Delete ${ids.length} contacts and their 1:1 messages forever? This cannot be undone.`;
         if (!window.confirm(msg)) return;
       }
       setSaving(true);
@@ -116,12 +118,13 @@ export function ContactsTrashShell({
         setStatus(
           permanent
             ? ids.length === 1
-              ? "Permanently deleted"
-              : `Permanently deleted ${ids.length} contacts`
+              ? "Deleted forever"
+              : `Deleted ${ids.length} contacts forever`
             : ids.length === 1
               ? "Undeleted — contact restored"
               : `Undeleted ${ids.length} contacts`,
         );
+        if (permanent) clearHistory();
         router.refresh();
       } catch (err) {
         console.error(err);
@@ -131,7 +134,7 @@ export function ContactsTrashShell({
         setSaving(false);
       }
     },
-    [clearSelection, contactTargets, router],
+    [clearSelection, clearHistory, contactTargets, router],
   );
 
   const runHandleBatch = useCallback(
@@ -141,8 +144,8 @@ export function ContactsTrashShell({
       if (permanent) {
         const msg =
           handles.length === 1
-            ? "Permanently delete these messages? This cannot be undone."
-            : `Permanently delete messages for ${handles.length} numbers/emails? This cannot be undone.`;
+            ? "Delete these messages forever? This cannot be undone."
+            : `Delete messages for ${handles.length} numbers/emails forever? This cannot be undone.`;
         if (!window.confirm(msg)) return;
       }
       setSaving(true);
@@ -169,12 +172,13 @@ export function ContactsTrashShell({
         setStatus(
           permanent
             ? handles.length === 1
-              ? "Permanently deleted"
-              : `Permanently deleted ${handles.length} threads`
+              ? "Deleted forever"
+              : `Deleted ${handles.length} threads forever`
             : handles.length === 1
               ? "Undeleted — messages restored"
               : `Undeleted ${handles.length} threads`,
         );
+        if (permanent) clearHistory();
         router.refresh();
       } catch (err) {
         console.error(err);
@@ -184,7 +188,7 @@ export function ContactsTrashShell({
         setSaving(false);
       }
     },
-    [clearSelection, handleTargets, router],
+    [clearSelection, clearHistory, handleTargets, router],
   );
 
   const onRestore = useCallback(async () => {
@@ -242,7 +246,7 @@ export function ContactsTrashShell({
               onClick={() => void onPermanent()}
               className="inline-flex items-center rounded-md bg-white/8 px-2.5 py-1 text-[12px] text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
             >
-              Delete permanently
+              Delete forever
             </button>
           </div>
         </div>

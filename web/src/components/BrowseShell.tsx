@@ -28,6 +28,7 @@ import { BrowseContactList } from "./BrowseContactList";
 import { BrowseDetailPane } from "./BrowseDetailPane";
 import { BrowseMessagesPane } from "./BrowseMessagesPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import { useHistory } from "./history";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -68,6 +69,7 @@ export function BrowseShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { push: pushHistory } = useHistory();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [sortMode, setSortMode] = usePersistedEnum(
     SORT_MODE_KEY,
@@ -663,6 +665,11 @@ export function BrowseShell({
       setContactCreating(false);
       setEditDraft(null);
       if (data.contact) {
+        pushHistory({
+          type: "createContact",
+          contactId: data.contact.id,
+          label: `Create contact ${data.contact.displayName ?? "contact"}`,
+        });
         setDetail(data.contact);
         selectContact(data.contact.id);
       }
@@ -672,7 +679,7 @@ export function BrowseShell({
     } finally {
       setSaving(false);
     }
-  }, [editDraft, selectContact, router]);
+  }, [editDraft, selectContact, router, pushHistory]);
 
   const formOpen = (contactEditing || contactCreating) && !!editDraft;
   const canSaveForm =
@@ -707,6 +714,24 @@ export function BrowseShell({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "delete failed");
+
+        pushHistory({
+          type: "trashContacts",
+          contactIds: ids,
+          mode,
+          handles:
+            mode === "messages_only" && Array.isArray(data.handles)
+              ? (data.handles as string[])
+              : undefined,
+          label:
+            mode === "contact_and_messages"
+              ? ids.length === 1
+                ? "Delete contact & messages"
+                : `Delete ${ids.length} contacts & messages`
+              : ids.length === 1
+                ? "Delete contact messages"
+                : `Delete messages for ${ids.length} contacts`,
+        });
 
         setSelectedIds(new Set());
         setGroupOverrides(new Map());
@@ -768,6 +793,7 @@ export function BrowseShell({
       setSelectedIds,
       pathname,
       searchParams,
+      pushHistory,
     ],
   );
 

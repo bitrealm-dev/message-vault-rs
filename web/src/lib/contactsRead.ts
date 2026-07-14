@@ -34,6 +34,23 @@ export function listGroups(): string[] {
     .filter((name) => !RESERVED_GROUP_NAMES.has(name.trim().toLowerCase()));
 }
 
+/** Contact ids that currently belong to a named group (case-insensitive). */
+export function listGroupMemberContactIds(name: string): number[] {
+  const trimmed = name.trim();
+  if (!trimmed) return [];
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT cgm.contact_id AS contact_id
+       FROM contact_group_members cgm
+       JOIN contact_groups cg ON cg.id = cgm.group_id
+       WHERE cg.name = ? COLLATE NOCASE
+       ORDER BY cgm.contact_id`,
+    )
+    .all(trimmed) as Array<{ contact_id: number }>;
+  return rows.map((r) => r.contact_id);
+}
+
 export function groupFromSlug(slug: string): string | null {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
