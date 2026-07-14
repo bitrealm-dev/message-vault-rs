@@ -18,33 +18,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsShell } from "./GroupChatsShell";
 import { useHistory } from "./history";
 import { ChevronDownIcon } from "./icons";
-import {
-  TrashListChrome,
-  type TrashChromeController,
-} from "./TrashListChrome";
 import { UnassignedShell } from "./UnassignedShell";
 import { useDismissible } from "./useDismissible";
 
 type TrashTab = "contacts" | "group-chats";
-
-function chromeDataEqual(
-  a: TrashChromeController,
-  b: TrashChromeController,
-): boolean {
-  return (
-    a.selectAllRef === b.selectAllRef &&
-    a.allSelected === b.allSelected &&
-    a.selectedCount === b.selectedCount &&
-    a.itemCount === b.itemCount &&
-    a.query === b.query &&
-    a.saving === b.saving &&
-    a.canDeleteForever === b.canDeleteForever &&
-    a.selectAllLabel === b.selectAllLabel &&
-    a.sort?.sortBy === b.sort?.sortBy &&
-    a.sort?.order === b.sort?.order &&
-    a.sort?.kind === b.sort?.kind
-  );
-}
 
 function mergeTrashContactList(
   unassigned: UnassignedHandle[],
@@ -124,34 +101,58 @@ function TrashMoreMenu({
   onSwitch: (next: TrashTab) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useDismissible({
     open,
-    onDismiss: () => setOpen(false),
+    onDismiss: () => {
+      setOpen(false);
+      setMenuPos(null);
+    },
     refs: [rootRef],
   });
+
+  const viewLabel = tab === "group-chats" ? "Group chats" : "Contacts";
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      setMenuPos(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(true);
+  };
 
   return (
     <div ref={rootRef} className="relative inline-flex shrink-0 items-center">
       <button
+        ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-haspopup="menu"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors ${
           open
             ? "bg-accent/20 text-accent"
             : "bg-elevated text-muted hover:text-text"
         }`}
       >
-        More
+        {viewLabel}
         <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
       </button>
-      {open && (
+      {open && menuPos && (
         <div
           role="menu"
-          className="absolute top-full left-0 z-50 mt-1 min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          style={{ top: menuPos.top, left: menuPos.left }}
         >
           <button
             type="button"
@@ -161,6 +162,7 @@ function TrashMoreMenu({
             }`}
             onClick={() => {
               setOpen(false);
+              setMenuPos(null);
               onSwitch("contacts");
             }}
           >
@@ -175,6 +177,7 @@ function TrashMoreMenu({
             }`}
             onClick={() => {
               setOpen(false);
+              setMenuPos(null);
               onSwitch("group-chats");
             }}
           >
@@ -208,8 +211,6 @@ export function TrashShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { clear: clearHistory } = useHistory();
-  const chromeRef = useRef<TrashChromeController | null>(null);
-  const [chrome, setChrome] = useState<TrashChromeController | null>(null);
 
   useEffect(() => {
     clearHistory();
@@ -259,64 +260,26 @@ export function TrashShell({
     />
   );
 
-  const onTrashChrome = useCallback((next: TrashChromeController | null) => {
-    chromeRef.current = next;
-    setChrome((prev) => {
-      if (next === null) return null;
-      if (prev && chromeDataEqual(prev, next)) return prev;
-      return next;
-    });
-  }, []);
-
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-sidebar">
-      {chrome ? (
-        <TrashListChrome
-          selectAllRef={chrome.selectAllRef}
-          allSelected={chrome.allSelected}
-          selectedCount={chrome.selectedCount}
-          itemCount={chrome.itemCount}
-          query={chrome.query}
-          saving={chrome.saving}
-          canDeleteForever={chrome.canDeleteForever}
-          selectAllLabel={chrome.selectAllLabel}
-          sort={
-            chrome.sort
-              ? {
-                  kind: chrome.sort.kind,
-                  sortBy: chrome.sort.sortBy,
-                  order: chrome.sort.order,
-                  onChange: (next) => chromeRef.current?.sort?.onChange(next),
-                }
-              : undefined
-          }
-          onQueryChange={(q) => chromeRef.current?.onQueryChange(q)}
-          onToggleSelectAll={() => chromeRef.current?.onToggleSelectAll()}
-          onDeleteForever={() => chromeRef.current?.onDeleteForever()}
-          tabBar={tabBar}
+    <div className="h-full min-h-0 min-w-0">
+      {tab === "contacts" ? (
+        <UnassignedShell
+          mode="trash"
+          handles={contactList}
+          assignContacts={[]}
+          initialHandle={initialHandle}
+          trashTabBar={tabBar}
         />
-      ) : null}
-      <div className="min-h-0 flex-1">
-        {tab === "contacts" ? (
-          <UnassignedShell
-            mode="trash"
-            handles={contactList}
-            assignContacts={[]}
-            initialHandle={initialHandle}
-            hideListChrome
-            onTrashChrome={onTrashChrome}
-          />
-        ) : (
-          <GroupChatsShell
-            mode="trash"
-            groupChats={groupChats}
-            initialConversationId={initialConversationId}
-            initialYear={initialYear}
-            embedded
-            onTrashChrome={onTrashChrome}
-          />
-        )}
-      </div>
+      ) : (
+        <GroupChatsShell
+          mode="trash"
+          groupChats={groupChats}
+          initialConversationId={initialConversationId}
+          initialYear={initialYear}
+          embedded
+          trashTabBar={tabBar}
+        />
+      )}
     </div>
   );
 }

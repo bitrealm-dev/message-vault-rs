@@ -22,14 +22,17 @@ export type TrashGroupConversation = {
 };
 
 const NAME_SEP = "  ·  ";
+const NAME_COLS = 2;
+const NAME_ROWS = 3;
+const NAME_SLOTS = NAME_COLS * NAME_ROWS;
 
-/** Visible gap around · — flex items trim ordinary spaces. */
-function NameSep() {
-  return (
-    <span className="px-1.5 font-normal text-muted" aria-hidden>
-      ·
-    </span>
-  );
+/** Cap at NAME_SLOTS; last slot becomes +n when overflowing. */
+function visibleParticipantLabels(labels: string[]): string[] {
+  if (labels.length <= NAME_SLOTS) return labels;
+  return [
+    ...labels.slice(0, NAME_SLOTS - 1),
+    `+${labels.length - (NAME_SLOTS - 1)}`,
+  ];
 }
 
 /** Collapse year-bucketed rows into one entry per conversation. */
@@ -117,8 +120,9 @@ export function TrashGroupChatList({
           const checked = selectedIds.has(g.id);
           const selectionActive = selectedIds.size >= 1;
           const showInsetDivider = i < items.length - 1;
-          const names = participantLabels(g);
-          const namesTitle = names.join(NAME_SEP);
+          const allNames = participantLabels(g);
+          const names = visibleParticipantLabels(allNames);
+          const namesTitle = allNames.join(NAME_SEP);
           const dateLabel = formatConversationRange(
             g.conversationDateStart,
             g.conversationDateEnd,
@@ -179,7 +183,7 @@ export function TrashGroupChatList({
                 }}
                 className="min-w-0 flex-1 text-left outline-none"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex w-full gap-2">
                   <div className="min-w-0 flex-1">
                     {g.namedTitle ? (
                       <div className="mb-1 truncate text-[12px] font-medium text-text">
@@ -187,33 +191,35 @@ export function TrashGroupChatList({
                       </div>
                     ) : null}
                     <div
-                      className="flex min-w-0 flex-wrap gap-y-0.5 text-[13px] leading-snug font-medium text-text"
+                      className="grid w-full grid-cols-2 gap-x-3 gap-y-0.5 text-[13px] leading-snug font-medium text-text"
+                      style={{
+                        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                      }}
                       title={namesTitle}
                     >
                       {names.map((name, idx) => (
                         <span
                           key={`${g.id}-name-${idx}`}
-                          className="whitespace-nowrap"
+                          className="min-w-0 truncate whitespace-nowrap"
                         >
                           {name}
-                          {idx < names.length - 1 ? <NameSep /> : null}
                         </span>
                       ))}
                     </div>
+                    <div className="mt-1.5 truncate text-[11px] text-muted">
+                      {dateLabel}
+                    </div>
                   </div>
-                  <span className="inline-flex shrink-0 items-center gap-0.5 pt-0.5 text-[11px] tabular-nums text-muted">
-                    <MessageIcon className="size-3.5 opacity-80" />
-                    {g.messageCount.toLocaleString()}
-                  </span>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between gap-2">
-                  <span className="truncate text-[11px] text-muted">
-                    {dateLabel}
-                  </span>
-                  <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums text-muted">
-                    <PeopleCountIcon className="size-3.5 opacity-80" />
-                    {g.participantCount.toLocaleString()}
-                  </span>
+                  <div className="flex w-[4.5rem] shrink-0 flex-col items-end justify-between pt-0.5">
+                    <span className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
+                      <MessageIcon className="size-3.5 opacity-80" />
+                      {g.messageCount.toLocaleString()}
+                    </span>
+                    <span className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
+                      <PeopleCountIcon className="size-3.5 opacity-80" />
+                      {g.participantCount.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               </button>
               {showInsetDivider && (

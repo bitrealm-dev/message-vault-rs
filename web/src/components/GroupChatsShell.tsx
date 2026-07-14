@@ -10,11 +10,12 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
-import type { TrashChromeController } from "./TrashListChrome";
+import { TrashListChrome } from "./TrashListChrome";
 import {
   collapseGroupConversations,
   TrashGroupChatList,
@@ -122,16 +123,14 @@ export function GroupChatsShell({
   mode = "group-chats",
   trashTabBar = null,
   embedded = false,
-  onTrashChrome,
 }: {
   groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
-  trashTabBar?: React.ReactNode;
-  /** Parent (TrashShell) owns the shared toolbar + search. */
+  trashTabBar?: ReactNode;
+  /** Trash: list | messages (chrome lives in the list column). */
   embedded?: boolean;
-  onTrashChrome?: (chrome: TrashChromeController | null) => void;
 }) {
   const router = useRouter();
 
@@ -459,57 +458,6 @@ export function GroupChatsShell({
 
   const canAct = actionTargets.length > 0 && !saving;
 
-  const permanentlyDeleteFromTrashRef = useRef(permanentlyDeleteFromTrash);
-  permanentlyDeleteFromTrashRef.current = permanentlyDeleteFromTrash;
-  const toggleSelectAllRef = useRef(toggleSelectAll);
-  toggleSelectAllRef.current = toggleSelectAll;
-  const setGroupTrashSortRef = useRef(setGroupTrashSort);
-  setGroupTrashSortRef.current = setGroupTrashSort;
-
-  useEffect(() => {
-    if (!onTrashChrome || !trashEmbedded) return;
-    onTrashChrome({
-      selectAllRef,
-      allSelected,
-      selectedCount: selectedIds.size,
-      itemCount: trashListItems.length,
-      query,
-      onQueryChange: setQuery,
-      saving,
-      canDeleteForever: actionTargets.length > 0,
-      onToggleSelectAll: () => toggleSelectAllRef.current(),
-      onDeleteForever: () => void permanentlyDeleteFromTrashRef.current(),
-      selectAllLabel: "Select all trashed groups",
-      sort: {
-        kind: "groups",
-        sortBy: groupTrashSortBy,
-        order: groupTrashSortOrder,
-        onChange: (next) =>
-          setGroupTrashSortRef.current({
-            sortBy: next.sortBy as GroupTrashSortBy,
-            order: next.order,
-          }),
-      },
-    });
-  }, [
-    onTrashChrome,
-    trashEmbedded,
-    selectAllRef,
-    allSelected,
-    selectedIds.size,
-    trashListItems.length,
-    query,
-    saving,
-    actionTargets.length,
-    groupTrashSortBy,
-    groupTrashSortOrder,
-  ]);
-
-  useEffect(() => {
-    if (!onTrashChrome || !trashEmbedded) return;
-    return () => onTrashChrome(null);
-  }, [onTrashChrome, trashEmbedded]);
-
   const selectGroup = useCallback(
     (row: GroupYearRow) => {
       if (conversationId === row.id && focusYear === row.year) {
@@ -664,16 +612,44 @@ export function GroupChatsShell({
                 maxSize={720}
                 className="min-h-0"
               >
-                <TrashGroupChatList
-                  items={trashListItems}
-                  conversationId={conversationId}
-                  selectedIds={selectedIds}
-                  query={query}
-                  groupDateFormat={groupDateFormat}
-                  onSelectColumnClick={onSelectColumnClick}
-                  onRowClick={onTrashListRowClick}
-                  onOpenCtxMenu={openCtxMenu}
-                />
+                <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
+                  <TrashListChrome
+                    tabBar={trashTabBar}
+                    selectAllRef={selectAllRef}
+                    allSelected={allSelected}
+                    selectedCount={selectedIds.size}
+                    itemCount={trashListItems.length}
+                    query={query}
+                    onQueryChange={setQuery}
+                    saving={saving}
+                    canDeleteForever={actionTargets.length > 0}
+                    onToggleSelectAll={toggleSelectAll}
+                    onDeleteForever={() => void permanentlyDeleteFromTrash()}
+                    selectAllLabel="Select all trashed groups"
+                    sort={{
+                      kind: "groups",
+                      sortBy: groupTrashSortBy,
+                      order: groupTrashSortOrder,
+                      onChange: (next) =>
+                        setGroupTrashSort({
+                          sortBy: next.sortBy as GroupTrashSortBy,
+                          order: next.order,
+                        }),
+                    }}
+                  />
+                  <div className="min-h-0 flex-1">
+                    <TrashGroupChatList
+                      items={trashListItems}
+                      conversationId={conversationId}
+                      selectedIds={selectedIds}
+                      query={query}
+                      groupDateFormat={groupDateFormat}
+                      onSelectColumnClick={onSelectColumnClick}
+                      onRowClick={onTrashListRowClick}
+                      onOpenCtxMenu={openCtxMenu}
+                    />
+                  </div>
+                </div>
               </Panel>
 
               <PaneSeparator orientation="vertical" />

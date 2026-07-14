@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
+import { XIcon } from "./icons";
 import {
   GroupTrashSortMenu,
   TrashSortMenu,
@@ -48,51 +49,55 @@ export function TrashListChrome({
 }: TrashChromeController & {
   tabBar?: ReactNode;
 }) {
+  const sortMenu =
+    sort?.kind === "groups" ? (
+      <GroupTrashSortMenu
+        sortBy={sort.sortBy as GroupTrashSortBy}
+        order={sort.order}
+        onChange={(next) =>
+          sort.onChange({ sortBy: next.sortBy, order: next.order })
+        }
+      />
+    ) : sort ? (
+      <TrashSortMenu
+        sortBy={sort.sortBy as TrashSortBy}
+        order={sort.order}
+        onChange={(next) =>
+          sort.onChange({ sortBy: next.sortBy, order: next.order })
+        }
+      />
+    ) : null;
+
   return (
     <>
-      <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border bg-sidebar px-3">
-        <label className="flex min-w-0 items-center gap-2">
-          <input
-            ref={selectAllRef}
-            type="checkbox"
-            checked={allSelected}
-            disabled={itemCount === 0}
-            aria-label={selectAllLabel}
-            onChange={onToggleSelectAll}
-            className="checkbox-list"
-          />
-          <span className="truncate text-[13px] text-muted tabular-nums">
-            {selectedCount > 0 ? selectedCount : ""}
-          </span>
-        </label>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {tabBar}
+      <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border bg-sidebar px-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <label className="flex min-w-0 items-center gap-2">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              disabled={itemCount === 0}
+              aria-label={selectAllLabel}
+              onChange={onToggleSelectAll}
+              className="checkbox-list"
+            />
+            <span className="truncate text-[13px] text-muted tabular-nums">
+              {selectedCount > 0 ? selectedCount : ""}
+            </span>
+          </label>
           <button
             type="button"
             disabled={saving || !canDeleteForever}
             onClick={onDeleteForever}
-            className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-elevated px-2.5 text-[12px] leading-none text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
           >
-            Delete forever
+            <XIcon className="size-3.5 shrink-0 opacity-80" />
+            Delete
           </button>
-          {sort?.kind === "groups" ? (
-            <GroupTrashSortMenu
-              sortBy={sort.sortBy as GroupTrashSortBy}
-              order={sort.order}
-              onChange={(next) =>
-                sort.onChange({ sortBy: next.sortBy, order: next.order })
-              }
-            />
-          ) : sort ? (
-            <TrashSortMenu
-              sortBy={sort.sortBy as TrashSortBy}
-              order={sort.order}
-              onChange={(next) =>
-                sort.onChange({ sortBy: next.sortBy, order: next.order })
-              }
-            />
-          ) : null}
+          {tabBar}
         </div>
+        {sortMenu}
       </div>
       <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-sidebar px-3">
         <input
