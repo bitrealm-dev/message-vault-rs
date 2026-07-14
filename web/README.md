@@ -2,6 +2,17 @@
 
 Next.js app that browses the vault SQLite database (`data/vault.db` by default).
 
+## Demo quick start
+
+From the repo root:
+
+```bash
+./scripts/setup-demo.sh
+cd web && npm install && npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Use **Reset demo** in the sidebar footer to wipe local edits and re-import the committed bundle.
+
 ## Setup
 
 From this directory:
@@ -51,3 +62,4 @@ Groups and No group list only non-excluded contacts.
 
 - Paths and DB location are read from the repo-root `config/config.toml`.
 - Converted assets land under `data/<source_id>/assets_converted`.
+- **Reset demo** calls `POST /api/demo/reset`, which runs `message-vault-rs reset-demo` when the `demo/` bundle is present.

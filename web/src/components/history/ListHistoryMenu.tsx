@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { IconHoverTarget } from "../IconHoverLabel";
 import { EllipsisIcon, RedoIcon, UndoIcon } from "../icons";
 import { useDismissible } from "../useDismissible";
 import { useHistory } from "./HistoryProvider";
@@ -20,16 +21,18 @@ export function ListHistoryMenu() {
 
   return (
     <div className="relative" ref={rootRef}>
-      <button
-        type="button"
-        aria-label="History"
-        aria-expanded={open}
-        disabled={busy}
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:opacity-40"
-      >
-        <EllipsisIcon className="size-5" />
-      </button>
+      <IconHoverTarget label="Actions" placement="bottom">
+        <button
+          type="button"
+          aria-label="Actions"
+          aria-expanded={open}
+          disabled={busy}
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:opacity-40"
+        >
+          <EllipsisIcon className="size-5" />
+        </button>
+      </IconHoverTarget>
       {open && (
         <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-1 shadow-xl">
           <button

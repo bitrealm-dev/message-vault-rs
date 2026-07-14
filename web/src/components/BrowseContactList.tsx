@@ -3,6 +3,7 @@
 import type { ContactListItem } from "@/lib/types";
 import type { MouseEvent, RefObject } from "react";
 import { ListHistoryMenu } from "./history";
+import { IconHoverTarget } from "./IconHoverLabel";
 import { MessageIcon } from "./icons";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
@@ -48,7 +49,7 @@ export function BrowseContactList({
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
 
-      <div className="flex h-[45px] shrink-0 items-center justify-between border-b border-border px-3">
+      <div className="flex h-[45px] shrink-0 items-center justify-between overflow-visible border-b border-border px-3">
         <label className="flex min-w-0 items-center gap-2">
           <input
             ref={selectAllRef}
@@ -63,16 +64,17 @@ export function BrowseContactList({
             {selectedIds.size > 0 ? selectedIds.size : ""}
           </span>
         </label>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            aria-label="New contact"
-            title="New contact"
-            onClick={onNewContact}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
-          >
-            <NewContactIcon className="size-5" />
-          </button>
+        <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
+          <IconHoverTarget label="New contact" placement="bottom">
+            <button
+              type="button"
+              aria-label="New contact"
+              onClick={onNewContact}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+            >
+              <NewContactIcon className="size-5" />
+            </button>
+          </IconHoverTarget>
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
           <ListHistoryMenu />
         </div>

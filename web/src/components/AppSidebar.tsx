@@ -12,13 +12,10 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { PanelImperativeHandle } from "react-resizable-panels";
 import {
   AddressBookIcon,
   EllipsisIcon,
   EmptyChatIcon,
-  PanelCollapseIcon,
-  PanelExpandIcon,
   PeopleGroupIcon,
   PersonDetailIcon,
   PlusIcon,
@@ -27,6 +24,7 @@ import {
   TrashIcon,
 } from "./icons";
 import { useHistory } from "./history";
+import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
 
 function NavLink({
@@ -474,64 +472,59 @@ function GroupsNav({ groups }: { groups: string[] }) {
   );
 }
 
-const NAV_COLLAPSED_KEY = "message-vault:navCollapsed";
-/** Collapse nav when the viewport is narrower than this. */
-const NAV_AUTO_COLLAPSE_BELOW = 900;
-
 export function AppSidebar({
   active,
   groups = [],
-  navPanelRef,
-  onCollapsedChange,
+  collapsed,
 }: {
   active: string;
   groups?: string[];
-  /** When set, collapse/expand drives the parent resizable Panel. */
-  navPanelRef?: RefObject<PanelImperativeHandle | null>;
-  onCollapsedChange?: (collapsed: boolean) => void;
+  collapsed: boolean;
 }) {
-  const [userCollapsed, setUserCollapsed] = useState(false);
-  const [narrow, setNarrow] = useState(false);
-  const [forceExpand, setForceExpand] = useState(false);
-  const wasNarrowRef = useRef(false);
-
-  const collapsed = narrow ? !forceExpand : userCollapsed;
-
-  useEffect(() => {
-    onCollapsedChange?.(collapsed);
-  }, [collapsed, onCollapsedChange]);
+  const [demoResetAvailable, setDemoResetAvailable] = useState(false);
+  const [resettingDemo, setResettingDemo] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
-    if (!navPanelRef?.current) return;
-    if (collapsed) navPanelRef.current.collapse();
-    else navPanelRef.current.expand();
-  }, [collapsed, navPanelRef]);
-
-  useEffect(() => {
-    setUserCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
-
-    const syncNarrow = () => {
-      const next = window.innerWidth < NAV_AUTO_COLLAPSE_BELOW;
-      if (next && !wasNarrowRef.current) setForceExpand(false);
-      wasNarrowRef.current = next;
-      setNarrow(next);
+    let cancelled = false;
+    fetch("/api/demo/reset")
+      .then((r) => r.json())
+      .then((data: { available?: boolean }) => {
+        if (!cancelled) setDemoResetAvailable(data.available === true);
+      })
+      .catch(() => {
+        if (!cancelled) setDemoResetAvailable(false);
+      });
+    return () => {
+      cancelled = true;
     };
-    syncNarrow();
-    window.addEventListener("resize", syncNarrow);
-    return () => window.removeEventListener("resize", syncNarrow);
   }, []);
 
-  const toggleCollapsed = () => {
-    if (narrow) {
-      setForceExpand((prev) => !prev);
-      return;
+  const resetDemo = useCallback(async () => {
+    const ok = await confirm(
+      "Restore all messages, contacts, groups, and trash to the committed demo dataset. Your edits will be lost.",
+      "Reset demo",
+    );
+    if (!ok) return;
+
+    setResettingDemo(true);
+    setResetError(null);
+    try {
+      const res = await fetch("/api/demo/reset", { method: "POST" });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Reset failed");
+      }
+      router.push("/");
+      router.refresh();
+    } catch (e) {
+      setResetError(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setResettingDemo(false);
     }
-    setUserCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0");
-      return next;
-    });
-  };
+  }, [confirm, router]);
 
   const groupIcon = (
     <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
@@ -539,29 +532,16 @@ export function AppSidebar({
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
-      <div className="flex h-[45px] shrink-0 items-center gap-1 border-b border-border px-2">
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? "Show navigation" : "Hide navigation"}
-          title={collapsed ? "Show navigation" : "Hide navigation"}
-          className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
-        >
-          {collapsed ? (
-            <PanelExpandIcon className="size-5" />
-          ) : (
-            <PanelCollapseIcon className="size-5" />
-          )}
-        </button>
-        {!collapsed && (
+      {!collapsed && (
+        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
           <Link
             href="/"
             className="truncate text-[13px] font-medium text-text transition-colors hover:text-accent"
           >
             Message Vault
           </Link>
-        )}
-      </div>
+        </div>
+      )}
 
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
@@ -628,6 +608,25 @@ export function AppSidebar({
           <GroupsNav groups={groups} />
         </nav>
       )}
+
+      {!collapsed && demoResetAvailable && (
+        <div className="shrink-0 border-t border-border px-3 py-2">
+          <button
+            type="button"
+            disabled={resettingDemo}
+            onClick={() => void resetDemo()}
+            className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-muted transition-colors hover:bg-white/15 hover:text-text disabled:opacity-50"
+          >
+            {resettingDemo ? "Resetting demo…" : "Reset demo"}
+          </button>
+          {resetError && (
+            <p className="mt-1 text-[11px] text-red-400" role="alert">
+              {resetError}
+            </p>
+          )}
+        </div>
+      )}
+      {confirmDialog}
     </aside>
   );
 }

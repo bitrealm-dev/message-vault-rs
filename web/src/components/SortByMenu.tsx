@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { IconHoverTarget } from "./IconHoverLabel";
 import { useDismissible } from "./useDismissible";
 
 export type SortMode = "first" | "last" | "messages";
@@ -32,17 +33,26 @@ export function SortMenu<T extends string>({
     refs: [rootRef],
   });
 
+  const sortLabel =
+    fields.find((field) => field.id === sort)?.label ?? String(sort);
+  const orderLabel = order === "asc" ? "Ascending" : "Descending";
+
   return (
     <div className="relative" ref={rootRef}>
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+      <IconHoverTarget
+        label={`${sortLabel}, ${orderLabel}`}
+        placement="bottom"
       >
-        <SortIcon />
-      </button>
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+        >
+          <SortIcon />
+        </button>
+      </IconHoverTarget>
       {open && (
         <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-2 shadow-xl">
           <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">

@@ -414,3 +414,74 @@ export function PanelExpandIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+const vaultKnockout =
+  "fill-sidebar group-aria-[current=page]:fill-elevated";
+
+/** Bank safe — flat two-tone (inverted for dark UI). */
+export function VaultIcon({ className }: { className?: string }) {
+  const dialCx = 12;
+  const dialCy = 9.75;
+  const spokes = [45, 135, 225, 315];
+
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <rect x="3.75" y="2.75" width="16.5" height="13.75" rx="2.25" />
+      <rect x="5" y="17.25" width="3.25" height="1.75" rx="0.35" />
+      <rect x="15.75" y="17.25" width="3.25" height="1.75" rx="0.35" />
+      <rect
+        x="5"
+        y="4"
+        width="14"
+        height="11.25"
+        rx="1.5"
+        className={vaultKnockout}
+      />
+      <rect x="5.2" y="7.25" width="0.95" height="2.1" rx="0.45" />
+      <rect x="5.2" y="11.25" width="0.95" height="2.1" rx="0.45" />
+      <circle cx={dialCx} cy={dialCy} r="2.75" />
+      <circle
+        cx={dialCx}
+        cy={dialCy}
+        r="1.95"
+        className={vaultKnockout}
+      />
+      {spokes.map((deg) => (
+        <rect
+          key={deg}
+          x={dialCx - 0.2}
+          y={dialCy - 2.75}
+          width="0.4"
+          height="5.5"
+          rx="0.1"
+          className={vaultKnockout}
+          transform={`rotate(${deg} ${dialCx} ${dialCy})`}
+        />
+      ))}
+      <circle cx={dialCx} cy={dialCy} r="0.85" />
+    </svg>
+  );
+}
+
+export function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 15.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  );
+}

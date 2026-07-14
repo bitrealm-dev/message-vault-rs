@@ -75,7 +75,7 @@ export function TrashListChrome({
 
   return (
     <>
-      <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border bg-sidebar px-3">
+      <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 overflow-visible border-b border-border bg-sidebar px-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <label className="flex min-w-0 items-center gap-2">
             <input
@@ -93,7 +93,7 @@ export function TrashListChrome({
           </label>
           {tabBar}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
           <button
             type="button"
             aria-label="Delete"

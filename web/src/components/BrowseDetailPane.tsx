@@ -157,29 +157,29 @@ export function BrowseDetailPane({
                                   onClick={() =>
                                     onLoadGroupChatThread(convIds, g.year, key)
                                   }
-                                  className={`flex w-full items-start justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
+                                  className={`flex w-full items-stretch justify-between gap-4 rounded-md px-2 py-2 text-left text-[13px] ${
                                     active
                                       ? "bg-white/12 text-accent"
                                       : "text-text hover:bg-white/20 hover:text-accent"
                                   }`}
                                 >
-                                  <span className="min-w-0">
+                                  <span className="min-w-0 flex-1">
                                     <span className="line-clamp-2 font-medium leading-snug">
                                       {g.title}
                                     </span>
-                                    <span className="mt-0.5 flex items-center gap-x-2 text-[11px] text-muted">
-                                      <span className="inline-flex items-center gap-0.5 tabular-nums">
-                                        <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
-                                        {g.participantCount.toLocaleString()}
-                                      </span>
-                                      <span className="inline-flex items-center gap-0.5 tabular-nums">
-                                        <MessageIcon className="size-3.5 shrink-0 opacity-80" />
-                                        {g.messageCount.toLocaleString()}
-                                      </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted tabular-nums">
+                                      {groupDateMeta(g, groupDateFormat)}
                                     </span>
                                   </span>
-                                  <span className="shrink-0 pt-0.5 text-[11px] text-muted tabular-nums">
-                                    {groupDateMeta(g, groupDateFormat)}
+                                  <span className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch py-0.5 text-[11px] text-muted">
+                                    <span className="inline-flex items-center gap-0.5 tabular-nums">
+                                      <MessageIcon className="size-3.5 shrink-0 opacity-80" />
+                                      {g.messageCount.toLocaleString()}
+                                    </span>
+                                    <span className="inline-flex items-center gap-0.5 tabular-nums">
+                                      <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
+                                      {g.participantCount.toLocaleString()}
+                                    </span>
                                   </span>
                                 </button>
                               </li>
