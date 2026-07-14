@@ -6,6 +6,7 @@ import {
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
 import type { RefObject, MouseEvent, ReactNode } from "react";
+import { MessageIcon, PeopleCountIcon } from "./icons";
 
 function dateColClass(style: GroupDateFormat): string {
   switch (style) {
@@ -395,10 +396,15 @@ export function GroupChatsListPane({
                                 <span className="line-clamp-2 font-medium leading-snug">
                                   {g.title}
                                 </span>
-                                <span className="mt-0.5 block truncate text-[11px] text-muted">
-                                  {g.participantCount} people
-                                  <span className="mx-1.5">·</span>
-                                  {g.messageCount} msgs
+                                <span className="mt-0.5 flex items-center gap-x-2 text-[11px] text-muted">
+                                  <span className="inline-flex items-center gap-0.5 tabular-nums">
+                                    <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
+                                    {g.participantCount.toLocaleString()}
+                                  </span>
+                                  <span className="inline-flex items-center gap-0.5 tabular-nums">
+                                    <MessageIcon className="size-3.5 shrink-0 opacity-80" />
+                                    {g.messageCount.toLocaleString()}
+                                  </span>
                                 </span>
                               </span>
                               <GroupDateCell g={g} style={groupDateFormat} />

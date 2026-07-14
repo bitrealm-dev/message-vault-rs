@@ -603,7 +603,7 @@ export function GroupChatsShell({
                 id="list"
                 defaultSize={320}
                 minSize={200}
-                maxSize={720}
+                maxSize="70%"
                 className="min-h-0"
               >
                 <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
