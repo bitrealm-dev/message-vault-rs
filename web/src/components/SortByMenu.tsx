@@ -40,7 +40,7 @@ export function SortMenu<T extends string>({
   return (
     <div className="relative" ref={rootRef}>
       <IconHoverTarget
-        label={`${sortLabel}, ${orderLabel}`}
+        label={`Sorted by ${sortLabel}, ${orderLabel}`}
         placement="bottom"
         hidden={open}
       >

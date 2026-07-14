@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { resetDb } from "@/lib/db";
+import { assertVaultWritable } from "@/lib/owner";
 import { configTomlPath, repoRoot } from "@/lib/paths";
 import { NextResponse } from "next/server";
 import { parse } from "smol-toml";
@@ -72,6 +73,13 @@ export async function GET() {
 }
 
 export async function POST() {
+  try {
+    assertVaultWritable();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "read-only";
+    return NextResponse.json({ ok: false, error: message }, { status: 403 });
+  }
+
   if (!demoBundleEnabled()) {
     return NextResponse.json(
       { ok: false, error: "Demo reset is not available (missing demo/ bundle)." },

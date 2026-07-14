@@ -8,7 +8,9 @@ import {
 import { NavRail } from "@/components/NavRail";
 import { PaneSeparator } from "@/components/PaneSeparator";
 import { usePanelLayoutStorage } from "@/components/panelLayoutStorage";
+import { SettingsSidebar } from "@/components/SettingsSidebar";
 import { useNavCollapse } from "@/components/useNavCollapse";
+import { usePathname } from "next/navigation";
 import { useCallback, useState, type ReactNode } from "react";
 import {
   Group,
@@ -37,6 +39,8 @@ export function AppShell({
     onCollapsedChange,
   );
   const storage = usePanelLayoutStorage();
+  const pathname = usePathname();
+  const settingsMode = pathname.startsWith("/settings");
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "mv-nav",
@@ -65,11 +69,15 @@ export function AppShell({
             collapsedSize={0}
             className="min-h-0"
           >
-            <AppSidebar
-              active={active}
-              groups={groups}
-              collapsed={collapsed}
-            />
+            {settingsMode ? (
+              <SettingsSidebar collapsed={collapsed} />
+            ) : (
+              <AppSidebar
+                active={active}
+                groups={groups}
+                collapsed={collapsed}
+              />
+            )}
           </Panel>
           <PaneSeparator orientation="vertical" disabled={navCollapsed} />
           <Panel id="main" minSize="30%" className="min-h-0 min-w-0">

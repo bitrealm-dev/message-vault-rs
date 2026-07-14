@@ -51,8 +51,13 @@ pub fn write_config_toml(config_dir: &Path) -> Result<()> {
     let body = format!(
         r#"[owner]
 display_name = "Demo User"
-phone_e164 = "{OWNER_PHONE}"
-emails = ["demo.user@example.com"]
+phones = ["{OWNER_PHONE}"]
+emails = ["demo.ingest@example.com"]
+
+[account]
+username = "demo"
+login_email = "demo@example.com"
+read_only = false
 
 [paths]
 db = "data/vault.db"

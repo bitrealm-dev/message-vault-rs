@@ -394,6 +394,22 @@ pub fn ensure_contacts_schema(conn: &Connection) -> Result<()> {
         );
         "#,
     )?;
+    ensure_accounts_schema(conn)?;
+    Ok(())
+}
+
+/// Web login accounts — stable `id` separate from mutable username/email.
+pub fn ensure_accounts_schema(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS accounts (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            read_only INTEGER NOT NULL DEFAULT 0
+        );
+        "#,
+    )?;
     Ok(())
 }
 

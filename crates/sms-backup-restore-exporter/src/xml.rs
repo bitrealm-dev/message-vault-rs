@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use quick_xml::XmlVersion;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
 use std::path::Path;
 
@@ -144,13 +144,13 @@ fn contact_name(attrs: &HashMap<String, String>) -> Option<String> {
     }
 }
 
-fn is_valid_received_from(raw: &str, my_sanitized: &str) -> bool {
+fn is_valid_received_from(raw: &str, owners: &HashSet<String>) -> bool {
     let stripped = raw.trim();
     if stripped.is_empty() || stripped.eq_ignore_ascii_case(INSERT_ADDRESS_TOKEN) {
         return false;
     }
     match sanitize_number(stripped) {
-        Some(sender_num) => sender_num != my_sanitized,
+        Some(sender_num) => !owners.contains(&sender_num),
         None => false,
     }
 }
@@ -176,7 +176,7 @@ fn mms_sender(
     msg_box: &str,
     addrs: &[MmsAddr],
     participants: &[String],
-    my_digits: &str,
+    owners: &HashSet<String>,
 ) -> (bool, Option<String>) {
     if msg_box.trim() == MMS_BOX_SENT {
         return (true, None);
@@ -185,7 +185,7 @@ fn mms_sender(
         if addr.addr_type != MMS_ADDR_FROM {
             continue;
         }
-        if !is_valid_received_from(&addr.address, my_digits) {
+        if !is_valid_received_from(&addr.address, owners) {
             continue;
         }
         return (false, sanitize_number(&addr.address));
@@ -193,7 +193,7 @@ fn mms_sender(
     // Last resort: first non-owner participant
     for raw in participants {
         if let Some(num) = sanitize_number(raw) {
-            if num != my_digits {
+            if !owners.contains(&num) {
                 return (false, Some(num));
             }
         }
@@ -247,7 +247,7 @@ fn mms_body_and_attachments(
 
 fn parse_sms(
     attrs: &HashMap<String, String>,
-    _my_digits: &str,
+    _owners: &HashSet<String>,
     stats: &mut XmlParseStats,
 ) -> Option<ParsedMessage> {
     stats.sms_count += 1;
@@ -295,7 +295,7 @@ fn parse_mms(
     attrs: &HashMap<String, String>,
     parts: &[MmsPart],
     addrs: &[MmsAddr],
-    my_digits: &str,
+    owners: &HashSet<String>,
     stats: &mut XmlParseStats,
 ) -> Option<ParsedMessage> {
     stats.mms_count += 1;
@@ -316,13 +316,13 @@ fn parse_mms(
     let (body, attachments) = mms_body_and_attachments(parts, date_ms, stats);
     let msg_box = get(attrs, "msg_box");
     let hint = contact_name(attrs);
-    let (is_from_me, sender_digits) = mms_sender(msg_box, addrs, &participants, my_digits);
+    let (is_from_me, sender_digits) = mms_sender(msg_box, addrs, &participants, owners);
 
     let non_owner: Vec<String> = {
         let mut set: Vec<String> = participants
             .iter()
             .filter_map(|p| sanitize_number(p))
-            .filter(|p| p != my_digits)
+            .filter(|p| !owners.contains(p))
             .collect();
         set.sort();
         set.dedup();
@@ -397,15 +397,15 @@ fn parse_mms(
 }
 
 /// Stream-parse one XML file into messages.
-pub fn parse_xml_file(path: &Path, my_digits: &str) -> Result<(Vec<ParsedMessage>, XmlParseStats)> {
+pub fn parse_xml_file(path: &Path, owners: &HashSet<String>) -> Result<(Vec<ParsedMessage>, XmlParseStats)> {
     let file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
     let reader = std::io::BufReader::new(file);
-    parse_xml_reader(reader, my_digits)
+    parse_xml_reader(reader, owners)
 }
 
 pub fn parse_xml_reader<R: BufRead>(
     reader: R,
-    my_digits: &str,
+    owners: &HashSet<String>,
 ) -> Result<(Vec<ParsedMessage>, XmlParseStats)> {
     let mut xml = Reader::from_reader(reader);
     xml.config_mut().trim_text(true);
@@ -448,7 +448,7 @@ pub fn parse_xml_reader<R: BufRead>(
                 match tag.as_str() {
                     "sms" => {
                         let attrs = attr_map(&e);
-                        if let Some(msg) = parse_sms(&attrs, my_digits, &mut stats) {
+                        if let Some(msg) = parse_sms(&attrs, owners, &mut stats) {
                             messages.push(msg);
                         }
                     }
@@ -460,7 +460,7 @@ pub fn parse_xml_reader<R: BufRead>(
                     }
                     "mms" => {
                         let attrs = attr_map(&e);
-                        if let Some(msg) = parse_mms(&attrs, &[], &[], my_digits, &mut stats) {
+                        if let Some(msg) = parse_mms(&attrs, &[], &[], owners, &mut stats) {
                             messages.push(msg);
                         }
                     }
@@ -471,7 +471,7 @@ pub fn parse_xml_reader<R: BufRead>(
                 let tag = String::from_utf8_lossy(e.name().as_ref()).to_ascii_lowercase();
                 match tag.as_str() {
                     "sms" => {
-                        if let Some(msg) = parse_sms(&sms_attrs, my_digits, &mut stats) {
+                        if let Some(msg) = parse_sms(&sms_attrs, owners, &mut stats) {
                             messages.push(msg);
                         }
                     }
@@ -483,7 +483,7 @@ pub fn parse_xml_reader<R: BufRead>(
                     }
                     "mms" => {
                         if let Some(msg) =
-                            parse_mms(&mms_attrs, &parts, &addrs, my_digits, &mut stats)
+                            parse_mms(&mms_attrs, &parts, &addrs, owners, &mut stats)
                         {
                             messages.push(msg);
                         }
@@ -507,6 +507,12 @@ pub fn parse_xml_reader<R: BufRead>(
 mod tests {
     use super::*;
 
+    fn test_owners() -> HashSet<String> {
+        let mut owners = HashSet::new();
+        owners.insert("5555550100".into());
+        owners
+    }
+
     #[test]
     fn parses_sms_sent_received() {
         let xml = br#"<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -514,7 +520,7 @@ mod tests {
   <sms protocol="0" address="+15555550101" date="1400773261000" type="1" body="hello &amp; hi" contact_name="Sam" />
   <sms protocol="0" address="+15555550101" date="1400773321000" type="2" body="hey" contact_name="Sam" />
 </smses>"#;
-        let (msgs, stats) = parse_xml_reader(xml.as_slice(), "5555550100").unwrap();
+        let (msgs, stats) = parse_xml_reader(xml.as_slice(), &test_owners()).unwrap();
         assert_eq!(stats.sms_count, 2);
         assert_eq!(msgs.len(), 2);
         assert!(!msgs[0].is_from_me);
@@ -531,7 +537,7 @@ mod tests {
   <sms address="+15555550101" date="1400773261000" type="3" body="draft" />
   <sms address="+15555550101" date="1400773261000" type="1" body="ok" />
 </smses>"#;
-        let (msgs, stats) = parse_xml_reader(xml.as_slice(), "5555550100").unwrap();
+        let (msgs, stats) = parse_xml_reader(xml.as_slice(), &test_owners()).unwrap();
         assert_eq!(stats.sms_count, 3);
         assert_eq!(stats.skipped_invalid_date, 1);
         assert_eq!(stats.skipped_unknown_type, 1);
@@ -556,7 +562,7 @@ mod tests {
     </addrs>
   </mms>
 </smses>"#;
-        let (msgs, stats) = parse_xml_reader(xml.as_slice(), "5555550100").unwrap();
+        let (msgs, stats) = parse_xml_reader(xml.as_slice(), &test_owners()).unwrap();
         assert_eq!(stats.mms_count, 1);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].conversation_type, ConvType::Group);
@@ -585,7 +591,7 @@ mod tests {
     </addrs>
   </mms>
 </smses>"#;
-        let (msgs, _) = parse_xml_reader(xml.as_slice(), "5555550100").unwrap();
+        let (msgs, _) = parse_xml_reader(xml.as_slice(), &test_owners()).unwrap();
         assert_eq!(msgs.len(), 1);
         assert!(msgs[0].is_from_me);
         assert_eq!(msgs[0].conversation_type, ConvType::Individual);

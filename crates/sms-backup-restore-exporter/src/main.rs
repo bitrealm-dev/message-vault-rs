@@ -23,7 +23,7 @@ struct Cli {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let report = convert_export(&cli.input, &cli.output, &cli.owner_phone)?;
+    let report = convert_export(&cli.input, &cli.output, &[cli.owner_phone])?;
 
     println!("Wrote {}", cli.output.display());
     println!("  conversations:     {}", report.conversations);

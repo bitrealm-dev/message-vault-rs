@@ -336,13 +336,16 @@ pub(crate) fn report_progress(verbose: bool, label: &str, processed: u64, total:
 pub fn convert_export<P: AsRef<Path>>(
     inputs: &[P],
     output_dir: &Path,
-    owner_phone: &str,
+    owner_phones: &[String],
     owner_emails: &[String],
     contacts_path: Option<&Path>,
     name_mapping_path: Option<&Path>,
     verbose: bool,
 ) -> Result<ExportReport> {
-    let owner = owner_digits(owner_phone);
+    if owner_phones.is_empty() {
+        bail!("owner.phones must not be empty");
+    }
+    let owner = owner_digits(&owner_phones[0]);
     let owner_e164 = to_e164(&owner);
     let (contacts, _) = ContactsBook::load_optional(contacts_path)?;
     let (name_mapping, _) = NameMapping::load_optional(name_mapping_path)?;

@@ -954,7 +954,7 @@ mod tests {
         fs::write(&snippet, "/* test */").unwrap();
         let owner = OwnerConfig {
             display_name: "Matt Beisser".into(),
-            phone_e164: "+19412660605".into(),
+            phones: vec!["+19412660605".into()],
             emails: vec![],
         };
         let mut assets = HashMap::new();

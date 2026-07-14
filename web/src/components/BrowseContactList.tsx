@@ -17,6 +17,7 @@ export function BrowseContactList({
   onQueryChange,
   onToggleSelectAll,
   onNewContact,
+  vaultReadOnly = false,
   sort,
   sortOrder,
   onSortChange,
@@ -36,6 +37,7 @@ export function BrowseContactList({
   onQueryChange: (q: string) => void;
   onToggleSelectAll: () => void;
   onNewContact: () => void;
+  vaultReadOnly?: boolean;
   sort: SortMode;
   sortOrder: SortOrder;
   onSortChange: (next: { sort: SortMode; order: SortOrder }) => void;
@@ -65,16 +67,18 @@ export function BrowseContactList({
           </span>
         </label>
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
-          <IconHoverTarget label="New contact" placement="bottom">
-            <button
-              type="button"
-              aria-label="New contact"
-              onClick={onNewContact}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
-            >
-              <NewContactIcon className="size-5" />
-            </button>
-          </IconHoverTarget>
+          {!vaultReadOnly && (
+            <IconHoverTarget label="New contact" placement="bottom">
+              <button
+                type="button"
+                aria-label="New contact"
+                onClick={onNewContact}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+              >
+                <NewContactIcon className="size-5" />
+              </button>
+            </IconHoverTarget>
+          )}
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
           <ListHistoryMenu />
         </div>
@@ -231,9 +235,9 @@ function NewContactIcon({ className }: { className?: string }) {
       strokeLinejoin="round"
       aria-hidden
     >
-      <circle cx="8.5" cy="7.5" r="3" />
-      <path d="M2.5 19c.55-2.85 2.6-4.5 6-4.5 1.2 0 2.25.2 3.15.55" />
-      <path d="M17.5 10.5v9M13 15h9" strokeWidth="2.25" />
+      <circle cx="7.25" cy="8" r="3" />
+      <path d="M2.25 19.25c.65-3 2.85-4.75 5-4.75s4.35 1.75 5 4.75" />
+      <path d="M19 9v6M16 12h6" strokeWidth="2" />
     </svg>
   );
 }

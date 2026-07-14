@@ -2,6 +2,8 @@
 //! Heuristics ported from message-vault `gosms/pdu.py`.
 
 use crate::emoji::decode_gosms_emojis;
+use std::collections::HashSet;
+
 use crate::phone::sanitize_number;
 use anyhow::{Context, Result};
 use regex::bytes::Regex as BytesRegex;
@@ -225,7 +227,14 @@ fn unique_participants(parts: &[String]) -> Vec<String> {
     unique
 }
 
-fn plmn_address_roles(data: &[u8], my_digits: &str) -> (Option<String>, bool, bool) {
+fn is_owner_digit(digits: &str, owners: &HashSet<String>) -> bool {
+    owners.contains(&sanitize_number(digits))
+}
+
+fn plmn_address_roles(
+    data: &[u8],
+    owners: &HashSet<String>,
+) -> (Option<String>, bool, bool) {
     let re = PLMN_RE.get_or_init(|| BytesRegex::new(r"\+(\d{10,15})/TYPE=PLMN").expect("plmn"));
     let mut from_digits = None;
     let mut my_is_from = false;
@@ -248,11 +257,11 @@ fn plmn_address_roles(data: &[u8], my_digits: &str) -> (Option<String>, bool, bo
 
         if is_real_from {
             from_digits = Some(normalized.clone());
-            if normalized == my_digits {
+            if is_owner_digit(&normalized, owners) {
                 my_is_from = true;
             }
         }
-        if is_to && normalized == my_digits {
+        if is_to && is_owner_digit(&normalized, owners) {
             my_is_to = true;
         }
     }
@@ -260,30 +269,35 @@ fn plmn_address_roles(data: &[u8], my_digits: &str) -> (Option<String>, bool, bo
     (from_digits, my_is_from, my_is_to)
 }
 
-fn infer_pdu_direction(data: &[u8], unique_parts: &[String], my_digits: &str) -> (bool, String) {
+fn infer_pdu_direction(
+    data: &[u8],
+    unique_parts: &[String],
+    owners: &HashSet<String>,
+    primary_digits: &str,
+) -> (bool, String) {
     if unique_parts.is_empty() {
         return (false, "Unknown".to_string());
     }
 
     if unique_parts.len() >= 3 {
-        let (from_digits, my_is_from, my_is_to) = plmn_address_roles(data, my_digits);
+        let (from_digits, my_is_from, my_is_to) = plmn_address_roles(data, owners);
         if my_is_from {
-            return (true, my_digits.to_string());
+            return (true, primary_digits.to_string());
         }
         if let Some(from) = from_digits {
-            if from != my_digits {
+            if !is_owner_digit(&from, owners) {
                 return (false, from);
             }
         }
         if my_is_to {
-            return (true, my_digits.to_string());
+            return (true, primary_digits.to_string());
         }
         let sender = unique_parts[0].clone();
-        return (sender == my_digits, sender);
+        return (is_owner_digit(&sender, owners), sender);
     }
 
     let first = unique_parts[0].clone();
-    if unique_parts.len() == 2 && unique_parts[1] == my_digits {
+    if unique_parts.len() == 2 && is_owner_digit(&unique_parts[1], owners) {
         let re = PLMN_RE.get_or_init(|| BytesRegex::new(r"\+(\d{10,15})/TYPE=PLMN").expect("plmn"));
         if let Some(m) = re.find(data) {
             let before = &data[m.start().saturating_sub(6)..m.start()];
@@ -291,18 +305,18 @@ fn infer_pdu_direction(data: &[u8], unique_parts: &[String], my_digits: &str) ->
                 return (false, first);
             }
         }
-        return (true, my_digits.to_string());
+        return (true, primary_digits.to_string());
     }
 
-    if unique_parts.iter().any(|p| p == my_digits) {
-        return (true, my_digits.to_string());
+    if unique_parts.iter().any(|p| is_owner_digit(p, owners)) {
+        return (true, primary_digits.to_string());
     }
 
     (false, first)
 }
 
 /// Parse one PDU file. Returns `None` for unparseable / bad filenames.
-pub fn parse_pdu_file(path: &Path, my_number: &str) -> Result<Option<ParsedPdu>> {
+pub fn parse_pdu_file(path: &Path, owners: &HashSet<String>, primary_digits: &str) -> Result<Option<ParsedPdu>> {
     let data = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
     if data.len() < 10 {
         return Ok(None);
@@ -329,14 +343,14 @@ pub fn parse_pdu_file(path: &Path, my_number: &str) -> Result<Option<ParsedPdu>>
         });
     }
 
-    let my_digits = sanitize_number(my_number);
     let normalized_parts: Vec<String> = participants_raw
         .iter()
         .map(|p| sanitize_number(p))
         .collect();
     let unique_parts = unique_participants(&normalized_parts);
     let is_group = unique_parts.len() >= 3;
-    let (is_sent, sender_number) = infer_pdu_direction(&data, &unique_parts, &my_digits);
+    let (is_sent, sender_number) =
+        infer_pdu_direction(&data, &unique_parts, owners, primary_digits);
 
     Ok(Some(ParsedPdu {
         path: path.to_path_buf(),
@@ -361,15 +375,24 @@ mod tests {
             .join(name)
     }
 
+    fn test_owners() -> (HashSet<String>, String) {
+        let primary = "5555550100".to_string();
+        let mut owners = HashSet::new();
+        owners.insert(primary.clone());
+        (owners, primary)
+    }
+
     #[test]
     fn invalid_filename_returns_none() {
-        let r = parse_pdu_file(&fixture("bad_name.pdu"), "5555550100").unwrap();
+        let (owners, primary) = test_owners();
+        let r = parse_pdu_file(&fixture("bad_name.pdu"), &owners, &primary).unwrap();
         assert!(r.is_none());
     }
 
     #[test]
     fn received_one_to_one() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_recv.pdu"), "5555550100")
+        let (owners, primary) = test_owners();
+        let parsed = parse_pdu_file(&fixture("I_1609459200_recv.pdu"), &owners, &primary)
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.body, "Hello one to one");
@@ -385,7 +408,8 @@ mod tests {
 
     #[test]
     fn sent_one_to_one() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_sent.pdu"), "5555550100")
+        let (owners, primary) = test_owners();
+        let parsed = parse_pdu_file(&fixture("I_1609459200_sent.pdu"), &owners, &primary)
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.body, "Sent MMS");
@@ -396,7 +420,8 @@ mod tests {
 
     #[test]
     fn group_pdu() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_group.pdu"), "5555550100")
+        let (owners, primary) = test_owners();
+        let parsed = parse_pdu_file(&fixture("I_1609459200_group.pdu"), &owners, &primary)
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.body, "Group MMS body");
@@ -416,7 +441,8 @@ mod tests {
 
     #[test]
     fn jpeg_attachment() {
-        let parsed = parse_pdu_file(&fixture("I_1609459200_att.pdu"), "5555550100")
+        let (owners, primary) = test_owners();
+        let parsed = parse_pdu_file(&fixture("I_1609459200_att.pdu"), &owners, &primary)
             .unwrap()
             .expect("parsed");
         assert_eq!(parsed.attachments.len(), 1);

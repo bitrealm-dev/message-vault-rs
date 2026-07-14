@@ -316,7 +316,8 @@ fn main() -> Result<()> {
             println!("  mode:          {}", mode.as_str());
             println!(
                 "  owner:         {} ({})",
-                cfg.owner.display_name, cfg.owner.phone_e164
+                cfg.owner.display_name,
+                cfg.owner.phones.join(", ")
             );
             println!("  contacts csv:  {}", contacts_csv.display());
             println!("  exclude csv:   {}", exclude_csv.display());

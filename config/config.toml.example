@@ -4,6 +4,10 @@
 #   cp config/exclude.csv.example config/exclude.csv
 #
 # Real config/contacts/exclude files are gitignored.
+#
+# [owner] — message / vault owner: whose backups this vault contains.
+# [account] — web account: credentials for logging into the Message Vault site.
+#
 # contacts.csv: phone numbers only (semicolon-separated). Set exclude=true to hide from
 # Contacts/groups (All still lists them). iMessage emails attach in the UI into
 # contact_handles (DB only) — never written to this CSV.
@@ -12,8 +16,13 @@
 
 [owner]
 display_name = "Your Name"
-phone_e164 = "+15555550100"
-emails = ["you@example.com"]
+phones = ["+15555550100"]
+emails = ["you@backup.example.com"]
+
+[account]
+username = "yourname"
+login_email = "you@example.com"
+read_only = false
 
 [paths]
 db = "data/vault.db"

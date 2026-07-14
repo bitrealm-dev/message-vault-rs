@@ -106,7 +106,7 @@ function groupPeopleTitles(
   const db = getDb();
   const owner = loadOwner();
   const exclude = new Set(
-    [owner.phone_e164, ...excludePhones].filter(Boolean).map((p) => p.trim()),
+    [...owner.phones, ...excludePhones].filter(Boolean).map((p) => p.trim()),
   );
 
   const placeholders = conversationIds.map(() => "?").join(",");

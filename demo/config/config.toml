@@ -1,7 +1,12 @@
 [owner]
 display_name = "Demo User"
-phone_e164 = "+14155559000"
-emails = ["demo.user@example.com"]
+phones = ["+14155559000"]
+emails = ["demo.ingest@example.com"]
+
+[account]
+username = "demo"
+login_email = "demo@example.com"
+read_only = false
 
 [paths]
 db = "data/vault.db"

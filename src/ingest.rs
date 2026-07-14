@@ -139,7 +139,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
         ExportBackend::GoSmsPro => {
             let from = require_single_input(source_id, from)?;
             let report =
-                go_sms_pro_exporter::convert_export(from, staging, &cfg.owner.phone_e164)?;
+                go_sms_pro_exporter::convert_export(from, staging, &cfg.owner.phones)?;
             println!(
                 "  export:   conversations={} xml={} pdu={} attachments={}",
                 report.conversations,
@@ -153,7 +153,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
             let report = sms_backup_restore_exporter::convert_export(
                 from,
                 staging,
-                &cfg.owner.phone_e164,
+                &cfg.owner.phones,
             )?;
             println!(
                 "  export:   conversations={} sms={} mms={} attachments={}",
@@ -175,7 +175,7 @@ fn export_source(cfg: &Config, source_id: &str, from: &[PathBuf], staging: &Path
             let report = sms_backup_plus_exporter::convert_export(
                 from,
                 staging,
-                &cfg.owner.phone_e164,
+                &cfg.owner.phones,
                 &emails,
                 contacts.as_deref(),
                 name_mapping.as_deref(),

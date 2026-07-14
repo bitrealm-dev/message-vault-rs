@@ -3,6 +3,7 @@ import { dbPath } from "./paths";
 import { getContact, resetDb } from "./db";
 import { deleteContacts } from "./contactsWrite";
 import { trashHandlesInDb } from "./handlesWrite";
+import { assertVaultWritable } from "./owner";
 
 function ensureTrashedContactsTable(db: Database.Database): void {
   db.exec(
@@ -63,6 +64,7 @@ function assertContactsExist(ids: number[]): void {
 
 /** Soft-trash contacts and all of their 1:1 handles. */
 export function trashContactWithMessages(ids: number[]): number {
+  assertVaultWritable();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
   assertContactsExist(unique);
@@ -95,6 +97,7 @@ export function trashContactMessagesOnly(ids: number[]): {
   count: number;
   handles: string[];
 } {
+  assertVaultWritable();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return { count: 0, handles: [] };
   assertContactsExist(unique);
@@ -120,6 +123,7 @@ export function trashContactMessagesOnly(ids: number[]): {
 
 /** Restore soft-trashed contacts and their handles. */
 export function restoreTrashedContacts(ids: number[]): number {
+  assertVaultWritable();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
 
@@ -161,6 +165,7 @@ export function restoreTrashedContacts(ids: number[]): number {
  * handles, then hard-delete the contact rows (+ CSV).
  */
 export function permanentlyDeleteTrashedContacts(ids: number[]): number {
+  assertVaultWritable();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
 

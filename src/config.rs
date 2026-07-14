@@ -7,18 +7,28 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub owner: OwnerConfig,
+    pub account: AccountConfig,
     pub paths: PathsConfig,
     /// Named import sources. If empty, a single legacy `paths.export_dir` becomes source `default`.
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
 }
 
+/// Message / vault owner — whose backups this vault holds.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OwnerConfig {
     pub display_name: String,
-    pub phone_e164: String,
+    pub phones: Vec<String>,
     #[serde(default)]
     pub emails: Vec<String>,
+}
+
+/// Web account — credentials for logging into the Message Vault site.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountConfig {
+    pub username: String,
+    pub login_email: String,
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -195,6 +205,10 @@ impl Config {
             if !seen.insert(source.id.as_str()) {
                 bail!("duplicate source id '{}'", source.id);
             }
+        }
+
+        if config.owner.phones.is_empty() {
+            bail!("owner.phones must contain at least one phone number");
         }
 
         Ok(config)

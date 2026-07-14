@@ -195,7 +195,7 @@ fn main() -> Result<()> {
             let report = convert_export(
                 &input,
                 &output,
-                &owner_phone,
+                &[owner_phone],
                 &emails,
                 contacts.as_deref(),
                 name_mapping.as_deref(),
@@ -253,7 +253,7 @@ fn main() -> Result<()> {
             let report = dedupe_eml(
                 &input,
                 &output,
-                &owner_phone,
+                &[owner_phone],
                 &emails,
                 contacts.as_deref(),
                 name_mapping.as_deref(),

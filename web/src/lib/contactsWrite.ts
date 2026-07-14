@@ -19,6 +19,7 @@ import {
   RESERVED_GROUP_NAMES,
   reservedGroupError,
 } from "./reservedGroups";
+import { assertNotOwnerHandle, assertVaultWritable } from "./owner";
 
 export type ContactPatch = {
   exclude?: boolean;
@@ -44,6 +45,7 @@ export type ContactCreate = {
 
 /** Insert a new contact in SQLite and append contacts.csv; returns the contact. */
 export function createContact(input: ContactCreate): ContactDetail {
+  assertVaultWritable();
   const firstName = input.firstName?.trim() || null;
   const lastName = input.lastName?.trim() || null;
   if (!firstName && !lastName) {
@@ -62,6 +64,10 @@ export function createContact(input: ContactCreate): ContactDetail {
     .map((t) => t.trim())
     .filter(Boolean)
     .filter((t) => !RESERVED_GROUP_NAMES.has(t.toLowerCase()));
+
+  for (const phone of phones) {
+    assertNotOwnerHandle(phone);
+  }
 
   let newId = 0;
   const writeDb = new Database(dbPath());
@@ -140,6 +146,7 @@ function findGroupId(db: Database.Database, name: string): number | null {
 
 
 export function createGroup(name: string): string {
+  assertVaultWritable();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
   assertAllowedGroupName(trimmed);
@@ -162,6 +169,7 @@ export function createGroup(name: string): string {
 }
 
 export function renameGroup(from: string, to: string): string {
+  assertVaultWritable();
   const oldName = from.trim();
   const newName = to.trim();
   if (!oldName || !newName) throw new Error("name required");
@@ -198,6 +206,7 @@ export function renameGroup(from: string, to: string): string {
 }
 
 export function deleteGroup(name: string): void {
+  assertVaultWritable();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
 
@@ -305,6 +314,7 @@ export function patchContact(
   id: number,
   patch: ContactPatch,
 ): ContactDetail {
+  assertVaultWritable();
   const existing = getContact(id);
   if (!existing) {
     throw new Error("contact not found");
@@ -336,6 +346,11 @@ export function patchContact(
     throw new Error(
       "at least one phone number required (emails alone cannot be a contact)",
     );
+  }
+  if (patch.phones !== undefined) {
+    for (const phone of phones) {
+      assertNotOwnerHandle(phone);
+    }
   }
 
   const writeDb = new Database(dbPath());
@@ -394,10 +409,12 @@ export function patchContact(
 
 /** Append a phone/email handle to an existing contact (for Unassigned assign). */
 export function addPhoneToContact(id: number, phone: string): ContactDetail {
+  assertVaultWritable();
   const existing = getContact(id);
   if (!existing) throw new Error("contact not found");
   const trimmed = phone.trim();
   if (!trimmed) throw new Error("phone required");
+  assertNotOwnerHandle(trimmed);
   if (existing.phones.includes(trimmed)) return existing;
 
   // Emails live in SQLite only — never rewrite contacts.csv phones.
@@ -436,6 +453,7 @@ export function removePhoneFromContact(
   id: number,
   phone: string,
 ): ContactDetail {
+  assertVaultWritable();
   const existing = getContact(id);
   if (!existing) throw new Error("contact not found");
   const trimmed = phone.trim();
@@ -484,6 +502,7 @@ export function restoreGroup(
   name: string,
   memberContactIds: number[],
 ): string {
+  assertVaultWritable();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
   assertAllowedGroupName(trimmed);
@@ -506,6 +525,7 @@ export function restoreGroup(
 
 /** Delete contacts from SQLite and contacts.csv. */
 export function deleteContacts(ids: number[]): number {
+  assertVaultWritable();
   const unique = [...new Set(ids.filter((id) => Number.isFinite(id)))];
   if (unique.length === 0) return 0;
 

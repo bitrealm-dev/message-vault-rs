@@ -1,5 +1,6 @@
 //! Convert SMS Backup & Restore XML → message-json SMS schema NDJSON.
 
+use crate::owner_set::OwnerPhoneSet;
 use crate::phone::{sanitize_number, to_e164};
 use crate::xml::{parse_xml_file, AttachmentBlob, ConvType, ParsedMessage};
 use anyhow::{bail, Context, Result};
@@ -184,7 +185,7 @@ fn write_conversation(
     chat_id: &str,
     convo: &mut PendingConversation,
     exported_at: &str,
-    owner_e164: &str,
+    owners: &OwnerPhoneSet,
     report: &mut ExportReport,
 ) -> Result<()> {
     dedupe_messages(&mut convo.messages);
@@ -209,11 +210,12 @@ fn write_conversation(
         })
         .collect();
     if convo.conversation_type == ConvType::Group {
-        let owner_digits = sanitize_number(owner_e164);
-        let has_owner = participants.iter().any(|p| sanitize_number(&p.handle) == owner_digits);
+        let has_owner = participants
+            .iter()
+            .any(|p| owners.is_owner(&p.handle));
         if !has_owner {
             participants.push(ParticipantRecord {
-                handle: owner_e164.to_string(),
+                handle: owners.primary_e164.clone(),
                 name_hint: None,
             });
         }
@@ -300,10 +302,9 @@ fn collect_xml_paths(input: &Path) -> Result<Vec<PathBuf>> {
 pub fn convert_export(
     input: &Path,
     output_dir: &Path,
-    owner_phone: &str,
+    owner_phones: &[String],
 ) -> Result<ExportReport> {
-    let owner = sanitize_number(owner_phone).context("owner phone has no usable digits")?;
-    let owner_e164 = to_e164(&owner);
+    let owners = OwnerPhoneSet::new(owner_phones)?;
     let mut report = ExportReport::default();
     let mut conversations: BTreeMap<String, PendingConversation> = BTreeMap::new();
 
@@ -318,7 +319,7 @@ pub fn convert_export(
     fs::create_dir_all(&attachments_dir)?;
 
     for xml_path in collect_xml_paths(input)? {
-        match parse_xml_file(&xml_path, &owner) {
+        match parse_xml_file(&xml_path, &owners.all_digits) {
             Ok((msgs, stats)) => {
                 report.sms_count += stats.sms_count;
                 report.mms_count += stats.mms_count;
@@ -347,7 +348,7 @@ pub fn convert_export(
             &chat_id,
             &mut convo,
             &exported_at,
-            &owner_e164,
+            &owners,
             &mut report,
         )?;
         if !convo.messages.is_empty() {

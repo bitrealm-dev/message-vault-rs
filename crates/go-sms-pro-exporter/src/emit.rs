@@ -1,6 +1,7 @@
 //! Convert GO SMS Pro export → SMS NDJSON (`message_json::sms`).
 
 use crate::phone::{owner_digits, sanitize_number, to_e164};
+use crate::owner_set::OwnerPhoneSet;
 use crate::pdu::{parse_pdu_file, ParsedPdu};
 use crate::xml::{parse_xml_file, XmlMessage};
 use anyhow::{bail, Context, Result};
@@ -89,10 +90,10 @@ fn chat_id_individual(digits: &str) -> String {
     to_e164(digits)
 }
 
-fn chat_id_group(participant_digits: &[String], owner: &str) -> (String, String) {
+fn chat_id_group(participant_digits: &[String], owners: &OwnerPhoneSet) -> (String, String) {
     let mut others: Vec<String> = participant_digits
         .iter()
-        .filter(|d| *d != owner && *d != "Unknown")
+        .filter(|d| !owners.is_owner(d) && *d != "Unknown")
         .cloned()
         .collect();
     others.sort();
@@ -238,7 +239,7 @@ fn add_pdu_message(
     conversations: &mut BTreeMap<String, PendingConversation>,
     parsed: ParsedPdu,
     attachments: Vec<PendingAttachment>,
-    owner: &str,
+    owners: &OwnerPhoneSet,
     report: &mut ExportReport,
 ) {
     report.pdu_messages += 1;
@@ -250,13 +251,13 @@ fn add_pdu_message(
 
     let targets: Vec<(String, String, Option<String>)> = if parsed.is_group {
         report.pdu_group_messages += 1;
-        let (id, title) = chat_id_group(&parsed.participants, owner);
+        let (id, title) = chat_id_group(&parsed.participants, owners);
         vec![(id, "group".to_string(), Some(title))]
     } else {
         let others: Vec<_> = parsed
             .participants
             .iter()
-            .filter(|p| *p != owner)
+            .filter(|p| !owners.is_owner(p))
             .cloned()
             .collect();
         if others.is_empty() {
@@ -296,11 +297,11 @@ fn add_pdu_message(
         let convo = ensure_convo(conversations, &chat_id, &conversation_type, group_title);
         if conversation_type == "group" {
             for p in &parsed.participants {
-                if p != owner {
+                if !owners.is_owner(p) {
                     convo.participants.entry(p.clone()).or_insert(None);
                 }
             }
-        } else if let Some(other) = parsed.participants.iter().find(|p| *p != owner) {
+        } else if let Some(other) = parsed.participants.iter().find(|p| !owners.is_owner(p)) {
             convo.participants.entry(other.clone()).or_insert(None);
         }
         convo.messages.push(pending.clone());
@@ -408,14 +409,15 @@ fn write_conversation(
 pub fn convert_export(
     input_dir: &Path,
     output_dir: &Path,
-    owner_phone: &str,
+    owner_phones: &[String],
 ) -> Result<ExportReport> {
     if !input_dir.is_dir() {
         bail!("input is not a directory: {}", input_dir.display());
     }
 
-    let owner = owner_digits(owner_phone);
-    let owner_e164 = to_e164(&owner);
+    let owners = OwnerPhoneSet::new(owner_phones)?;
+    let owner = owners.primary_digits.clone();
+    let owner_e164 = owners.primary_e164.clone();
     let mut report = ExportReport::default();
     let mut conversations: BTreeMap<String, PendingConversation> = BTreeMap::new();
 
@@ -469,7 +471,7 @@ pub fn convert_export(
     pdu_paths.sort();
 
     for pdu_path in pdu_paths {
-        match parse_pdu_file(&pdu_path, &owner) {
+        match parse_pdu_file(&pdu_path, &owners.all_digits, &owners.primary_digits) {
             Ok(None) => {
                 report.skipped_unparseable_pdu += 1;
                 if report.errors.len() < 20 {
@@ -484,7 +486,7 @@ pub fn convert_export(
                     &mut conversations,
                     parsed,
                     atts,
-                    &owner,
+                    &owners,
                     &mut report,
                 ),
                 Err(err) => report

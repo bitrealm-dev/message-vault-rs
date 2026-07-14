@@ -16,6 +16,7 @@ import {
   yearThreadKey,
 } from "@/lib/threadKeys";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVaultReadOnly } from "./useVaultReadOnly";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   draftHasName,
@@ -66,6 +67,7 @@ export function BrowseShell({
   allGroups?: string[];
   initialContactId: number | null;
 }) {
+  const vaultReadOnly = useVaultReadOnly() === true;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -574,6 +576,7 @@ export function BrowseShell({
   }, [contactSection]);
 
   const beginCreateContact = useCallback(() => {
+    if (vaultReadOnly) return;
     setSelectedIds(new Set());
     setContactId(null);
     setDetail(null);
@@ -593,7 +596,7 @@ export function BrowseShell({
     params.delete("conv");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams, createDefaults]);
+  }, [pathname, router, searchParams, createDefaults, vaultReadOnly]);
 
   const cancelContactEdit = useCallback(() => {
     setContactEditing(false);
@@ -1368,6 +1371,7 @@ export function BrowseShell({
           onQueryChange={setQuery}
           onToggleSelectAll={toggleSelectAllInGroup}
           onNewContact={beginCreateContact}
+          vaultReadOnly={vaultReadOnly}
           sort={sort}
           sortOrder={sortOrder}
           onSortChange={setSort}

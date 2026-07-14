@@ -91,7 +91,15 @@ except ImportError:
         sys.exit(0)
 data = tomllib.loads(text)
 owner = data.get("owner") or {}
-phone = (owner.get("phone_e164") or "").strip()
+phones = owner.get("phones") or []
+if not phones and owner.get("phone_e164"):
+    phones = [owner.get("phone_e164")]
+phone = ""
+for p in phones:
+    p = str(p).strip()
+    if p:
+        phone = p
+        break
 emails = owner.get("emails") or []
 if phone:
     print("PHONE=" + phone)

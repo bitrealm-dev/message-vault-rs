@@ -106,7 +106,7 @@ export function BrowseDetailPane({
                     : null
                 }
                 onSelect={onLoadYear}
-                emptyLabel="No individual messages"
+                emptyLabel="None"
               />
 
               <div className="mt-5">
@@ -114,7 +114,7 @@ export function BrowseDetailPane({
                   Group chats
                 </h3>
                 {groupChatsByYear.length === 0 ? (
-                  <p className="mt-2 text-[12px] text-muted">No group chats</p>
+                  <p className="mt-2 text-[12px] text-muted">None</p>
                 ) : (
                   <div className="mt-3 space-y-12">
                     {groupChatsByYear.map(([year, items], yearIdx) => (

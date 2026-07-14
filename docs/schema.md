@@ -105,6 +105,19 @@ One row = one reaction on a message (heart, thumbs up, and so on).
 
 ## People and groups
 
+### `accounts`
+
+One row = one web login account for the Message Vault site.
+
+| Column | Plain meaning |
+|--------|----------------|
+| `id` | Stable account identifier (UUID). Does not change when username or email is updated. |
+| `username` | Login username (unique, mutable) |
+| `email` | User email for signing in (unique, mutable) |
+| `read_only` | When set, blocks edits to contacts, groups, and messages |
+
+On first access, the row is seeded from `config.toml` `[account]` if the table is empty. Username and email updates are applied by `id`, not by the previous username or email.
+
 ### `contacts`
 
 One row = one person in the vault address book.
@@ -224,6 +237,7 @@ These tables do not store the chat or contact themselves. They mark an id or han
 | Photos and files | `attachments` |
 | Reactions | `tapbacks` |
 | A person you named | `contacts` |
+| Web login account | `accounts` |
 | Their phone numbers / emails | `contact_handles` |
 | Group labels | `contact_groups` + `contact_group_members` |
 | Soft-deleted items | `trashed_*` |
