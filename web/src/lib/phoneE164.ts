@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from "react";
+
 /** Strip non-digits; drop leading US country code 1 when 11 digits. */
 export function sanitizePhoneDigits(input: string): string {
   let digits = input.replace(/\D/g, "");
@@ -7,22 +9,134 @@ export function sanitizePhoneDigits(input: string): string {
   return digits;
 }
 
+export const E164_MAX_DIGITS = 15;
+export const US_NATIONAL_DIGITS = 10;
+const COUNTRY_CODE_MAX_DIGITS = 3;
+
+/** Characters commonly used when typing phone numbers — auto-removed on input. */
+const PHONE_FORMATTING_RE = /[\s().\-./]/g;
+
+/** Remove common phone formatting only; leave other invalid characters for the user to fix. */
+export function stripPhoneFormatting(input: string): string {
+  return input.replace(PHONE_FORMATTING_RE, "");
+}
+
+export function trimPhoneWhitespace(input: string): string {
+  return input.trim();
+}
+
+export function hasInvalidPhoneCharacters(input: string): boolean {
+  const stripped = stripPhoneFormatting(trimPhoneWhitespace(input));
+  if (!stripped) return false;
+  const digitsOnly = stripped.startsWith("+") ? stripped.slice(1) : stripped;
+  return /[^\d]/.test(digitsOnly);
+}
+
+export function applyCountryCodeDigitsInput(value: string): string {
+  const stripped = stripPhoneFormatting(trimPhoneWhitespace(value));
+  return stripped.replace(/\D/g, "").slice(0, COUNTRY_CODE_MAX_DIGITS);
+}
+
+/** Restore default US code when the field is left empty. */
+export function normalizeCountryCodeDigitsOnBlur(value: string): string {
+  const next = applyCountryCodeDigitsInput(value);
+  return next === "" ? "1" : next;
+}
+
+/** Country code digits (no + prefix). */
+export function digitsFromCountryCode(countryCode: string): string {
+  return applyCountryCodeDigitsInput(countryCode);
+}
+
+/** National number digits, or null when invalid characters remain. */
+export function digitsFromNational(nationalNumber: string): string | null {
+  const stripped = stripPhoneFormatting(trimPhoneWhitespace(nationalNumber));
+  if (!stripped) return "";
+  if (/[^\d]/.test(stripped)) return null;
+  return stripped;
+}
+
+const NAVIGATION_KEYS = new Set([
+  "Backspace",
+  "Delete",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Tab",
+  "Home",
+  "End",
+]);
+
+function isNavigationKey(key: string): boolean {
+  return NAVIGATION_KEYS.has(key);
+}
+
+export function handleCountryCodeKeyDown(
+  e: KeyboardEvent<HTMLInputElement>,
+): void {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (isNavigationKey(e.key)) return;
+  if (e.key.length !== 1) return;
+
+  if (!/\d/.test(e.key)) {
+    e.preventDefault();
+    return;
+  }
+
+  const digitCount = digitsFromCountryCode(e.currentTarget.value).length;
+  if (digitCount >= COUNTRY_CODE_MAX_DIGITS) {
+    e.preventDefault();
+  }
+}
+
 const E164_RE = /^\+[1-9]\d{1,14}$/;
+
+/** Build E.164 from separate country code and national number fields. */
+export function toPhoneE164FromParts(
+  countryCode: string,
+  nationalNumber: string,
+): string | null {
+  const codeDigits = digitsFromCountryCode(countryCode);
+  if (!codeDigits || !/^[1-9]\d*$/.test(codeDigits)) {
+    return null;
+  }
+
+  const national = digitsFromNational(nationalNumber);
+  if (national === null || !national) return null;
+
+  if (codeDigits === "1") {
+    if (national.length !== US_NATIONAL_DIGITS) return null;
+    const full = `+1${national}`;
+    return E164_RE.test(full) ? full : null;
+  }
+
+  const total = codeDigits.length + national.length;
+  if (total > E164_MAX_DIGITS || total < 2) return null;
+
+  const full = `+${codeDigits}${national}`;
+  return E164_RE.test(full) ? full : null;
+}
 
 /** Format user input as E.164 when possible; returns null if invalid. */
 export function toPhoneE164(input: string): string | null {
-  const trimmed = input.trim();
+  const trimmed = trimPhoneWhitespace(input);
   if (!trimmed) return null;
 
+  if (hasInvalidPhoneCharacters(trimmed)) return null;
+
   if (E164_RE.test(trimmed)) {
+    const digits = trimmed.slice(1).replace(/\D/g, "");
+    if (digits.length > E164_MAX_DIGITS) return null;
     return trimmed;
   }
 
-  const digits = sanitizePhoneDigits(trimmed);
+  const digits = sanitizePhoneDigits(stripPhoneFormatting(trimmed));
   if (digits.length === 10) {
     return `+1${digits}`;
   }
   if (digits.length >= 11) {
+    if (digits.length > E164_MAX_DIGITS) return null;
     return `+${digits}`;
   }
   return null;
@@ -37,6 +151,6 @@ export function parsePhoneE164(input: string): string {
   if (e164) return e164;
 
   throw new Error(
-    "Enter a valid phone in E.164 format. US example: +14075551234 (country code +1, then 10 digits). You can paste (407) 555-1234 and we will normalize it.",
+    "Enter a valid phone in E.164 format. US example: +15557891234 (country code +1, then 10 digits). You can paste (555) 789-1234 and we will normalize it.",
   );
 }

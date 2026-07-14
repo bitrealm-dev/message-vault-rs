@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EllipsisIcon } from "./icons";
-import { useConfirmDialog } from "./useConfirmDialog";
+import { DeleteAccountDialog } from "./DeleteAccountDialog";
+import { ChevronRightIcon, EllipsisIcon } from "./icons";
 import { useDismissible } from "./useDismissible";
 
 type AccountEmail = {
@@ -31,7 +31,6 @@ function normalizeEmail(email: string): string {
 
 export function SettingsAccountForm() {
   const router = useRouter();
-  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [data, setData] = useState<AccountData | null>(null);
   const [username, setUsername] = useState("");
   const [primaryEmail, setPrimaryEmail] = useState("");
@@ -41,6 +40,8 @@ export function SettingsAccountForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -129,14 +130,7 @@ export function SettingsAccountForm() {
     }
   };
 
-  const deleteAccount = async () => {
-    const label = username.trim() || "this account";
-    const ok = await confirm(
-      `Delete ${label} and all associated data — messages, contacts, groups, vault owner profile, and uploaded assets. This cannot be undone.`,
-      "Delete account",
-    );
-    if (!ok) return;
-
+  const performDelete = async () => {
     setDeleting(true);
     setError(null);
     try {
@@ -145,6 +139,7 @@ export function SettingsAccountForm() {
       if (!res.ok || !json.ok) {
         throw new Error(json.error ?? "Delete failed");
       }
+      setDeleteDialogOpen(false);
       router.replace("/login");
       router.refresh();
     } catch (err) {
@@ -299,24 +294,49 @@ export function SettingsAccountForm() {
 
       {!data?.isDemo && (
         <section className="border-t border-border pt-8">
-          <h2 className="text-[12px] font-semibold tracking-wider text-muted uppercase">
-            Danger zone
-          </h2>
-          <p className="mt-2 text-[13px] text-muted">
-            Permanently delete this account and all vault data tied to it.
-          </p>
           <button
             type="button"
-            disabled={saving || deleting}
-            onClick={() => void deleteAccount()}
-            className="mt-4 rounded-md border border-red-500/40 bg-red-500/15 px-4 py-2 text-[13px] text-red-100 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+            aria-expanded={dangerZoneOpen}
+            onClick={() => setDangerZoneOpen((open) => !open)}
+            className="flex w-full items-center gap-2 text-left"
           >
-            {deleting ? "Deleting…" : "Delete account"}
+            <ChevronRightIcon
+              className={`size-4 shrink-0 text-red-400/80 transition-transform ${
+                dangerZoneOpen ? "rotate-90" : ""
+              }`}
+            />
+            <span className="text-[12px] font-semibold tracking-wider text-red-400 uppercase">
+              Danger zone
+            </span>
           </button>
+
+          {dangerZoneOpen && (
+            <div className="mt-4 flex items-center justify-between gap-4 pl-6">
+              <p className="min-w-0 flex-1 text-[13px] text-muted">
+                Permanently delete this account and all vault data tied to it.
+              </p>
+              <button
+                type="button"
+                disabled={saving || deleting}
+                onClick={() => setDeleteDialogOpen(true)}
+                className="shrink-0 rounded-md border border-red-500/40 bg-red-500/15 px-4 py-2 text-[13px] text-red-100 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+              >
+                Delete account
+              </button>
+            </div>
+          )}
         </section>
       )}
 
-      {confirmDialog}
+      <DeleteAccountDialog
+        open={deleteDialogOpen}
+        username={data?.username ?? username}
+        deleting={deleting}
+        onClose={() => {
+          if (!deleting) setDeleteDialogOpen(false);
+        }}
+        onConfirm={() => void performDelete()}
+      />
     </div>
   );
 }

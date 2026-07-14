@@ -1,6 +1,11 @@
 "use client";
 
-import { toPhoneE164 } from "@/lib/phoneE164";
+import {
+  applyCountryCodeDigitsInput,
+  handleCountryCodeKeyDown,
+  normalizeCountryCodeDigitsOnBlur,
+  toPhoneE164FromParts,
+} from "@/lib/phoneE164";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -18,12 +23,13 @@ export function LoginScreen() {
   const [primaryEmail, setPrimaryEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [countryCode, setCountryCode] = useState("1");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const normalizedPhone = toPhoneE164(phone);
+  const normalizedPhone = toPhoneE164FromParts(countryCode, phone);
 
   const loadAccounts = useCallback(async (): Promise<AccountOption[]> => {
     setLoading(true);
@@ -84,7 +90,7 @@ export function LoginScreen() {
           primaryEmail,
           firstName,
           lastName,
-          phone,
+          phone: normalizedPhone ?? phone,
         }),
       });
       const json = (await res.json()) as { error?: string };
@@ -122,10 +128,8 @@ export function LoginScreen() {
 
   return (
     <div className="flex min-h-full items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-xl border border-border bg-elevated p-8 shadow-xl">
-        <h1 className="text-2xl font-semibold tracking-tight text-text">
-          Message Vault
-        </h1>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-elevated p-8 shadow-xl">
+        <h1 className="text-2xl font-bold tracking-tight text-text">Login</h1>
 
         {accounts.length > 0 && (
           <section className="mt-8">
@@ -154,11 +158,15 @@ export function LoginScreen() {
           </section>
         )}
 
-        <section className={accounts.length > 0 ? "mt-8 border-t border-border pt-8" : "mt-8"}>
-          {accounts.length > 0 && (
-            <p className="mb-4 text-[12px] text-muted">Or create a user</p>
-          )}
-          <p className="mb-4 text-[12px] text-muted">
+        <section
+          className={
+            accounts.length > 0 ? "mt-8 border-t-2 border-border pt-8" : "mt-8"
+          }
+        >
+          <h2 className="text-2xl font-bold tracking-tight text-text">
+            Create a User
+          </h2>
+          <p className="mb-4 mt-4 text-[12px] text-muted">
             Your name and phone identify you in imported messages and are required
             before ingest.
           </p>
@@ -188,7 +196,7 @@ export function LoginScreen() {
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Matt"
+                  placeholder="John"
                   className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
                 />
               </label>
@@ -198,35 +206,66 @@ export function LoginScreen() {
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Beisser"
+                  placeholder="Doe"
                   className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
                 />
               </label>
             </div>
-            <label className="block">
-              <span className="text-[13px] text-text">Phone (E.164)</span>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+14075551234"
-                className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
-              />
+            <div className="block">
+              <div className="grid grid-cols-[4.25rem_minmax(12rem,1fr)_16ch] gap-x-2 gap-y-1">
+                <span className="text-[13px] text-text">Country</span>
+                <span className="text-[13px] text-text">Phone</span>
+                <span className="text-[13px] text-text">e.164</span>
+                <div className="flex min-h-[2.5rem] items-center overflow-hidden rounded-md border border-border bg-bg">
+                  <span
+                    aria-hidden
+                    className="shrink-0 pl-1.5 text-[14px] font-mono text-muted"
+                  >
+                    +
+                  </span>
+                  <input
+                    type="tel"
+                    value={countryCode}
+                    onChange={(e) =>
+                      setCountryCode(applyCountryCodeDigitsInput(e.target.value))
+                    }
+                    onKeyDown={handleCountryCodeKeyDown}
+                    onBlur={(e) =>
+                      setCountryCode(normalizeCountryCodeDigitsOnBlur(e.target.value))
+                    }
+                    aria-label="Country code"
+                    className="min-w-0 flex-1 border-0 bg-transparent py-2 pl-0.5 pr-1 text-left text-[14px] font-mono text-text outline-none"
+                  />
+                </div>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="(555) 789-1234"
+                  aria-label="Phone number"
+                  className="w-full rounded-md border border-border bg-bg px-3 py-2 text-[14px] text-text outline-none placeholder:text-muted focus:border-accent"
+                />
+                <div
+                  aria-live="polite"
+                  className="flex min-h-[2.5rem] min-w-[16ch] shrink-0 items-center rounded-md border border-border bg-bg/60 px-3 py-2 text-[14px] font-mono"
+                >
+                  {normalizedPhone ? (
+                    <span className="text-text">{normalizedPhone}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </div>
+              </div>
               <p className="mt-1.5 text-[12px] text-muted">
-                International format: <span className="text-text">+</span> country
-                code, then your number with no spaces. US numbers use{" "}
-                <span className="text-text">+1</span> plus 10 digits — e.g.{" "}
-                <span className="text-text">+14075551234</span> for (407)
-                555-1234. You can paste a US number with parentheses or dashes
-                and we will normalize it.
+                US numbers: <span className="text-text">+1</span> with 10 digits —
+                e.g. <span className="font-mono text-text">+15557891234</span>{" "}
+                <span className="text-text">→</span>{" "}
+                <span className="text-text">(555) 789-1234</span>
               </p>
-              {phone.trim() && normalizedPhone && normalizedPhone !== phone.trim() && (
-                <p className="mt-1 text-[12px] text-muted">
-                  Will save as{" "}
-                  <span className="font-mono text-text">{normalizedPhone}</span>
-                </p>
-              )}
-            </label>
+              <p className="mt-1 text-[12px] text-muted">
+                International: change country code, then enter your number.
+              </p>
+            </div>
             <button
               type="button"
               disabled={
