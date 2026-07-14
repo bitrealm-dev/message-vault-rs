@@ -172,6 +172,38 @@ export function TrashSortMenu({
   );
 }
 
+export type GroupTrashSortBy = "start" | "end" | "people" | "messages";
+
+const GROUP_TRASH_SORT_FIELDS: SortField<GroupTrashSortBy>[] = [
+  { id: "start", label: "Start date" },
+  { id: "end", label: "End date" },
+  { id: "people", label: "People" },
+  { id: "messages", label: "Messages" },
+];
+
+/** Start/end date, people, messages for Trash group chats. */
+export function GroupTrashSortMenu({
+  sortBy,
+  order,
+  onChange,
+}: {
+  sortBy: GroupTrashSortBy;
+  order: SortOrder;
+  onChange: (next: { sortBy: GroupTrashSortBy; order: SortOrder }) => void;
+}) {
+  return (
+    <SortMenu
+      fields={GROUP_TRASH_SORT_FIELDS}
+      sort={sortBy}
+      order={order}
+      onChange={({ sort, order: nextOrder }) =>
+        onChange({ sortBy: sort, order: nextOrder })
+      }
+      ariaLabel="Sort trashed groups"
+    />
+  );
+}
+
 function SortOption({
   label,
   selected,

@@ -20,6 +20,27 @@ export function PeopleGroupIcon({ className }: { className?: string }) {
   );
 }
 
+/** Side-by-side pair for participant counts (not the Groups menu mark). */
+export function PeopleCountIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="8" cy="8.5" r="2.75" />
+      <circle cx="16" cy="8.5" r="2.75" />
+      <path d="M2.75 19.25c.55-2.85 2.55-4.5 5.25-4.5s4.7 1.65 5.25 4.5" />
+      <path d="M10.75 19.25c.55-2.85 2.55-4.5 5.25-4.5s4.7 1.65 5.25 4.5" />
+    </svg>
+  );
+}
+
 export function PersonDetailIcon({ className }: { className?: string }) {
   return (
     <svg

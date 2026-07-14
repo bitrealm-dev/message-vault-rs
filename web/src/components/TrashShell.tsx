@@ -17,11 +17,13 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsShell } from "./GroupChatsShell";
 import { useHistory } from "./history";
+import { ChevronDownIcon } from "./icons";
 import {
   TrashListChrome,
   type TrashChromeController,
 } from "./TrashListChrome";
 import { UnassignedShell } from "./UnassignedShell";
+import { useDismissible } from "./useDismissible";
 
 type TrashTab = "contacts" | "group-chats";
 
@@ -39,7 +41,8 @@ function chromeDataEqual(
     a.canDeleteForever === b.canDeleteForever &&
     a.selectAllLabel === b.selectAllLabel &&
     a.sort?.sortBy === b.sort?.sortBy &&
-    a.sort?.order === b.sort?.order
+    a.sort?.order === b.sort?.order &&
+    a.sort?.kind === b.sort?.kind
   );
 }
 
@@ -109,7 +112,7 @@ function mergeTrashContactList(
   );
 }
 
-function TrashTabBar({
+function TrashMoreMenu({
   tab,
   contactCount,
   groupCount,
@@ -120,32 +123,66 @@ function TrashTabBar({
   groupCount: number;
   onSwitch: (next: TrashTab) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useDismissible({
+    open,
+    onDismiss: () => setOpen(false),
+    refs: [rootRef],
+  });
+
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <div ref={rootRef} className="relative inline-flex shrink-0 items-center">
       <button
         type="button"
-        onClick={() => onSwitch("contacts")}
-        className={`rounded-md px-2.5 py-1 text-[12px] leading-none ${
-          tab === "contacts"
-            ? "bg-elevated text-text"
-            : "text-muted hover:text-text"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors ${
+          open
+            ? "bg-accent/20 text-accent"
+            : "bg-elevated text-muted hover:text-text"
         }`}
       >
-        Contacts
-        <span className="ml-1 text-muted">{contactCount}</span>
+        More
+        <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
       </button>
-      <button
-        type="button"
-        onClick={() => onSwitch("group-chats")}
-        className={`rounded-md px-2.5 py-1 text-[12px] leading-none ${
-          tab === "group-chats"
-            ? "bg-elevated text-text"
-            : "text-muted hover:text-text"
-        }`}
-      >
-        Group chats
-        <span className="ml-1 text-muted">{groupCount}</span>
-      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-full left-0 z-50 mt-1 min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] hover:bg-white/20 ${
+              tab === "contacts" ? "text-accent" : "text-text"
+            }`}
+            onClick={() => {
+              setOpen(false);
+              onSwitch("contacts");
+            }}
+          >
+            <span>Contacts</span>
+            <span className="text-muted tabular-nums">{contactCount}</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] hover:bg-white/20 ${
+              tab === "group-chats" ? "text-accent" : "text-text"
+            }`}
+            onClick={() => {
+              setOpen(false);
+              onSwitch("group-chats");
+            }}
+          >
+            <span>Group chats</span>
+            <span className="text-muted tabular-nums">{groupCount}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -214,7 +251,7 @@ export function TrashShell({
   );
 
   const tabBar: ReactNode = (
-    <TrashTabBar
+    <TrashMoreMenu
       tab={tab}
       contactCount={contactList.length}
       groupCount={groupCount}
@@ -246,6 +283,7 @@ export function TrashShell({
           sort={
             chrome.sort
               ? {
+                  kind: chrome.sort.kind,
                   sortBy: chrome.sort.sortBy,
                   order: chrome.sort.order,
                   onChange: (next) => chromeRef.current?.sort?.onChange(next),

@@ -3,6 +3,7 @@
 import type { UnassignedHandle } from "@/lib/types";
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import type { SortOrder, TrashSortBy } from "./SortByMenu";
+import { MessageIcon } from "./icons";
 import { TrashListChrome } from "./TrashListChrome";
 
 export function TrashContactList({
@@ -69,7 +70,16 @@ export function TrashContactList({
           canDeleteForever={canDeleteForever}
           onToggleSelectAll={onToggleSelectAll}
           onDeleteForever={onDeleteForeverHeader}
-          sort={{ sortBy, order: sortOrder, onChange: onSortChange }}
+          sort={{
+            kind: "contacts",
+            sortBy,
+            order: sortOrder,
+            onChange: (next) =>
+              onSortChange({
+                sortBy: next.sortBy as TrashSortBy,
+                order: next.order,
+              }),
+          }}
         />
       )}
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
@@ -171,7 +181,8 @@ export function TrashContactList({
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted">
+                    <span className="inline-flex shrink-0 items-center gap-0.5 pt-0.5 text-[11px] tabular-nums text-muted">
+                      <MessageIcon className="size-3.5 opacity-80" />
                       {h.messageCount.toLocaleString()}
                     </span>
                   </button>

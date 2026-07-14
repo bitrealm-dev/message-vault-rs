@@ -15,6 +15,15 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
 import type { TrashChromeController } from "./TrashListChrome";
+import {
+  collapseGroupConversations,
+  TrashGroupChatList,
+  type TrashGroupConversation,
+} from "./TrashGroupChatList";
+import {
+  type GroupTrashSortBy,
+  type SortOrder,
+} from "./SortByMenu";
 import { useHistory } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
@@ -27,6 +36,15 @@ import { useTrashActions } from "./useTrashActions";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
+const GROUP_TRASH_SORT_BY_KEY = "mv-group-trash-sort-by";
+const GROUP_TRASH_SORT_ORDER_KEY = "mv-group-trash-sort-order";
+const GROUP_TRASH_SORT_BY_ALLOWED = [
+  "start",
+  "end",
+  "people",
+  "messages",
+] as const;
+const GROUP_TRASH_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 
 /** Newest calendar year for a conversation in the year-row list. */
 function newestYearForConversation(
@@ -39,6 +57,62 @@ function newestYearForConversation(
     if (newest == null || g.year > newest) newest = g.year;
   }
   return newest;
+}
+
+function sortTrashGroups(
+  items: TrashGroupConversation[],
+  sortBy: GroupTrashSortBy,
+  order: SortOrder,
+): TrashGroupConversation[] {
+  const dir = order === "asc" ? 1 : -1;
+  return [...items].sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === "start") {
+      cmp = a.conversationDateStart.localeCompare(b.conversationDateStart);
+    } else if (sortBy === "end") {
+      cmp = a.conversationDateEnd.localeCompare(b.conversationDateEnd);
+    } else if (sortBy === "people") {
+      cmp = a.participantCount - b.participantCount;
+    } else {
+      cmp = a.messageCount - b.messageCount;
+    }
+    if (cmp !== 0) return cmp * dir;
+    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+  });
+}
+
+function searchCollapsedGroups(
+  items: TrashGroupConversation[],
+  query: string,
+): TrashGroupConversation[] {
+  if (!query.trim()) return items;
+  const asRows: GroupYearRow[] = items.map((c) => ({
+    id: c.id,
+    year: c.newestYear,
+    title: c.title,
+    titleFull: c.title,
+    namedTitle: c.namedTitle,
+    participantCount: c.participantCount,
+    participantNames: c.participantNames,
+    participantHandles: c.participantHandles,
+    messageCount: c.messageCount,
+    dateStart: c.conversationDateStart,
+    dateEnd: c.conversationDateEnd,
+    conversationDateStart: c.conversationDateStart,
+    conversationDateEnd: c.conversationDateEnd,
+    spansMultipleYears: c.conversationDateStart !== c.conversationDateEnd,
+  }));
+  const hits = searchGroups(asRows, query);
+  const byId = new Map(items.map((c) => [c.id, c]));
+  const out: TrashGroupConversation[] = [];
+  const seen = new Set<number>();
+  for (const h of hits) {
+    if (seen.has(h.id)) continue;
+    seen.add(h.id);
+    const item = byId.get(h.id);
+    if (item) out.push(item);
+  }
+  return out;
 }
 
 export function GroupChatsShell({
@@ -78,6 +152,23 @@ export function GroupChatsShell({
     GROUP_DATE_ALLOWED,
     "md",
   );
+  const [groupTrashSortBy, setGroupTrashSortBy] = usePersistedEnum(
+    GROUP_TRASH_SORT_BY_KEY,
+    GROUP_TRASH_SORT_BY_ALLOWED,
+    "end",
+  );
+  const [groupTrashSortOrder, setGroupTrashSortOrder] = usePersistedEnum(
+    GROUP_TRASH_SORT_ORDER_KEY,
+    GROUP_TRASH_SORT_ORDER_ALLOWED,
+    "desc",
+  );
+  const setGroupTrashSort = useCallback(
+    (next: { sortBy: GroupTrashSortBy; order: SortOrder }) => {
+      setGroupTrashSortBy(next.sortBy);
+      setGroupTrashSortOrder(next.order);
+    },
+    [setGroupTrashSortBy, setGroupTrashSortOrder],
+  );
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -89,9 +180,41 @@ export function GroupChatsShell({
     panelIds: ["list", "messages"],
     storage,
   });
+  const trashSideLayout = useDefaultLayout({
+    id: "mv-trash-groups-side",
+    panelIds: ["list", "right"],
+    storage,
+  });
+  const trashThreadsLayout = useDefaultLayout({
+    id: "mv-trash-groups-threads",
+    panelIds: ["detail", "messages"],
+    storage,
+  });
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+
+  const trashEmbedded = mode === "trash" && embedded;
+
+  const collapsed = useMemo(
+    () => collapseGroupConversations(groupChats),
+    [groupChats],
+  );
+
+  const trashListItems = useMemo(() => {
+    if (!trashEmbedded) return [] as TrashGroupConversation[];
+    return sortTrashGroups(
+      searchCollapsedGroups(collapsed, query),
+      groupTrashSortBy,
+      groupTrashSortOrder,
+    );
+  }, [
+    trashEmbedded,
+    collapsed,
+    query,
+    groupTrashSortBy,
+    groupTrashSortOrder,
+  ]);
 
   const filtered = useMemo(
     () => searchGroups(groupChats, query),
@@ -100,6 +223,7 @@ export function GroupChatsShell({
 
   /** Unique conversation ids in filtered list order (first appearance). */
   const uniqueIds = useMemo(() => {
+    if (trashEmbedded) return trashListItems.map((g) => g.id);
     const ids: number[] = [];
     const seen = new Set<number>();
     for (const g of filtered) {
@@ -108,9 +232,12 @@ export function GroupChatsShell({
       ids.push(g.id);
     }
     return ids;
-  }, [filtered]);
+  }, [trashEmbedded, trashListItems, filtered]);
 
-  const validIds = useMemo(() => groupChats.map((g) => g.id), [groupChats]);
+  const validIds = useMemo(() => {
+    if (trashEmbedded) return collapsed.map((g) => g.id);
+    return groupChats.map((g) => g.id);
+  }, [trashEmbedded, collapsed, groupChats]);
 
   const {
     selectedIds,
@@ -130,7 +257,9 @@ export function GroupChatsShell({
     multiThreshold: "any",
     focusedId: conversationId,
     ctrlSeedSkipsTarget: false,
-    rowClickMode: "openWhenEmptyElseToggleIfSelected",
+    rowClickMode: trashEmbedded
+      ? "alwaysOpen"
+      : "openWhenEmptyElseToggleIfSelected",
     checkboxEvents: "stopOnly",
     escapeToClear: true,
     escapeBlocked: () => ctxMenu != null,
@@ -144,7 +273,6 @@ export function GroupChatsShell({
     return [...set].sort((a, b) => b - a);
   }, [groupChats, filtered, query]);
 
-  // Default to newest year; keep selection if still in the list.
   useEffect(() => {
     if (years.length === 0) {
       setListYear(null);
@@ -180,18 +308,13 @@ export function GroupChatsShell({
     return [];
   }, [multiSelected, selectedIds, conversationId]);
 
-  const {
-    messages,
-    loading,
-    setMessages,
-  } = useThreadMessages({
+  const { messages, loading, setMessages } = useThreadMessages({
     conversationIds: conversationId != null ? [conversationId] : null,
     year: focusYear,
     sourceQuery,
     enabled: !multiSelected,
   });
 
-  // Deep link / refresh: require a valid year for the selected conversation.
   useEffect(() => {
     if (conversationId == null) return;
     if (!groupChats.some((g) => g.id === conversationId)) return;
@@ -240,7 +363,6 @@ export function GroupChatsShell({
     pane.scrollTop += elTop - paneTop;
   }, []);
 
-  /** Drop every year row for the given conversation ids (one thread → all years). */
   const clearFocusAfterRemoval = useCallback(
     (removedIds: number[]) => {
       const removed = new Set(removedIds);
@@ -261,7 +383,7 @@ export function GroupChatsShell({
         router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
       }
     },
-    [conversationId, pathname, router, searchParams, setMessages],
+    [conversationId, pathname, router, searchParams, setMessages, setSelectedIds],
   );
 
   const conversationSpansMultipleYears = useCallback(
@@ -341,12 +463,13 @@ export function GroupChatsShell({
   });
 
   const canAct = actionTargets.length > 0 && !saving;
-  const trashEmbedded = mode === "trash" && embedded;
 
   const permanentlyDeleteFromTrashRef = useRef(permanentlyDeleteFromTrash);
   permanentlyDeleteFromTrashRef.current = permanentlyDeleteFromTrash;
   const toggleSelectAllRef = useRef(toggleSelectAll);
   toggleSelectAllRef.current = toggleSelectAll;
+  const setGroupTrashSortRef = useRef(setGroupTrashSort);
+  setGroupTrashSortRef.current = setGroupTrashSort;
 
   useEffect(() => {
     if (!onTrashChrome || !trashEmbedded) return;
@@ -354,7 +477,7 @@ export function GroupChatsShell({
       selectAllRef,
       allSelected,
       selectedCount: selectedIds.size,
-      itemCount: uniqueIds.length,
+      itemCount: trashListItems.length,
       query,
       onQueryChange: setQuery,
       saving,
@@ -362,6 +485,16 @@ export function GroupChatsShell({
       onToggleSelectAll: () => toggleSelectAllRef.current(),
       onDeleteForever: () => void permanentlyDeleteFromTrashRef.current(),
       selectAllLabel: "Select all trashed groups",
+      sort: {
+        kind: "groups",
+        sortBy: groupTrashSortBy,
+        order: groupTrashSortOrder,
+        onChange: (next) =>
+          setGroupTrashSortRef.current({
+            sortBy: next.sortBy as GroupTrashSortBy,
+            order: next.order,
+          }),
+      },
     });
   }, [
     onTrashChrome,
@@ -369,10 +502,12 @@ export function GroupChatsShell({
     selectAllRef,
     allSelected,
     selectedIds.size,
-    uniqueIds.length,
+    trashListItems.length,
     query,
     saving,
     actionTargets.length,
+    groupTrashSortBy,
+    groupTrashSortOrder,
   ]);
 
   useEffect(() => {
@@ -409,7 +544,7 @@ export function GroupChatsShell({
     ],
   );
 
-  const onRowClick = useCallback(
+  const onYearRowClick = useCallback(
     (row: GroupYearRow, e: MouseEvent) => {
       if (
         !e.shiftKey &&
@@ -423,6 +558,41 @@ export function GroupChatsShell({
       onRowClickId(row.id, e);
     },
     [onRowClickId, selectGroup, selectedIds.size],
+  );
+
+  const onTrashListRowClick = useCallback(
+    (g: TrashGroupConversation, e: MouseEvent) => {
+      if (
+        !e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        selectedIds.size === 0
+      ) {
+        const year = g.newestYear;
+        setSelectedIds(new Set());
+        selectionAnchorRef.current = g.id;
+        setConversationId(g.id);
+        setFocusYear(year);
+        setMessages([]);
+        pendingScrollYearRef.current = year;
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("g", String(g.id));
+        params.set("y", String(year));
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        return;
+      }
+      onRowClickId(g.id, e);
+    },
+    [
+      onRowClickId,
+      pathname,
+      router,
+      searchParams,
+      selectedIds.size,
+      selectionAnchorRef,
+      setMessages,
+      setSelectedIds,
+    ],
   );
 
   const clampMenu = (x: number, y: number, w: number, h: number) => ({
@@ -450,11 +620,9 @@ export function GroupChatsShell({
 
     const prefix = `${year}-`;
     const matches = pane.querySelectorAll(`[data-timestamp^="${prefix}"]`);
-    // DESC order: last match is the earliest message in that year.
     const target = matches[matches.length - 1] as HTMLElement | undefined;
     if (target) {
       requestAnimationFrame(() => {
-        // Scroll only the messages pane — scrollIntoView also shifts split parents.
         const delta =
           target.getBoundingClientRect().top - pane.getBoundingClientRect().top;
         pane.scrollTop += delta;
@@ -468,72 +636,155 @@ export function GroupChatsShell({
       ? `${conversationId}-${focusYear}`
       : null;
 
+  const messagesPane = (
+    <GroupChatsMessagesPane
+      messagesPaneRef={messagesPaneRef}
+      multiSelected={multiSelected}
+      selectedIds={selectedIds}
+      selectedRow={selectedRow}
+      focusYear={focusYear}
+      loading={loading}
+      messages={messages}
+      conversationSelected={conversationId != null}
+    />
+  );
+
   return (
     <>
-    <div className="flex h-full min-h-0 w-full flex-col bg-bg">
-      <div className="min-h-0 flex-1">
-    <Group
-      id="mv-group-chats-threads"
-      orientation="vertical"
-      className="h-full w-full bg-bg"
-      defaultLayout={threadsLayout.defaultLayout}
-      onLayoutChanged={threadsLayout.onLayoutChanged}
-    >
-      <Panel
-        id="list"
-        defaultSize="40%"
-        minSize="25%"
-        maxSize="75%"
-        className="min-h-0"
-      >
-        <GroupChatsListPane
-          mode={mode}
-          trashTabBar={trashEmbedded ? undefined : trashTabBar}
-          embedded={trashEmbedded}
-          selectAllRef={selectAllRef}
-          allSelected={allSelected}
-          uniqueIdsCount={uniqueIds.length}
-          query={query}
-          onQueryChange={setQuery}
-          onToggleSelectAll={toggleSelectAll}
-          filteredCount={filtered.length}
-          groupsCount={groupChats.length}
-          status={status}
-          canAct={canAct}
-          years={years}
-          listYear={listYear}
-          onJumpToYear={jumpToYearSection}
-          groupDateFormat={groupDateFormat}
-          onGroupDateFormatChange={setGroupDateFormat}
-          onMoveToTrash={() => void moveToTrash()}
-          onRestore={() => void restoreFromTrash()}
-          onPermanentDelete={() => void permanentlyDeleteFromTrash()}
-          rowsByYear={rowsByYear}
-          activeKey={activeKey}
-          selectedIds={selectedIds}
-          onSelectColumnClick={onSelectColumnClick}
-          onRowClick={onRowClick}
-          onOpenCtxMenu={openCtxMenu}
-        />
-      </Panel>
+      <div className="flex h-full min-h-0 w-full flex-col bg-bg">
+        <div className="min-h-0 flex-1">
+          {trashEmbedded ? (
+            <Group
+              id="mv-trash-groups-side"
+              orientation="horizontal"
+              className="h-full w-full"
+              defaultLayout={trashSideLayout.defaultLayout}
+              onLayoutChanged={trashSideLayout.onLayoutChanged}
+            >
+              <Panel
+                id="list"
+                defaultSize={320}
+                minSize={200}
+                maxSize={720}
+                className="min-h-0"
+              >
+                <TrashGroupChatList
+                  items={trashListItems}
+                  conversationId={conversationId}
+                  selectedIds={selectedIds}
+                  query={query}
+                  groupDateFormat={groupDateFormat}
+                  onSelectColumnClick={onSelectColumnClick}
+                  onRowClick={onTrashListRowClick}
+                  onOpenCtxMenu={openCtxMenu}
+                />
+              </Panel>
 
-      <PaneSeparator orientation="horizontal" />
+              <PaneSeparator orientation="vertical" />
 
-      <Panel id="messages" minSize="25%" className="min-h-0">
-        <GroupChatsMessagesPane
-          messagesPaneRef={messagesPaneRef}
-          multiSelected={multiSelected}
-          selectedIds={selectedIds}
-          selectedRow={selectedRow}
-          focusYear={focusYear}
-          loading={loading}
-          messages={messages}
-          conversationSelected={conversationId != null}
-        />
-      </Panel>
-    </Group>
+              <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
+                <div className="flex h-full min-h-0 min-w-0 flex-col">
+                  <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-panel px-5">
+                    {multiSelected ? (
+                      <span className="text-[13px] text-muted">
+                        {selectedIds.size} group
+                        {selectedIds.size === 1 ? "" : "s"} selected
+                      </span>
+                    ) : selectedRow ? (
+                      <h1 className="truncate text-xl font-semibold tracking-tight text-text">
+                        {selectedRow.namedTitle || selectedRow.title}
+                      </h1>
+                    ) : (
+                      <span className="text-[13px] text-muted">
+                        Choose a trashed group chat
+                      </span>
+                    )}
+                  </div>
+                  <Group
+                    id="mv-trash-groups-threads"
+                    orientation="vertical"
+                    className="min-h-0 flex-1"
+                    defaultLayout={trashThreadsLayout.defaultLayout}
+                    onLayoutChanged={trashThreadsLayout.onLayoutChanged}
+                  >
+                    <Panel
+                      id="detail"
+                      defaultSize="30%"
+                      minSize="15%"
+                      maxSize="60%"
+                      className="min-h-0"
+                    >
+                      <div className="flex h-full items-center justify-center bg-bg px-5">
+                        {!conversationId && !multiSelected ? (
+                          <p className="text-center text-[13px] text-muted">
+                            Select a group to read messages
+                          </p>
+                        ) : null}
+                      </div>
+                    </Panel>
+                    <PaneSeparator orientation="horizontal" />
+                    <Panel id="messages" minSize="25%" className="min-h-0">
+                      {messagesPane}
+                    </Panel>
+                  </Group>
+                </div>
+              </Panel>
+            </Group>
+          ) : (
+            <Group
+              id="mv-group-chats-threads"
+              orientation="vertical"
+              className="h-full w-full bg-bg"
+              defaultLayout={threadsLayout.defaultLayout}
+              onLayoutChanged={threadsLayout.onLayoutChanged}
+            >
+              <Panel
+                id="list"
+                defaultSize="40%"
+                minSize="25%"
+                maxSize="75%"
+                className="min-h-0"
+              >
+                <GroupChatsListPane
+                  mode={mode}
+                  trashTabBar={trashTabBar}
+                  embedded={false}
+                  selectAllRef={selectAllRef}
+                  allSelected={allSelected}
+                  uniqueIdsCount={uniqueIds.length}
+                  query={query}
+                  onQueryChange={setQuery}
+                  onToggleSelectAll={toggleSelectAll}
+                  filteredCount={filtered.length}
+                  groupsCount={groupChats.length}
+                  status={status}
+                  canAct={canAct}
+                  years={years}
+                  listYear={listYear}
+                  onJumpToYear={jumpToYearSection}
+                  groupDateFormat={groupDateFormat}
+                  onGroupDateFormatChange={setGroupDateFormat}
+                  onMoveToTrash={() => void moveToTrash()}
+                  onRestore={() => void restoreFromTrash()}
+                  onPermanentDelete={() => void permanentlyDeleteFromTrash()}
+                  rowsByYear={rowsByYear}
+                  activeKey={activeKey}
+                  selectedIds={selectedIds}
+                  onSelectColumnClick={onSelectColumnClick}
+                  onRowClick={onYearRowClick}
+                  onOpenCtxMenu={openCtxMenu}
+                />
+              </Panel>
+
+              <PaneSeparator orientation="horizontal" />
+
+              <Panel id="messages" minSize="25%" className="min-h-0">
+                {messagesPane}
+              </Panel>
+            </Group>
+          )}
+        </div>
       </div>
-    </div>
 
       {ctxMenu && mode === "trash" && (
         <div

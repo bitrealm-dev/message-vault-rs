@@ -3,6 +3,7 @@
 import type { ContactListItem } from "@/lib/types";
 import type { MouseEvent, RefObject } from "react";
 import { ListHistoryMenu } from "./history";
+import { MessageIcon } from "./icons";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
 export function BrowseContactList({
@@ -195,7 +196,8 @@ export function BrowseContactList({
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted">
+                    <span className="inline-flex shrink-0 items-center gap-0.5 pt-0.5 text-[11px] tabular-nums text-muted">
+                      <MessageIcon className="size-3.5 opacity-80" />
                       {c.messageCount.toLocaleString()}
                     </span>
                   </button>

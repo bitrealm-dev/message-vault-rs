@@ -860,9 +860,14 @@ export function UnassignedShell({
       onDeleteForever: () => void permanentlyDeleteFromTrashRef.current(),
       selectAllLabel: "Select all trash",
       sort: {
+        kind: "contacts",
         sortBy: trashSortBy,
         order: trashSortOrder,
-        onChange: (next) => setTrashSortRef.current(next),
+        onChange: (next) =>
+          setTrashSortRef.current({
+            sortBy: next.sortBy as TrashSortBy,
+            order: next.order,
+          }),
       },
     });
   }, [

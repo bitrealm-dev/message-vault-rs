@@ -2,7 +2,9 @@
 
 import type { ReactNode, RefObject } from "react";
 import {
+  GroupTrashSortMenu,
   TrashSortMenu,
+  type GroupTrashSortBy,
   type SortOrder,
   type TrashSortBy,
 } from "./SortByMenu";
@@ -20,11 +22,11 @@ export type TrashChromeController = {
   onToggleSelectAll: () => void;
   onDeleteForever: () => void;
   selectAllLabel?: string;
-  /** Contact sort controls; omit on Group chats. */
   sort?: {
-    sortBy: TrashSortBy;
+    kind: "contacts" | "groups";
+    sortBy: string;
     order: SortOrder;
-    onChange: (next: { sortBy: TrashSortBy; order: SortOrder }) => void;
+    onChange: (next: { sortBy: string; order: SortOrder }) => void;
   };
 };
 
@@ -48,7 +50,7 @@ export function TrashListChrome({
 }) {
   return (
     <>
-      <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border bg-sidebar px-3">
+      <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border bg-sidebar px-3">
         <label className="flex min-w-0 items-center gap-2">
           <input
             ref={selectAllRef}
@@ -64,6 +66,7 @@ export function TrashListChrome({
           </span>
         </label>
         <div className="flex shrink-0 items-center gap-1.5">
+          {tabBar}
           <button
             type="button"
             disabled={saving || !canDeleteForever}
@@ -72,15 +75,23 @@ export function TrashListChrome({
           >
             Delete forever
           </button>
-          {sort ? (
-            <TrashSortMenu
-              sortBy={sort.sortBy}
+          {sort?.kind === "groups" ? (
+            <GroupTrashSortMenu
+              sortBy={sort.sortBy as GroupTrashSortBy}
               order={sort.order}
-              onChange={sort.onChange}
+              onChange={(next) =>
+                sort.onChange({ sortBy: next.sortBy, order: next.order })
+              }
+            />
+          ) : sort ? (
+            <TrashSortMenu
+              sortBy={sort.sortBy as TrashSortBy}
+              order={sort.order}
+              onChange={(next) =>
+                sort.onChange({ sortBy: next.sortBy, order: next.order })
+              }
             />
           ) : null}
-          <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
-          {tabBar}
         </div>
       </div>
       <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-sidebar px-3">
