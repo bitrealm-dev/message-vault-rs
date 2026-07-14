@@ -636,24 +636,44 @@ export function UnassignedShell({
       .finally(() => setLoadingMessages(false));
   };
 
+  const clearFocus = useCallback(() => {
+    setHandle(null);
+    setYearly([]);
+    setMessages([]);
+    setActiveYear(null);
+    setMessageSources([]);
+    setSourceCounts({ all: 0, bySource: {} });
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("h");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const clearFocusAfterRemoval = useCallback(
     (phones: string[]) => {
       const removed = new Set(phones);
       setHandles((prev) => prev.filter((h) => !removed.has(h.handle)));
       clearSelection();
       if (handle && removed.has(handle)) {
-        setHandle(null);
-        setYearly([]);
-        setMessages([]);
-        setActiveYear(null);
-        const params = new URLSearchParams(searchParams.toString());
-        params.delete("h");
-        const qs = params.toString();
-        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        clearFocus();
       }
     },
-    [clearSelection, handle, pathname, router, searchParams],
+    [clearFocus, clearSelection, handle],
   );
+
+  useEffect(() => {
+    if (mode !== "trash" || !handle) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (ctxMenu != null || assignMode != null || groupsPanelPos != null) {
+        return;
+      }
+      e.preventDefault();
+      clearFocus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mode, handle, ctxMenu, assignMode, groupsPanelPos, clearFocus]);
 
   const getTrashTargets = useCallback(
     (forHandle?: string) => {
@@ -1127,9 +1147,8 @@ export function UnassignedShell({
             onToggleSelectAll={toggleSelectAll}
             onSelectColumnClick={onSelectColumnClick}
             onRowClick={onRowClick}
-            onRestore={(h) => void restoreFromTrash(h)}
-            onDeleteForever={(h) => void permanentlyDeleteFromTrash(h)}
             onDeleteForeverHeader={() => void permanentlyDeleteFromTrash()}
+            onOpenCtxMenu={openCtxMenuAt}
           />
         ) : (
           <UnassignedContactList
@@ -1290,12 +1309,12 @@ export function UnassignedShell({
         </div>
 
         <div className="flex h-[45px] shrink-0 items-center border-b border-border bg-panel px-5">
-          {multiSelected ? (
+          {multiSelected && mode !== "trash" ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
               {selectedHandles.size} contact
               {selectedHandles.size === 1 ? "" : "s"} selected
             </h1>
-          ) : selected ? (
+          ) : selected && !multiSelected ? (
             <h1 className="truncate text-xl font-semibold tracking-tight text-text">
               {selected.unverified ? (
                 <>
@@ -1317,7 +1336,7 @@ export function UnassignedShell({
           )}
         </div>
 
-        {multiSelected ? (
+        {multiSelected && mode !== "trash" ? (
           <div className="min-h-0 flex-1">
             <UnassignedDetailPane
               mode={mode}
@@ -1340,6 +1359,8 @@ export function UnassignedShell({
               onSelectHandle={selectHandle}
             />
           </div>
+        ) : multiSelected && mode === "trash" ? (
+          <div className="min-h-0 flex-1" />
         ) : (
           <Group
             id="mv-unassigned-threads"

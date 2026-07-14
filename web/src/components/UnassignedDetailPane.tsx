@@ -90,7 +90,7 @@ export function UnassignedDetailPane({
       ) : !selected ? (
         <p className="text-[13px] text-muted">
           {mode === "trash"
-            ? "Choose a trashed contact or number to read messages, or use Undelete / Delete forever on a row."
+            ? "Choose a trashed contact or number to read messages, or right-click a row for Undelete / Delete forever."
             : "Choose an unassigned number or email to create a contact or add the handle to someone existing."}
         </p>
       ) : (

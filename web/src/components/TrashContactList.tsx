@@ -2,7 +2,6 @@
 
 import type { UnassignedHandle } from "@/lib/types";
 import type { MouseEvent, ReactNode, RefObject } from "react";
-import { RestoreIcon, TrashIcon } from "./icons";
 import {
   TrashSortMenu,
   type SortOrder,
@@ -27,9 +26,8 @@ export function TrashContactList({
   onToggleSelectAll,
   onSelectColumnClick,
   onRowClick,
-  onRestore,
-  onDeleteForever,
   onDeleteForeverHeader,
+  onOpenCtxMenu,
 }: {
   tabBar?: ReactNode;
   selectAllRef: RefObject<HTMLInputElement | null>;
@@ -48,9 +46,13 @@ export function TrashContactList({
   onToggleSelectAll: () => void;
   onSelectColumnClick: (h: string, e: MouseEvent) => void;
   onRowClick: (h: string, e: MouseEvent) => void;
-  onRestore: (h: string) => void;
-  onDeleteForever: (h: string) => void;
   onDeleteForeverHeader: () => void;
+  onOpenCtxMenu: (
+    x: number,
+    y: number,
+    handle: string,
+    menuH: number,
+  ) => void;
 }) {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
@@ -173,6 +175,15 @@ export function TrashContactList({
                     onMouseDown={(e) => {
                       if (e.shiftKey) e.preventDefault();
                     }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      onOpenCtxMenu(
+                        e.clientX,
+                        e.clientY,
+                        h.handle,
+                        88,
+                      );
+                    }}
                     className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left outline-none"
                   >
                     <span className="min-w-0">
@@ -195,44 +206,6 @@ export function TrashContactList({
                       {h.messageCount.toLocaleString()}
                     </span>
                   </button>
-                  <div className="mr-0.5 flex shrink-0 items-center gap-0.5 self-center">
-                    <button
-                      type="button"
-                      aria-label={`Undelete ${title}`}
-                      title="Undelete"
-                      disabled={saving}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onRestore(h.handle);
-                      }}
-                      className={`rounded p-0.5 text-muted outline-none hover:bg-white/10 hover:text-text disabled:opacity-40 ${
-                        active || checked
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100"
-                      }`}
-                    >
-                      <RestoreIcon className="size-5" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Delete ${title} forever`}
-                      title="Delete forever"
-                      disabled={saving}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onDeleteForever(h.handle);
-                      }}
-                      className={`rounded p-0.5 text-muted outline-none hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40 ${
-                        active || checked
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100"
-                      }`}
-                    >
-                      <TrashIcon className="size-5" />
-                    </button>
-                  </div>
                   {showInsetDivider && (
                     <span
                       aria-hidden
