@@ -2,14 +2,12 @@
 
 import type { UnassignedHandle } from "@/lib/types";
 import type { MouseEvent, ReactNode, RefObject } from "react";
-import {
-  TrashSortMenu,
-  type SortOrder,
-  type TrashSortBy,
-} from "./SortByMenu";
+import type { SortOrder, TrashSortBy } from "./SortByMenu";
+import { TrashListChrome } from "./TrashListChrome";
 
 export function TrashContactList({
   tabBar,
+  hideChrome = false,
   selectAllRef,
   allSelected,
   query,
@@ -30,6 +28,8 @@ export function TrashContactList({
   onOpenCtxMenu,
 }: {
   tabBar?: ReactNode;
+  /** Parent owns toolbar + search (TrashShell shared chrome). */
+  hideChrome?: boolean;
   selectAllRef: RefObject<HTMLInputElement | null>;
   allSelected: boolean;
   query: string;
@@ -56,48 +56,22 @@ export function TrashContactList({
 }) {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
-      <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border px-3">
-        <label className="flex min-w-0 items-center gap-2">
-          <input
-            ref={selectAllRef}
-            type="checkbox"
-            checked={allSelected}
-            disabled={sortedCount === 0}
-            aria-label="Select all trash"
-            onChange={onToggleSelectAll}
-            className="checkbox-list"
-          />
-          <span className="truncate text-[13px] text-muted tabular-nums">
-            {selectedHandles.size > 0 ? selectedHandles.size : ""}
-          </span>
-        </label>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            disabled={saving || !canDeleteForever}
-            onClick={onDeleteForeverHeader}
-            className="inline-flex h-7 items-center rounded-md bg-elevated px-2.5 text-[12px] leading-none text-muted transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
-          >
-            Delete forever
-          </button>
-          <TrashSortMenu
-            sortBy={sortBy}
-            order={sortOrder}
-            onChange={onSortChange}
-          />
-          <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
-          {tabBar}
-        </div>
-      </div>
-      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search by name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
+      {!hideChrome && (
+        <TrashListChrome
+          tabBar={tabBar}
+          selectAllRef={selectAllRef}
+          allSelected={allSelected}
+          selectedCount={selectedHandles.size}
+          itemCount={sortedCount}
+          query={query}
+          onQueryChange={onQueryChange}
+          saving={saving}
+          canDeleteForever={canDeleteForever}
+          onToggleSelectAll={onToggleSelectAll}
+          onDeleteForever={onDeleteForeverHeader}
+          sort={{ sortBy, order: sortOrder, onChange: onSortChange }}
         />
-      </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {sortedCount === 0 && (
           <p className="px-3 py-4 text-[12px] text-muted">
@@ -177,12 +151,7 @@ export function TrashContactList({
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      onOpenCtxMenu(
-                        e.clientX,
-                        e.clientY,
-                        h.handle,
-                        88,
-                      );
+                      onOpenCtxMenu(e.clientX, e.clientY, h.handle, 88);
                     }}
                     className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left outline-none"
                   >

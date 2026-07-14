@@ -14,6 +14,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
+import type { TrashChromeController } from "./TrashListChrome";
 import { useHistory } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
@@ -46,12 +47,17 @@ export function GroupChatsShell({
   initialYear,
   mode = "group-chats",
   trashTabBar = null,
+  embedded = false,
+  onTrashChrome,
 }: {
   groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
   trashTabBar?: React.ReactNode;
+  /** Parent (TrashShell) owns the shared toolbar + search. */
+  embedded?: boolean;
+  onTrashChrome?: (chrome: TrashChromeController | null) => void;
 }) {
   const router = useRouter();
 
@@ -335,6 +341,44 @@ export function GroupChatsShell({
   });
 
   const canAct = actionTargets.length > 0 && !saving;
+  const trashEmbedded = mode === "trash" && embedded;
+
+  const permanentlyDeleteFromTrashRef = useRef(permanentlyDeleteFromTrash);
+  permanentlyDeleteFromTrashRef.current = permanentlyDeleteFromTrash;
+  const toggleSelectAllRef = useRef(toggleSelectAll);
+  toggleSelectAllRef.current = toggleSelectAll;
+
+  useEffect(() => {
+    if (!onTrashChrome || !trashEmbedded) return;
+    onTrashChrome({
+      selectAllRef,
+      allSelected,
+      selectedCount: selectedIds.size,
+      itemCount: uniqueIds.length,
+      query,
+      onQueryChange: setQuery,
+      saving,
+      canDeleteForever: actionTargets.length > 0,
+      onToggleSelectAll: () => toggleSelectAllRef.current(),
+      onDeleteForever: () => void permanentlyDeleteFromTrashRef.current(),
+      selectAllLabel: "Select all trashed groups",
+    });
+  }, [
+    onTrashChrome,
+    trashEmbedded,
+    selectAllRef,
+    allSelected,
+    selectedIds.size,
+    uniqueIds.length,
+    query,
+    saving,
+    actionTargets.length,
+  ]);
+
+  useEffect(() => {
+    if (!onTrashChrome || !trashEmbedded) return;
+    return () => onTrashChrome(null);
+  }, [onTrashChrome, trashEmbedded]);
 
   const selectGroup = useCallback(
     (row: GroupYearRow) => {
@@ -426,6 +470,8 @@ export function GroupChatsShell({
 
   return (
     <>
+    <div className="flex h-full min-h-0 w-full flex-col bg-bg">
+      <div className="min-h-0 flex-1">
     <Group
       id="mv-group-chats-threads"
       orientation="vertical"
@@ -442,7 +488,8 @@ export function GroupChatsShell({
       >
         <GroupChatsListPane
           mode={mode}
-          trashTabBar={trashTabBar}
+          trashTabBar={trashEmbedded ? undefined : trashTabBar}
+          embedded={trashEmbedded}
           selectAllRef={selectAllRef}
           allSelected={allSelected}
           uniqueIdsCount={uniqueIds.length}
@@ -485,6 +532,8 @@ export function GroupChatsShell({
         />
       </Panel>
     </Group>
+      </div>
+    </div>
 
       {ctxMenu && mode === "trash" && (
         <div

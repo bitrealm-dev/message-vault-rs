@@ -25,6 +25,7 @@ import {
 } from "./SortByMenu";
 import { UnassignedContactList } from "./UnassignedContactList";
 import { TrashContactList } from "./TrashContactList";
+import type { TrashChromeController } from "./TrashListChrome";
 import { UnassignedDetailPane } from "./UnassignedDetailPane";
 import { UnassignedMessagesPane } from "./UnassignedMessagesPane";
 import { useHistory } from "./history";
@@ -69,6 +70,8 @@ export function UnassignedShell({
   groups: allGroups = [],
   mode = "unassigned",
   trashTabBar = null,
+  hideListChrome = false,
+  onTrashChrome,
 }: {
   handles: UnassignedHandle[];
   assignContacts: ContactListItem[];
@@ -77,6 +80,9 @@ export function UnassignedShell({
   mode?: "unassigned" | "trash";
   /** Contacts / Group chats tabs — sits in the list header (left of the pane split). */
   trashTabBar?: React.ReactNode;
+  /** Parent (TrashShell) owns the shared toolbar + search. */
+  hideListChrome?: boolean;
+  onTrashChrome?: (chrome: TrashChromeController | null) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -832,6 +838,53 @@ export function UnassignedShell({
 
   const saving = assignSaving || trashSaving;
 
+  const permanentlyDeleteFromTrashRef = useRef(permanentlyDeleteFromTrash);
+  permanentlyDeleteFromTrashRef.current = permanentlyDeleteFromTrash;
+  const toggleSelectAllRef = useRef(toggleSelectAll);
+  toggleSelectAllRef.current = toggleSelectAll;
+  const setTrashSortRef = useRef(setTrashSort);
+  setTrashSortRef.current = setTrashSort;
+
+  useEffect(() => {
+    if (!onTrashChrome || mode !== "trash" || !hideListChrome) return;
+    onTrashChrome({
+      selectAllRef,
+      allSelected: allHandlesSelected,
+      selectedCount: selectedHandles.size,
+      itemCount: trashFilteredHandles.length,
+      query: trashQuery,
+      onQueryChange: setTrashQuery,
+      saving,
+      canDeleteForever: actionTargets.length > 0,
+      onToggleSelectAll: () => toggleSelectAllRef.current(),
+      onDeleteForever: () => void permanentlyDeleteFromTrashRef.current(),
+      selectAllLabel: "Select all trash",
+      sort: {
+        sortBy: trashSortBy,
+        order: trashSortOrder,
+        onChange: (next) => setTrashSortRef.current(next),
+      },
+    });
+  }, [
+    onTrashChrome,
+    mode,
+    hideListChrome,
+    selectAllRef,
+    allHandlesSelected,
+    selectedHandles.size,
+    trashFilteredHandles.length,
+    trashQuery,
+    saving,
+    actionTargets.length,
+    trashSortBy,
+    trashSortOrder,
+  ]);
+
+  useEffect(() => {
+    if (!onTrashChrome || !hideListChrome) return;
+    return () => onTrashChrome(null);
+  }, [onTrashChrome, hideListChrome]);
+
   const saveCreate = async () => {
     if (!createDraft || !handle || !draftHasName(createDraft)) return;
     const fromDraft = phonesForSave(createDraft.phones);
@@ -1131,6 +1184,7 @@ export function UnassignedShell({
         {mode === "trash" ? (
           <TrashContactList
             tabBar={trashTabBar}
+            hideChrome={hideListChrome}
             selectAllRef={selectAllRef}
             allSelected={allHandlesSelected}
             query={trashQuery}

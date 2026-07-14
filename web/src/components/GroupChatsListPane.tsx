@@ -99,6 +99,7 @@ function GroupDateHeadings({ style }: { style: GroupDateFormat }) {
 export function GroupChatsListPane({
   mode,
   trashTabBar,
+  embedded = false,
   selectAllRef,
   allSelected,
   uniqueIdsCount,
@@ -125,6 +126,8 @@ export function GroupChatsListPane({
 }: {
   mode: "group-chats" | "trash";
   trashTabBar?: ReactNode;
+  /** When true, parent owns select-all / search / delete chrome. */
+  embedded?: boolean;
   selectAllRef: RefObject<HTMLInputElement | null>;
   allSelected: boolean;
   uniqueIdsCount: number;
@@ -150,8 +153,72 @@ export function GroupChatsListPane({
   onRowClick: (g: GroupYearRow, e: MouseEvent) => void;
   onOpenCtxMenu: (id: number, x: number, y: number) => void;
 }) {
+  const filters = (
+    <>
+      {years.length > 0 && (
+        <div
+          className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${
+            embedded ? "" : "mb-3"
+          }`}
+        >
+          {years.map((y) => (
+            <button
+              key={y}
+              type="button"
+              onClick={() => onJumpToYear(y)}
+              className={`text-[13px] font-medium ${
+                listYear === y
+                  ? "text-accent"
+                  : "text-text hover:text-accent"
+              }`}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      )}
+      {!embedded && (
+        <div>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="Search by name or phone…"
+            className="w-full max-w-md rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
+          />
+        </div>
+      )}
+    </>
+  );
+
   return (
         <section className="flex h-full min-h-0 flex-col overflow-hidden bg-bg">
+          {embedded ? (
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-bg px-5 py-2.5">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                {filters}
+                {status && (
+                  <span className="truncate text-[12px] text-muted">
+                    {status}
+                  </span>
+                )}
+              </div>
+              <label className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted">
+                <span className="sr-only">Date format</span>
+                <select
+                  value={groupDateFormat}
+                  onChange={(e) =>
+                    onGroupDateFormatChange(e.target.value as GroupDateFormat)
+                  }
+                  className="rounded border border-border bg-elevated px-1.5 py-0.5 text-[11px] text-text outline-none"
+                >
+                  <option value="md">01-31-2025</option>
+                  <option value="mon-d">Jan 31, 2025</option>
+                  <option value="d-mon">31 Jan 2025</option>
+                </select>
+              </label>
+            </div>
+          ) : (
           <div className="shrink-0 border-b border-border/60 bg-bg px-5 pt-4 pb-3">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
@@ -231,35 +298,9 @@ export function GroupChatsListPane({
               </div>
             </div>
 
-            {years.length > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
-                {years.map((y) => (
-                  <button
-                    key={y}
-                    type="button"
-                    onClick={() => onJumpToYear(y)}
-                    className={`text-[13px] font-medium ${
-                      listYear === y
-                        ? "text-accent"
-                        : "text-text hover:text-accent"
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div>
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => onQueryChange(e.target.value)}
-                placeholder="Search by name or phone…"
-                className="w-full max-w-md rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
-              />
-            </div>
+            {filters}
           </div>
+          )}
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg">
             {groupsCount === 0 ? (

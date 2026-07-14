@@ -6,13 +6,42 @@ import type {
   TrashedContactMessagesItem,
   UnassignedHandle,
 } from "@/lib/types";
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsShell } from "./GroupChatsShell";
 import { useHistory } from "./history";
+import {
+  TrashListChrome,
+  type TrashChromeController,
+} from "./TrashListChrome";
 import { UnassignedShell } from "./UnassignedShell";
 
 type TrashTab = "contacts" | "group-chats";
+
+function chromeDataEqual(
+  a: TrashChromeController,
+  b: TrashChromeController,
+): boolean {
+  return (
+    a.selectAllRef === b.selectAllRef &&
+    a.allSelected === b.allSelected &&
+    a.selectedCount === b.selectedCount &&
+    a.itemCount === b.itemCount &&
+    a.query === b.query &&
+    a.saving === b.saving &&
+    a.canDeleteForever === b.canDeleteForever &&
+    a.selectAllLabel === b.selectAllLabel &&
+    a.sort?.sortBy === b.sort?.sortBy &&
+    a.sort?.order === b.sort?.order
+  );
+}
 
 function mergeTrashContactList(
   unassigned: UnassignedHandle[],
@@ -142,6 +171,8 @@ export function TrashShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { clear: clearHistory } = useHistory();
+  const chromeRef = useRef<TrashChromeController | null>(null);
+  const [chrome, setChrome] = useState<TrashChromeController | null>(null);
 
   useEffect(() => {
     clearHistory();
@@ -191,25 +222,63 @@ export function TrashShell({
     />
   );
 
+  const onTrashChrome = useCallback((next: TrashChromeController | null) => {
+    chromeRef.current = next;
+    setChrome((prev) => {
+      if (next === null) return null;
+      if (prev && chromeDataEqual(prev, next)) return prev;
+      return next;
+    });
+  }, []);
+
   return (
-    <div className="h-full min-h-0 min-w-0">
-      {tab === "contacts" ? (
-        <UnassignedShell
-          mode="trash"
-          handles={contactList}
-          assignContacts={[]}
-          initialHandle={initialHandle}
-          trashTabBar={tabBar}
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-sidebar">
+      {chrome ? (
+        <TrashListChrome
+          selectAllRef={chrome.selectAllRef}
+          allSelected={chrome.allSelected}
+          selectedCount={chrome.selectedCount}
+          itemCount={chrome.itemCount}
+          query={chrome.query}
+          saving={chrome.saving}
+          canDeleteForever={chrome.canDeleteForever}
+          selectAllLabel={chrome.selectAllLabel}
+          sort={
+            chrome.sort
+              ? {
+                  sortBy: chrome.sort.sortBy,
+                  order: chrome.sort.order,
+                  onChange: (next) => chromeRef.current?.sort?.onChange(next),
+                }
+              : undefined
+          }
+          onQueryChange={(q) => chromeRef.current?.onQueryChange(q)}
+          onToggleSelectAll={() => chromeRef.current?.onToggleSelectAll()}
+          onDeleteForever={() => chromeRef.current?.onDeleteForever()}
+          tabBar={tabBar}
         />
-      ) : (
-        <GroupChatsShell
-          mode="trash"
-          groupChats={groupChats}
-          initialConversationId={initialConversationId}
-          initialYear={initialYear}
-          trashTabBar={tabBar}
-        />
-      )}
+      ) : null}
+      <div className="min-h-0 flex-1">
+        {tab === "contacts" ? (
+          <UnassignedShell
+            mode="trash"
+            handles={contactList}
+            assignContacts={[]}
+            initialHandle={initialHandle}
+            hideListChrome
+            onTrashChrome={onTrashChrome}
+          />
+        ) : (
+          <GroupChatsShell
+            mode="trash"
+            groupChats={groupChats}
+            initialConversationId={initialConversationId}
+            initialYear={initialYear}
+            embedded
+            onTrashChrome={onTrashChrome}
+          />
+        )}
+      </div>
     </div>
   );
 }
