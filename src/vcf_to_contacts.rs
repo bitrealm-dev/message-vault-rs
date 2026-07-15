@@ -5,6 +5,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
+use crate::phone;
 use crate::vcf::{self, VcfCard};
 
 #[derive(Debug, Default)]
@@ -65,6 +66,10 @@ pub fn convert(
         let mut contact = card_to_contact(card);
         apply_exclude(&mut contact, &exclude_map);
         finalize_contact(&mut contact);
+        if contact.phones.is_empty() {
+            stats.cards_skipped_no_tel += 1;
+            continue;
+        }
 
         // Merge into an existing contact if any phone already seen.
         let existing = contact
@@ -181,6 +186,16 @@ fn apply_exclude(contact: &mut ContactOut, exclude_map: &HashMap<String, String>
 }
 
 fn finalize_contact(contact: &mut ContactOut) {
+    let mut normalized = Vec::new();
+    for raw in std::mem::take(&mut contact.phones) {
+        let Some(e164) = phone::to_e164(&raw) else {
+            continue;
+        };
+        if !normalized.iter().any(|p| p == &e164) {
+            normalized.push(e164);
+        }
+    }
+    contact.phones = normalized;
     contact.tags.sort();
     contact.tags.dedup();
 }

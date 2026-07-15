@@ -56,11 +56,22 @@ export function listGroupMemberContactIds(name: string): number[] {
 }
 
 export function groupFromSlug(slug: string): string | null {
-  const normalized = slug.trim().toLowerCase();
-  if (!normalized) return null;
-  for (const name of listGroups()) {
-    if (groupSlug(name) === normalized) return name;
+  const trimmed = slug.trim();
+  if (!trimmed) return null;
+
+  const groups = listGroups();
+
+  // Prefer exact (case-preserving) slug match.
+  for (const name of groups) {
+    if (groupSlug(name) === trimmed) return name;
   }
+
+  // Fallback for older lowercase-only URLs: first case-insensitive hit.
+  const folded = trimmed.toLowerCase();
+  for (const name of groups) {
+    if (groupSlug(name).toLowerCase() === folded) return name;
+  }
+
   return null;
 }
 

@@ -64,11 +64,19 @@ fn is_email_handle(handle: &str) -> bool {
 }
 
 fn phone_handles_only(handles: &[String]) -> Vec<String> {
-    handles
-        .iter()
-        .filter(|h| !is_email_handle(h))
-        .cloned()
-        .collect()
+    let mut out = Vec::new();
+    for h in handles {
+        if is_email_handle(h) {
+            continue;
+        }
+        let Some(e164) = crate::phone::to_e164(h) else {
+            continue;
+        };
+        if !out.iter().any(|p| p == &e164) {
+            out.push(e164);
+        }
+    }
+    out
 }
 
 /// Emails attached to a contact, keyed for restore by that contact's phone set.

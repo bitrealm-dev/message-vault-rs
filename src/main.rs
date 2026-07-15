@@ -8,6 +8,7 @@ mod import;
 mod ingest;
 mod models;
 mod ndjson;
+mod phone;
 mod reset_demo;
 mod schema;
 mod vault_owner;

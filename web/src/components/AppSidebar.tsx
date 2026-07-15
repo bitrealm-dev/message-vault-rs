@@ -360,7 +360,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
 
           return (
             <div
-              key={href}
+              key={name}
               className="relative"
               onMouseEnter={() => {
                 if (menuFor === name) cancelCloseGroupMenu();
