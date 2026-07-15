@@ -136,30 +136,27 @@ export function BrowseThreadPane({
     active: boolean;
     disabled?: boolean;
     onClick: () => void;
-  }> = [
-    ...sourceOptions.map((opt) => ({
-      key: `src-${opt.id ?? "all"}`,
-      label: opt.label,
-      title: `${opt.label}: ${opt.count.toLocaleString()} messages`,
-      active: opt.id === null ? source === null : source === opt.id,
-      disabled: !opt.enabled,
-      onClick: () => {
-        if (!opt.enabled) return;
-        onSourceChange(opt.id);
-      },
-    })),
-    ...yearsInThread.map((y) => ({
-      key: `y-${y.year}`,
-      label: String(y.year),
-      title:
-        y.messageCount > 0
-          ? `${y.year}: ${y.messageCount.toLocaleString()} messages`
-          : `Jump to ${y.year}`,
-      active: false,
-      disabled: false,
-      onClick: () => jumpToYear(y.year),
-    })),
-  ];
+  }> = sourceOptions.map((opt) => ({
+    key: `src-${opt.id ?? "all"}`,
+    label: opt.label,
+    title: `${opt.label}: ${opt.count.toLocaleString()} messages`,
+    active: opt.id === null ? source === null : source === opt.id,
+    disabled: !opt.enabled,
+    onClick: () => {
+      if (!opt.enabled) return;
+      onSourceChange(opt.id);
+    },
+  }));
+
+  const yearItems = yearsInThread.map((y) => ({
+    key: `y-${y.year}`,
+    label: String(y.year),
+    title:
+      y.messageCount > 0
+        ? `${y.year}: ${y.messageCount.toLocaleString()} messages`
+        : `Jump to ${y.year}`,
+    onClick: () => jumpToYear(y.year),
+  }));
 
   const showHeader = Boolean(
     (detail && !contactCreating) || (contactCreating && editDraft),
@@ -269,6 +266,22 @@ export function BrowseThreadPane({
                     {item.label}
                   </button>
                 </span>
+              ))}
+            </div>
+          )}
+
+          {!contactCreating && yearItems.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
+              {yearItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  title={item.title}
+                  onClick={item.onClick}
+                  className="text-[13px] font-medium tabular-nums text-text hover:text-accent"
+                >
+                  {item.label}
+                </button>
               ))}
             </div>
           )}
