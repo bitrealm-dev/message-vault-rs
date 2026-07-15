@@ -1,5 +1,6 @@
 import { ContactBrowsePage, parseContactId } from "@/components/ContactBrowsePage";
 import { groupFromSlug } from "@/lib/db";
+import { withServerAccount } from "@/lib/serverAccount";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function GroupPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const group = groupFromSlug(slug);
+  const group = await withServerAccount(() => groupFromSlug(slug));
   if (!group) notFound();
 
   return (

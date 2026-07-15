@@ -11,10 +11,6 @@ import type {
 import { searchContacts } from "@/lib/contactSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import { phoneHandlesOnly } from "@/lib/handleKind";
-import {
-  isGroupChatThreadKey,
-  yearThreadKey,
-} from "@/lib/threadKeys";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVaultReadOnly } from "./useVaultReadOnly";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -26,8 +22,12 @@ import {
   type ContactEditDraft,
 } from "./contactEdit";
 import { BrowseContactList } from "./BrowseContactList";
-import { BrowseDetailPane } from "./BrowseDetailPane";
-import { BrowseMessagesPane } from "./BrowseMessagesPane";
+import {
+  BrowseGroupChatsPane,
+  collapseContactGroupChats,
+  type ContactGroupConversation,
+} from "./BrowseGroupChatsPane";
+import { BrowseThreadPane } from "./BrowseThreadPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { useHistory } from "./history";
 import {
@@ -38,7 +38,11 @@ import {
   TrashMessagesIcon,
   XIcon,
 } from "./icons";
-import { type SortMode, type SortOrder } from "./SortByMenu";
+import {
+  type BrowseGroupChatSortBy,
+  type SortMode,
+  type SortOrder,
+} from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useListSelection } from "./useListSelection";
 import { useDismissible } from "./useDismissible";
@@ -49,7 +53,10 @@ import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
+const GROUP_CHAT_SORT_KEY = "mv-browse-group-chat-sort";
+const GROUP_CHAT_SORT_ORDER_KEY = "mv-browse-group-chat-sort-order";
 const SORT_MODE_ALLOWED = ["first", "last", "messages"] as const;
+const GROUP_CHAT_SORT_ALLOWED = ["date", "messages"] as const;
 const SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 export function BrowseShell({
@@ -101,7 +108,7 @@ export function BrowseShell({
     all: number;
     bySource: Record<string, number>;
   }>({ all: 0, bySource: {} });
-  const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
+  const [groupDateFormat] = usePersistedEnum(
     GROUP_DATE_FORMAT_KEY,
     GROUP_DATE_ALLOWED,
     "md",
@@ -163,16 +170,33 @@ export function BrowseShell({
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storage = usePanelLayoutStorage();
-  const sideLayout = useDefaultLayout({
-    id: "mv-browse-side",
-    panelIds: ["list", "right"],
+  const mainLayout = useDefaultLayout({
+    id: "mv-browse-main",
+    panelIds: ["list", "groups", "thread"],
     storage,
   });
-  const threadsLayout = useDefaultLayout({
-    id: "mv-browse-threads",
-    panelIds: ["detail", "messages"],
-    storage,
-  });
+  const [groupChatSortBy, setGroupChatSortBy] = usePersistedEnum(
+    GROUP_CHAT_SORT_KEY,
+    GROUP_CHAT_SORT_ALLOWED,
+    "date",
+  );
+  const [groupChatSortOrder, setGroupChatSortOrder] = usePersistedEnum(
+    GROUP_CHAT_SORT_ORDER_KEY,
+    SORT_ORDER_ALLOWED,
+    "desc",
+  );
+  const setGroupChatSort = useCallback(
+    (next: { sortBy: BrowseGroupChatSortBy; order: SortOrder }) => {
+      setGroupChatSortBy(next.sortBy);
+      setGroupChatSortOrder(next.order);
+    },
+    [setGroupChatSortBy, setGroupChatSortOrder],
+  );
+  const [groupChatFilterYear, setGroupChatFilterYear] = useState<number | null>(
+    null,
+  );
+  const [selectedGroupConversationId, setSelectedGroupConversationId] =
+    useState<number | null>(null);
 
   const saveContactPatch = useCallback(
     async (patch: {
@@ -316,19 +340,26 @@ export function BrowseShell({
 
   const selectContact = useCallback(
     (id: number) => {
-      setContactId(id);
-      setMessages([]);
-      setActiveThread(null);
+      setSelectedGroupConversationId(null);
+      setGroupChatFilterYear(null);
       setContactEditing(false);
       setContactCreating(false);
       setEditDraft(null);
+      if (id === contactId) {
+        setActiveThread("dm");
+        setThreadsEpoch((e) => e + 1);
+        return;
+      }
+      setContactId(id);
+      setMessages([]);
+      setActiveThread(null);
       const params = new URLSearchParams(searchParams.toString());
       params.set("c", String(id));
       params.delete("y");
       params.delete("conv");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [contactId, pathname, router, searchParams],
   );
   selectContactRef.current = selectContact;
 
@@ -410,56 +441,78 @@ export function BrowseShell({
         }
 
         setActiveThread((prev) => {
-          if (!prev) return prev;
-          if (prev.startsWith("y-")) {
-            const year = Number(prev.slice(2));
-            return nextYearly.some((t) => t.year === year) ? prev : null;
+          if (prev === "dm") return prev;
+          if (prev?.startsWith("gfull-")) {
+            const stillThere = nextGroupChats.some((t) => {
+              const ids =
+                t.conversationIds?.length > 0
+                  ? t.conversationIds
+                  : [t.conversationId];
+              return `gfull-${ids.join("-")}` === prev;
+            });
+            return stillThere ? prev : null;
           }
-          return nextGroupChats.some((t) => isGroupChatThreadKey(t, prev))
-            ? prev
-            : null;
+          return null;
         });
 
-        // Prefer an already-open thread; otherwise auto-open the sole yearly thread.
+        // Prefer an already-open group thread; otherwise load full 1:1 history.
         let key = activeThreadRef.current;
-        if (key?.startsWith("y-")) {
-          const year = Number(key.slice(2));
-          if (!nextYearly.some((t) => t.year === year)) key = null;
-        } else if (key) {
-          if (!nextGroupChats.some((t) => isGroupChatThreadKey(t, key!))) key = null;
+        if (key?.startsWith("gfull-")) {
+          const stillThere = nextGroupChats.some((t) => {
+            const ids =
+              t.conversationIds?.length > 0
+                ? t.conversationIds
+                : [t.conversationId];
+            return `gfull-${ids.join("-")}` === key;
+          });
+          if (!stillThere) key = null;
+        } else if (key !== "dm") {
+          key = null;
         }
-        if (nextYearly.length === 1) {
-          key = yearThreadKey(nextYearly[0]!.year);
-          setActiveThread(key);
-        } else if (!key) {
-          if (switchingContact) setMessages([]);
-          return;
+
+        const dmIds = [
+          ...new Set(nextYearly.flatMap((y) => y.conversationIds)),
+        ];
+
+        if (!key || key === "dm" || switchingContact) {
+          if (dmIds.length === 0) {
+            if (switchingContact) {
+              setMessages([]);
+              setActiveThread(null);
+              setSelectedGroupConversationId(null);
+            }
+            return;
+          }
+          key = "dm";
+          setActiveThread("dm");
+          if (switchingContact) setSelectedGroupConversationId(null);
         }
 
         let convIds: number[] | null = null;
-        let year: number | null = null;
-        if (key.startsWith("y-")) {
-          const y = nextYearly.find((t) => yearThreadKey(t.year) === key);
-          if (y) {
-            convIds = y.conversationIds;
-            year = y.year;
-          }
-        } else {
-          const g = nextGroupChats.find((t) => isGroupChatThreadKey(t, key!));
+        if (key === "dm") {
+          convIds = dmIds;
+        } else if (key.startsWith("gfull-")) {
+          const g = nextGroupChats.find((t) => {
+            const ids =
+              t.conversationIds?.length > 0
+                ? t.conversationIds
+                : [t.conversationId];
+            return `gfull-${ids.join("-")}` === key;
+          });
           if (g) {
-            convIds = g.conversationIds?.length
-              ? g.conversationIds
-              : [g.conversationId];
-            year = g.year;
+            convIds =
+              g.conversationIds?.length > 0
+                ? g.conversationIds
+                : [g.conversationId];
           }
         }
-        if (!convIds || year == null) {
+        if (!convIds?.length) {
           setMessages([]);
           return;
         }
         setLoadingMessages(true);
         const ids = convIds.join(",");
-        fetch(`/api/messages?conversationIds=${ids}&year=${year}${sourceQuery}`)
+        fetch(`/api/messages?conversationIds=${ids}${sourceQuery}`)
           .then((r) => r.json())
           .then((msgData) => {
             if (!cancelled) setMessages(msgData.messages ?? []);
@@ -476,12 +529,12 @@ export function BrowseShell({
     };
   }, [contactId, sourceQuery, setSource, threadsEpoch]);
 
-  const loadMessages = useCallback(
-    (conversationIds: number[], year: number, key: string) => {
+  const loadFullMessages = useCallback(
+    (conversationIds: number[], key: string) => {
       setActiveThread(key);
       setLoadingMessages(true);
       const ids = conversationIds.join(",");
-      fetch(`/api/messages?conversationIds=${ids}&year=${year}${sourceQuery}`)
+      fetch(`/api/messages?conversationIds=${ids}${sourceQuery}`)
         .then((r) => r.json())
         .then((data) => setMessages(data.messages ?? []))
         .finally(() => setLoadingMessages(false));
@@ -489,14 +542,45 @@ export function BrowseShell({
     [sourceQuery],
   );
 
-  const groupChatsByYear = useMemo(() => {
-    const map = new Map<number, GroupChatThread[]>();
-    for (const g of groupChats) {
-      if (!map.has(g.year)) map.set(g.year, []);
-      map.get(g.year)!.push(g);
-    }
-    return [...map.entries()].sort(([a], [b]) => b - a);
+  const groupChatYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const g of groupChats) years.add(g.year);
+    return [...years].sort((a, b) => b - a);
   }, [groupChats]);
+
+  useEffect(() => {
+    if (
+      groupChatFilterYear != null &&
+      !groupChatYears.includes(groupChatFilterYear)
+    ) {
+      setGroupChatFilterYear(null);
+    }
+  }, [groupChatFilterYear, groupChatYears]);
+
+  const collapsedGroupChats = useMemo(() => {
+    const filtered =
+      groupChatFilterYear == null
+        ? groupChats
+        : groupChats.filter((g) => g.year === groupChatFilterYear);
+    const items = collapseContactGroupChats(filtered);
+    items.sort((a, b) => {
+      const cmp =
+        groupChatSortBy === "messages"
+          ? a.messageCount - b.messageCount
+          : a.dateEnd.localeCompare(b.dateEnd);
+      return groupChatSortOrder === "desc" ? -cmp : cmp;
+    });
+    return items;
+  }, [groupChats, groupChatFilterYear, groupChatSortBy, groupChatSortOrder]);
+
+  const selectGroupConversation = useCallback(
+    (g: ContactGroupConversation) => {
+      setSelectedGroupConversationId(g.conversationId);
+      const key = `gfull-${g.conversationIds.join("-")}`;
+      loadFullMessages(g.conversationIds, key);
+    },
+    [loadFullMessages],
+  );
 
   const selectedContacts = useMemo(() => {
     const selected = new Set(selectedIds);
@@ -582,6 +666,8 @@ export function BrowseShell({
     setDetail(null);
     setYearly([]);
     setGroupChats([]);
+    setGroupChatFilterYear(null);
+    setSelectedGroupConversationId(null);
     setMessageSources([]);
     setSourceCounts({ all: 0, bySource: {} });
     setMessages([]);
@@ -753,6 +839,8 @@ export function BrowseShell({
           setMessages([]);
           setActiveThread(null);
           setContactId(null);
+          setGroupChatFilterYear(null);
+          setSelectedGroupConversationId(null);
           loadedContactIdRef.current = null;
           queueStatusMessage(
             ids.length === 1
@@ -1308,26 +1396,45 @@ export function BrowseShell({
 
   const activeThreadMeta = useMemo(() => {
     if (!activeThread) return null;
-    if (activeThread.startsWith("y-")) {
-      const y = yearly.find((t) => yearThreadKey(t.year) === activeThread);
-      if (!y) return null;
+    if (activeThread === "dm") {
+      if (yearly.length === 0) return null;
+      const messageCount = yearly.reduce((n, y) => n + y.messageCount, 0);
+      const attachmentCount = yearly.reduce((n, y) => n + y.attachmentCount, 0);
+      const dateStart = yearly.reduce(
+        (min, y) => (y.dateStart < min ? y.dateStart : min),
+        yearly[0]!.dateStart,
+      );
+      const dateEnd = yearly.reduce(
+        (max, y) => (y.dateEnd > max ? y.dateEnd : max),
+        yearly[0]!.dateEnd,
+      );
       return {
-        title: String(y.year),
-        dateStart: y.dateStart,
-        dateEnd: y.dateEnd,
-        messageCount: y.messageCount,
-        attachmentCount: y.attachmentCount,
+        title: detail?.displayName ?? "Messages",
+        dateStart,
+        dateEnd,
+        messageCount,
+        attachmentCount,
       };
     }
-    const g = groupChats.find((t) => isGroupChatThreadKey(t, activeThread));
-    if (!g) return null;
-    return {
-      title: g.title,
-      dateStart: g.dateStart,
-      dateEnd: g.dateEnd,
-      messageCount: g.messageCount,
-    };
-  }, [activeThread, yearly, groupChats]);
+    if (activeThread.startsWith("gfull-")) {
+      const g = collapsedGroupChats.find(
+        (t) => `gfull-${t.conversationIds.join("-")}` === activeThread,
+      );
+      if (!g) return null;
+      return {
+        title: g.namedTitle || g.title,
+        dateStart: g.dateStart,
+        dateEnd: g.dateEnd,
+        messageCount: g.messageCount,
+      };
+    }
+    return null;
+  }, [activeThread, yearly, collapsedGroupChats, detail]);
+
+  const groupThreadTitle =
+    activeThread?.startsWith("gfull-") && activeThreadMeta
+      ? activeThreadMeta.title
+      : null;
 
   const trashConfirmCopy = useMemo(() => {
     if (!trashConfirm) return null;
@@ -1348,17 +1455,17 @@ export function BrowseShell({
   return (
     <>
     <Group
-      id="mv-browse-side"
+      id="mv-browse-main"
       orientation="horizontal"
       className="h-full w-full"
-      defaultLayout={sideLayout.defaultLayout}
-      onLayoutChanged={sideLayout.onLayoutChanged}
+      defaultLayout={mainLayout.defaultLayout}
+      onLayoutChanged={mainLayout.onLayoutChanged}
     >
       <Panel
         id="list"
-        defaultSize={272}
+        defaultSize={240}
         minSize={100}
-        maxSize={720}
+        maxSize={480}
         className="min-h-0"
       >
         <BrowseContactList
@@ -1386,9 +1493,47 @@ export function BrowseShell({
 
       <PaneSeparator orientation="vertical" />
 
-      <Panel id="right" minSize="30%" className="min-h-0 min-w-0">
+      <Panel
+        id="groups"
+        defaultSize={300}
+        minSize={180}
+        maxSize={520}
+        className="min-h-0"
+      >
+        {hasSelection ? (
+          <div className="flex h-full items-center justify-center bg-sidebar px-4">
+            <p className="text-center text-[13px] text-muted">
+              Clear selection to browse group chats
+            </p>
+          </div>
+        ) : (
+          <BrowseGroupChatsPane
+            items={collapsedGroupChats}
+            selectedConversationId={selectedGroupConversationId}
+            years={groupChatYears}
+            filterYear={groupChatFilterYear}
+            onFilterYearChange={setGroupChatFilterYear}
+            sortBy={groupChatSortBy}
+            sortOrder={groupChatSortOrder}
+            onSortChange={setGroupChatSort}
+            groupDateFormat={groupDateFormat}
+            onSelect={selectGroupConversation}
+            emptyLabel={
+              !contactId
+                ? "Choose a contact"
+                : loadingThreads
+                  ? "Loading…"
+                  : "No group chats"
+            }
+          />
+        )}
+      </Panel>
+
+      <PaneSeparator orientation="vertical" />
+
+      <Panel id="thread" minSize="30%" className="min-h-0 min-w-0">
         <div
-          id={`browse-${paneStorageKey}-right`}
+          id={`browse-${paneStorageKey}-thread`}
           className="flex h-full min-h-0 min-w-0 flex-col"
         >
         <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border px-5">
@@ -1484,39 +1629,6 @@ export function BrowseShell({
           )}
         </div>
 
-        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-5">
-          {hasSelection ? (
-            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-              {selectedIds.size} contact
-              {selectedIds.size === 1 ? "" : "s"} selected
-            </h1>
-          ) : contactCreating && editDraft ? (
-            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-              {[editDraft.firstName, editDraft.lastName]
-                .map((p) => p.trim())
-                .filter(Boolean)
-                .join(" ") || "New contact"}
-            </h1>
-          ) : detail ? (
-            <h1 className="truncate text-xl font-semibold tracking-tight text-text">
-              {contactEditing && editDraft
-                ? [editDraft.firstName, editDraft.lastName]
-                    .map((p) => p.trim())
-                    .filter(Boolean)
-                    .join(" ") || detail.displayName
-                : detail.displayName}
-            </h1>
-          ) : (
-            <span className="text-[13px] text-muted">
-              {!contactId
-                ? "Choose a contact"
-                : loadingThreads
-                  ? "Loading…"
-                  : ""}
-            </span>
-          )}
-        </div>
-
         {hasSelection ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg px-5 pt-8 pb-5">
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
@@ -1559,57 +1671,39 @@ export function BrowseShell({
             </div>
           </div>
         ) : (
-          <Group
-            id="mv-browse-threads"
-            orientation="vertical"
-            className="min-h-0 flex-1"
-            defaultLayout={threadsLayout.defaultLayout}
-            onLayoutChanged={threadsLayout.onLayoutChanged}
-          >
-            <Panel
-              id="detail"
-              defaultSize="40%"
-              minSize="25%"
-              maxSize="75%"
-              className="min-h-0"
-            >
-              <BrowseDetailPane
-                detail={detail}
-                contactId={contactId}
-                contactCreating={contactCreating}
-                formOpen={formOpen}
-                editDraft={editDraft}
-                onDraftChange={setEditDraft}
-                groupsFor={groupsFor}
-                excludeOverrides={excludeOverrides}
-                sources={sources}
-                messageSources={messageSources}
-                sourceCounts={sourceCounts}
-                source={source}
-                onSourceChange={setSource}
-                yearly={yearly}
-                activeThread={activeThread}
-                onLoadYear={(y) =>
-                  loadMessages(y.conversationIds, y.year, yearThreadKey(y.year))
-                }
-                groupChatsByYear={groupChatsByYear}
-                groupDateFormat={groupDateFormat}
-                onGroupDateFormatChange={setGroupDateFormat}
-                onLoadGroupChatThread={loadMessages}
-              />
-            </Panel>
-
-            <PaneSeparator orientation="horizontal" />
-
-            <Panel id="messages" minSize="25%" className="min-h-0">
-              <BrowseMessagesPane
-                activeThread={activeThread}
-                loadingMessages={loadingMessages}
-                messages={messages}
-                activeThreadMeta={activeThreadMeta}
-              />
-            </Panel>
-          </Group>
+          <div className="min-h-0 flex-1">
+            <BrowseThreadPane
+              detail={detail}
+              contactCreating={contactCreating}
+              formOpen={formOpen}
+              editDraft={editDraft}
+              onDraftChange={setEditDraft}
+              groups={
+                contactCreating && editDraft
+                  ? editDraft.contactGroups
+                  : detail
+                    ? groupsFor(detail.id, detail.contactGroups)
+                    : []
+              }
+              excluded={
+                contactCreating && editDraft
+                  ? editDraft.exclude
+                  : detail
+                    ? (excludeOverrides.get(detail.id) ?? detail.exclude)
+                    : false
+              }
+              sources={sources}
+              messageSources={messageSources}
+              sourceCounts={sourceCounts}
+              source={source}
+              onSourceChange={setSource}
+              yearly={yearly}
+              messages={messages}
+              loadingMessages={loadingMessages}
+              activeThread={activeThread}
+              threadTitle={groupThreadTitle}
+            />
+          </div>
         )}
         </div>
       </Panel>
