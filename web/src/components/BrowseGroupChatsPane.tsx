@@ -209,9 +209,6 @@ export function BrowseGroupChatsPane({
           <span className="truncate text-[13px] text-muted tabular-nums">
             {selectedIds.size > 0 ? selectedIds.size : ""}
           </span>
-          <h2 className="truncate text-[13px] font-semibold text-text">
-            Group messages
-          </h2>
         </label>
         <div className="flex shrink-0 items-center gap-1.5">
           {!vaultReadOnly && onTrashMessages && (
@@ -240,6 +237,9 @@ export function BrowseGroupChatsPane({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+        <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
+          Group messages
+        </div>
         {items.length === 0 ? (
           <p className="px-3 py-4 text-[12px] text-muted">{emptyLabel}</p>
         ) : (

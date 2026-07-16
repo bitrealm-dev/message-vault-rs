@@ -195,7 +195,7 @@ export function BrowseShell({
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storage = usePanelLayoutStorage();
   const mainLayout = useDefaultLayout({
-    id: "mv-browse-main",
+    id: "mv-browse-main-v2",
     panelIds: ["list", "groups", "thread"],
     storage,
   });
@@ -1368,28 +1368,24 @@ export function BrowseShell({
     [],
   );
 
-  const onCtxEdit = useCallback(() => {
-    if (!ctxMenu || hasSelection || contactCreating || contactEditing) return;
-    const id = ctxMenu.id;
-    setCtxMenu(null);
-    if (contactId === id && detail?.id === id) {
-      beginContactEdit();
-      return;
-    }
-    pendingEditIdRef.current = id;
-    setSelectedIds(new Set());
-    selectContact(id);
-  }, [
-    ctxMenu,
-    hasSelection,
-    contactCreating,
-    contactEditing,
-    contactId,
-    detail,
-    beginContactEdit,
-    selectContact,
-    setSelectedIds,
-  ]);
+  const onCtxEdit = useCallback(
+    (anchorEl: HTMLElement) => {
+      if (!ctxMenu || hasSelection || contactCreating || contactEditing) return;
+      const id = ctxMenu.id;
+      setCtxMenu(null);
+      void openEditContactInPlace(
+        id,
+        contactFormAnchorFromRect(anchorEl.getBoundingClientRect()),
+      );
+    },
+    [
+      ctxMenu,
+      hasSelection,
+      contactCreating,
+      contactEditing,
+      openEditContactInPlace,
+    ],
+  );
 
   const requestTrash = useCallback(
     (idsOverride?: number[]) => {
@@ -2191,7 +2187,7 @@ export function BrowseShell({
   return (
     <>
     <Group
-      id="mv-browse-main"
+      id="mv-browse-main-v2"
       orientation="horizontal"
       className="h-full w-full"
       defaultLayout={mainLayout.defaultLayout}
@@ -2237,6 +2233,7 @@ export function BrowseShell({
           onSortChange={setSort}
           grouped={grouped}
           contactId={contactId}
+          contextMenuId={ctxMenu?.id ?? null}
           selectedIds={selectedIds}
           onSelectColumnClick={onSelectColumnClick}
           onNamePhoneClick={onNamePhoneClick}
@@ -2248,7 +2245,7 @@ export function BrowseShell({
 
       <Panel
         id="groups"
-        defaultSize={300}
+        defaultSize={360}
         minSize={180}
         maxSize={520}
         className="min-h-0"
@@ -2528,9 +2525,12 @@ export function BrowseShell({
             disabled={saving || contactCreating || contactEditing}
             className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
             onMouseEnter={scheduleCloseGroupsPanel}
-            onClick={() => {
+            onClick={(e) => {
               setCtxMenu(null);
-              beginCreateContact();
+              openCreateContactInPlace(
+                "",
+                contactFormAnchorFromRect(e.currentTarget.getBoundingClientRect()),
+              );
             }}
           >
             <NewContactIcon className="size-5 shrink-0 opacity-80" />
@@ -2544,7 +2544,7 @@ export function BrowseShell({
           }
           className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
           onMouseEnter={scheduleCloseGroupsPanel}
-          onClick={onCtxEdit}
+          onClick={(e) => onCtxEdit(e.currentTarget)}
         >
           <PencilIcon className="size-5 shrink-0 opacity-80" />
           Edit

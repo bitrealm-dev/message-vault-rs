@@ -5,6 +5,7 @@ import {
   getDb,
   hasDuplicateOfColumn,
   hasTrashedContactsTable,
+  hasTrashedConversationsTable,
   hasTrashedHandlesTable,
   sortFields,
 } from "./dbCore";
@@ -247,7 +248,9 @@ export function listContacts(section: ContactSection): ContactListItem[] {
     else groupsByContact.set(row.contact_id, [row.name]);
   }
 
-  const messageCounts = contactMessageCountsById(rows.map((r) => r.id));
+  const contactIds = rows.map((r) => r.id);
+  const messageCounts = contactMessageCountsById(contactIds);
+  const groupMessageCounts = contactGroupMessageCountsById(contactIds);
 
   return rows
     .map((row) => {
@@ -262,6 +265,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         contactGroups: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: messageCounts.get(row.id) ?? 0,
+        groupMessageCount: groupMessageCounts.get(row.id) ?? 0,
         ...sorts,
       };
     })
@@ -311,6 +315,7 @@ export function getContact(id: number): ContactDetail | null {
   const messageCount = contactMessageSourceCountsForConversations(
     contactIndividualConversationIds(phoneList),
   ).all;
+  const groupMessageCount = contactGroupMessageCountsById([id]).get(id) ?? 0;
 
   const sorts = sortFields(row);
   return {
@@ -325,6 +330,7 @@ export function getContact(id: number): ContactDetail | null {
     dateStart: dateRange?.start ?? null,
     dateEnd: dateRange?.end ?? null,
     messageCount,
+    groupMessageCount,
     ...sorts,
   };
 }
@@ -475,6 +481,40 @@ function contactMessageCountsById(
        JOIN messages m ON m.conversation_id = c.id
        WHERE cp.account_id = ? AND cp.contact_id IN (${placeholders})${hideDupes}
          ${notTrashedHandleSql("cp.handle", "cp.account_id")}
+       GROUP BY cp.contact_id`,
+    )
+    .all(accountId, ...contactIds) as Array<{ contact_id: number; n: number }>;
+  for (const r of rows) counts.set(r.contact_id, r.n);
+  return counts;
+}
+
+/** Distinct group chats each contact participates in (non-trashed). */
+function contactGroupMessageCountsById(
+  contactIds: number[],
+): Map<number, number> {
+  const counts = new Map<number, number>();
+  if (!contactIds.length) return counts;
+  const accountId = currentAccountId();
+  const db = getDb();
+  const placeholders = contactIds.map(() => "?").join(",");
+  const trashFilter = hasTrashedConversationsTable(db)
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM trashed_conversations tc
+         WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
+       )`
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT cp.contact_id AS contact_id, COUNT(DISTINCT c.id) AS n
+       FROM contact_handles cp
+       JOIN participants p ON p.handle = cp.handle
+       JOIN conversations c
+         ON c.id = p.conversation_id
+        AND c.conversation_type = 'group'
+        AND c.account_id = cp.account_id
+       WHERE cp.account_id = ? AND cp.contact_id IN (${placeholders})
+         ${notTrashedHandleSql("cp.handle", "cp.account_id")}
+         ${trashFilter}
        GROUP BY cp.contact_id`,
     )
     .all(accountId, ...contactIds) as Array<{ contact_id: number; n: number }>;
@@ -647,6 +687,7 @@ export function listContactsForPicker(): ContactListItem[] {
         contactGroups: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: 0,
+        groupMessageCount: 0,
         ...sorts,
       };
     })

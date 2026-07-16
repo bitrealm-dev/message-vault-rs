@@ -10,7 +10,7 @@ export function MessageBubble({ message }: { message: MessageRow }) {
   if (message.isAnnouncement) {
     return (
       <div
-        className="my-2 text-center text-[11px] text-muted"
+        className="my-2 text-center text-[12px] text-muted"
         data-timestamp={message.timestamp}
       >
         {message.body || "Announcement"}
@@ -21,7 +21,7 @@ export function MessageBubble({ message }: { message: MessageRow }) {
   return (
     <div className={`flex flex-col ${align}`} data-timestamp={message.timestamp}>
       {!message.isFromMe && (
-        <span className="mb-0.5 px-1 text-[10px] text-muted">
+        <span className="mb-0.5 px-1 text-[12px] text-muted">
           {message.senderName}
         </span>
       )}
@@ -35,7 +35,7 @@ export function MessageBubble({ message }: { message: MessageRow }) {
           hasBody={Boolean(message.body)}
         />
       </div>
-      <span className="mt-0.5 px-1 text-[10px] text-muted">
+      <span className="mt-0.5 px-1 text-[12px] text-muted">
         {message.timestamp.replace("T", " ").slice(0, 19)}
       </span>
     </div>

@@ -5,9 +5,9 @@ import type { MouseEvent, ReactNode, RefObject } from "react";
 import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
 import {
-  MessageIcon,
+  ChatBubbleIcon,
+  GroupMessagesOutlineIcon,
   PencilIcon,
-  QuestionHandleIcon,
   XIcon,
 } from "./icons";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
@@ -33,6 +33,7 @@ export function BrowseContactList({
   onSortChange,
   grouped,
   contactId,
+  contextMenuId = null,
   selectedIds,
   onSelectColumnClick,
   onNamePhoneClick,
@@ -59,6 +60,8 @@ export function BrowseContactList({
   onSortChange: (next: { sort: SortMode; order: SortOrder }) => void;
   grouped: [string, ContactListItem[]][];
   contactId: number | null;
+  /** Right-clicked contact while its context menu is open. */
+  contextMenuId?: number | null;
   selectedIds: Set<number>;
   onSelectColumnClick: (id: number, e: MouseEvent) => void;
   onNamePhoneClick: (id: number, e: MouseEvent | { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
@@ -145,10 +148,9 @@ export function BrowseContactList({
               </div>
             )}
             {items.map((c, i) => {
-              const active = c.id === contactId;
+              const menuTarget = contextMenuId != null && c.id === contextMenuId;
+              const active = c.id === contactId || menuTarget;
               const checked = selectedIds.has(c.id);
-              const isNameless =
-                !(c.firstName ?? "").trim() && !(c.lastName ?? "").trim();
               const showInsetDivider = i < items.length - 1;
               const selectionActive = selectedIds.size >= 1;
               return (
@@ -239,24 +241,35 @@ export function BrowseContactList({
                       <span className="block truncate text-[13px] font-semibold text-text">
                         {c.displayName}
                       </span>
-                      {c.preferredHandle && (
-                        <span className="block truncate text-[11px] text-muted">
-                          {c.preferredHandle}
+                      {c.preferredHandle &&
+                        c.preferredHandle !== c.displayName && (
+                          <span className="block truncate text-[12px] text-muted">
+                            {c.preferredHandle}
+                          </span>
+                        )}
+                      {c.preferredHandle &&
+                        c.preferredHandle === c.displayName && (
+                          <span
+                            className="block h-[1.5rem] text-[12px]"
+                            aria-hidden
+                          />
+                        )}
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5 text-[12px] tabular-nums text-muted">
+                      {(c.messageCount > 0 || c.groupMessageCount > 0) && (
+                        <span className="inline-flex min-h-4 items-center gap-0.5">
+                          {c.messageCount > 0 ? (
+                            <>
+                              {c.messageCount.toLocaleString()}
+                              <ChatBubbleIcon className="size-4 opacity-80" />
+                            </>
+                          ) : null}
                         </span>
                       )}
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5 text-[11px] tabular-nums text-muted">
-                      <span className="inline-flex items-center gap-0.5">
-                        <MessageIcon className="size-3.5 opacity-80" />
-                        {c.messageCount.toLocaleString()}
-                      </span>
-                      {isNameless && (
-                        <span
-                          title="No name"
-                          aria-label="No name"
-                          className="inline-flex"
-                        >
-                          <QuestionHandleIcon className="size-3.5 opacity-80" />
+                      {c.groupMessageCount > 0 && (
+                        <span className="inline-flex items-center gap-0.5">
+                          {c.groupMessageCount.toLocaleString()}
+                          <GroupMessagesOutlineIcon className="size-4 opacity-80" />
                         </span>
                       )}
                     </span>

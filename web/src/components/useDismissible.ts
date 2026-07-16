@@ -81,7 +81,8 @@ export function useDismissible({
   }, [open, escape, eventTarget]);
 
   useEffect(() => {
-    if (!open || !dismissOnPointerLeave) return;
+    // `0` is a valid immediate delay — only skip when unset/false.
+    if (!open || dismissOnPointerLeave === false) return;
     const delayMs =
       dismissOnPointerLeave === true ? 0 : dismissOnPointerLeave;
 
