@@ -15,6 +15,12 @@ export type UseDismissibleOptions = {
    */
   onEscape?: (e: KeyboardEvent) => void | false;
   eventTarget?: Document | Window;
+  /**
+   * Dismiss when the pointer leaves all `refs` (e.g. context menus).
+   * `true` uses a 120ms grace period so the cursor can move into a
+   * related flyout that is also listed in `refs`.
+   */
+  dismissOnPointerLeave?: boolean | number;
 };
 
 /** Close on outside mousedown and/or Escape while `open`. */
@@ -25,6 +31,7 @@ export function useDismissible({
   escape = true,
   onEscape,
   eventTarget,
+  dismissOnPointerLeave = false,
 }: UseDismissibleOptions): void {
   const refsRef = useRef(refs);
   refsRef.current = refs;
@@ -71,4 +78,52 @@ export function useDismissible({
       }
     };
   }, [open, escape, eventTarget]);
+
+  useEffect(() => {
+    if (!open || !dismissOnPointerLeave) return;
+    const delayMs =
+      dismissOnPointerLeave === true ? 120 : dismissOnPointerLeave;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const clearTimer = () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const isInsideRefs = (node: EventTarget | null) => {
+      if (!(node instanceof Node)) return false;
+      for (const ref of refsRef.current) {
+        if (ref.current?.contains(node)) return true;
+      }
+      return false;
+    };
+
+    const onEnter = () => clearTimer();
+    const onLeave = (e: MouseEvent) => {
+      if (isInsideRefs(e.relatedTarget)) return;
+      clearTimer();
+      timer = setTimeout(() => {
+        timer = null;
+        onDismissRef.current();
+      }, delayMs);
+    };
+
+    const els = refsRef.current
+      .map((ref) => ref.current)
+      .filter((el): el is HTMLElement => el != null);
+
+    for (const el of els) {
+      el.addEventListener("mouseenter", onEnter);
+      el.addEventListener("mouseleave", onLeave);
+    }
+    return () => {
+      clearTimer();
+      for (const el of els) {
+        el.removeEventListener("mouseenter", onEnter);
+        el.removeEventListener("mouseleave", onLeave);
+      }
+    };
+  }, [open, dismissOnPointerLeave]);
 }

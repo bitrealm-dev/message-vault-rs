@@ -223,6 +223,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
     open: menuFor != null,
     onDismiss: () => setMenuFor(null),
     refs: [menuRef],
+    dismissOnPointerLeave: 160,
   });
   useDismissible({
     open: rename != null,

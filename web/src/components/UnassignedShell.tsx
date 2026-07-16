@@ -531,6 +531,7 @@ export function UnassignedShell({
     open: ctxMenu != null,
     onDismiss: () => setCtxMenu(null),
     refs: [ctxMenuRef],
+    dismissOnPointerLeave: 160,
   });
 
   const openCtxMenuAt = (

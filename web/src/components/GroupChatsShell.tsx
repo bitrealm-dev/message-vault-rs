@@ -333,6 +333,7 @@ export function GroupChatsShell({
     onDismiss: () => setCtxMenu(null),
     refs: [ctxMenuRef],
     eventTarget: typeof window !== "undefined" ? window : undefined,
+    dismissOnPointerLeave: 160,
   });
 
   const clearFocusAfterRemoval = useCallback(

@@ -12,7 +12,14 @@ import type {
 import { searchContacts } from "@/lib/contactSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import { phoneHandlesOnly } from "@/lib/handleKind";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useVaultReadOnly } from "./useVaultReadOnly";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -278,13 +285,8 @@ export function BrowseShell({
     return contacts.filter((c) => !isContactExcluded(c));
   }, [contacts, contactSection, isContactExcluded]);
 
-  const sorted = useMemo(() => {
-    const q = query.trim();
-    if (q) {
-      return searchContacts(visibleContacts, q);
-    }
-    const copy = [...visibleContacts];
-    copy.sort((a, b) => {
+  const compareContacts = useCallback(
+    (a: ContactListItem, b: ContactListItem) => {
       let cmp = 0;
       if (sort === "messages") {
         cmp = a.messageCount - b.messageCount;
@@ -336,12 +338,79 @@ export function BrowseShell({
           });
       }
       return sortOrder === "desc" ? -cmp : cmp;
-    });
+    },
+    [sort, sortOrder],
+  );
+
+  const sortedRaw = useMemo(() => {
+    const q = query.trim();
+    if (q) {
+      return searchContacts(visibleContacts, q);
+    }
+    const copy = [...visibleContacts];
+    copy.sort(compareContacts);
     return copy;
-  }, [visibleContacts, sort, sortOrder, query]);
+  }, [visibleContacts, compareContacts, query]);
+
+  const selectContactRef = useRef<(id: number) => void>(() => {});
+
+  const selectAllIds = useMemo(
+    () => visibleContacts.map((c) => c.id),
+    [visibleContacts],
+  );
+  const validIds = useMemo(() => contacts.map((c) => c.id), [contacts]);
+  const [listOrderIds, setListOrderIds] = useState<number[]>([]);
+
+  const {
+    selectedIds,
+    setSelectedIds,
+    hasSelection,
+    allSelected: allGroupSelected,
+    selectAllRef,
+    clearSelection: clearSelectionBase,
+    toggleSelectAll: toggleSelectAllInGroup,
+    onSelectColumnClick,
+    onRowClick: onNamePhoneClick,
+  } = useListSelection<number>({
+    orderedIds:
+      listOrderIds.length > 0 ? listOrderIds : sortedRaw.map((c) => c.id),
+    selectAllIds,
+    validIds,
+    rangeMode: "selectionSpan",
+    multiThreshold: "any",
+    focusedId: contactId,
+    rowClickMode: "openWhenEmptyElseToggle",
+    checkboxEvents: "preventAndStop",
+    escapeToClear: false,
+    selectAllSetsAnchor: false,
+    onOpen: (id) => selectContactRef.current(id),
+  });
+
+  const sorted = useMemo(() => {
+    const q = query.trim();
+    if (!q || selectedIds.size === 0) return sortedRaw;
+    const pinned = visibleContacts.filter((c) => selectedIds.has(c.id));
+    pinned.sort(compareContacts);
+    const pinnedIds = new Set(pinned.map((c) => c.id));
+    return [...pinned, ...sortedRaw.filter((c) => !pinnedIds.has(c.id))];
+  }, [sortedRaw, query, selectedIds, visibleContacts, compareContacts]);
+
+  useLayoutEffect(() => {
+    const next = sorted.map((c) => c.id);
+    setListOrderIds((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.every((id, i) => id === next[i])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [sorted]);
 
   const grouped = useMemo(() => {
-    if (sort === "messages" || sort === "phone") {
+    // Flat list while searching so pinned checked contacts stay at the top.
+    if (sort === "messages" || sort === "phone" || query.trim()) {
       return [["", sorted]] as [string, ContactListItem[]][];
     }
     const map = new Map<string, ContactListItem[]>();
@@ -357,40 +426,7 @@ export function BrowseShell({
       if (b === "#") return -1;
       return a.localeCompare(b);
     });
-  }, [sorted, sort]);
-
-  const selectContactRef = useRef<(id: number) => void>(() => {});
-
-  const orderedIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
-  const selectAllIds = useMemo(
-    () => visibleContacts.map((c) => c.id),
-    [visibleContacts],
-  );
-  const validIds = useMemo(() => contacts.map((c) => c.id), [contacts]);
-
-  const {
-    selectedIds,
-    setSelectedIds,
-    hasSelection,
-    allSelected: allGroupSelected,
-    selectAllRef,
-    clearSelection: clearSelectionBase,
-    toggleSelectAll: toggleSelectAllInGroup,
-    onSelectColumnClick,
-    onRowClick: onNamePhoneClick,
-  } = useListSelection<number>({
-    orderedIds,
-    selectAllIds,
-    validIds,
-    rangeMode: "selectionSpan",
-    multiThreshold: "any",
-    focusedId: contactId,
-    rowClickMode: "openWhenEmptyElseToggle",
-    checkboxEvents: "preventAndStop",
-    escapeToClear: false,
-    selectAllSetsAnchor: false,
-    onOpen: (id) => selectContactRef.current(id),
-  });
+  }, [sorted, sort, query]);
 
   const selectContact = useCallback(
     (id: number) => {
@@ -421,6 +457,27 @@ export function BrowseShell({
     [contactId, pathname, router, searchParams],
   );
   selectContactRef.current = selectContact;
+
+  const clearContactFocus = useCallback(() => {
+    allowAutoOpenThreadRef.current = false;
+    setContactId(null);
+    setMessages([]);
+    setActiveThread(null);
+    setSelectedGroupConversationId(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("c");
+    params.delete("h");
+    params.delete("y");
+    params.delete("conv");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (selectedIds.size === 0 || contactId == null) return;
+    if (selectedIds.has(contactId)) return;
+    clearContactFocus();
+  }, [selectedIds, contactId, clearContactFocus]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -1449,6 +1506,7 @@ export function BrowseShell({
       flushSelectionDirty();
     },
     refs: [ctxMenuRef, groupCtxMenuRef, groupsPanelWrapRef, mergePanelRef],
+    dismissOnPointerLeave: 160,
     onEscape: (e) => {
       if (mergeFromId != null) {
         e.preventDefault();
@@ -2296,6 +2354,16 @@ export function BrowseShell({
             hasSelection &&
             (hasGroupSelection || !(activeThread?.startsWith("gfull-")));
           const showGroupsCard = hasGroupSelection;
+          const focusedContact =
+            contactId != null
+              ? detail?.id === contactId
+                ? detail
+                : (contacts.find((c) => c.id === contactId) ?? null)
+              : null;
+          const showFocusContactCard =
+            hasGroupSelection &&
+            !hasSelection &&
+            focusedContact != null;
           const showThreadPane =
             !showGroupsCard &&
             !(hasSelection && !(activeThread?.startsWith("gfull-")));
@@ -2353,6 +2421,38 @@ export function BrowseShell({
             </div>
           );
 
+          const focusContactCard =
+            focusedContact != null ? (
+              <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+                <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+                  <h2 className="text-[14px] font-semibold text-text">
+                    1 contact selected
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={clearContactFocus}
+                    className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+                <ul>
+                  <li className="flex items-center justify-between gap-4 px-4 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => selectContact(focusedContact.id)}
+                      className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
+                    >
+                      {focusedContact.displayName}
+                    </button>
+                    <span className="shrink-0 text-[13px] text-muted tabular-nums">
+                      {focusedContact.preferredHandle ?? ""}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            ) : null;
+
           const groupsCard = (
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
@@ -2398,11 +2498,12 @@ export function BrowseShell({
             </div>
           );
 
-          if (showContactsCard || showGroupsCard) {
+          if (showContactsCard || showGroupsCard || showFocusContactCard) {
             return (
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bg px-5 pt-8 pb-5">
                 {showGroupsCard ? groupsCard : null}
                 {showContactsCard ? contactsCard : null}
+                {showFocusContactCard ? focusContactCard : null}
               </div>
             );
           }
