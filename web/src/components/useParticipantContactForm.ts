@@ -1,6 +1,6 @@
 "use client";
 
-import type { GroupParticipant } from "@/lib/types";
+import type { ContactDetail, GroupParticipant } from "@/lib/types";
 import { phoneHandlesOnly } from "@/lib/handleKind";
 import { useRouter } from "next/navigation";
 import {
@@ -24,6 +24,12 @@ import {
 } from "./ContactFormOverlay";
 import type { GroupCheckState } from "./GroupsMenu";
 
+export type ParticipantContactSavedResult = {
+  kind: "edit" | "create";
+  contactId: number;
+  contact?: ContactDetail;
+};
+
 export type UseParticipantContactFormOptions = {
   vaultReadOnly: boolean;
   setStatus?: (message: string | null) => void;
@@ -34,7 +40,7 @@ export type UseParticipantContactFormOptions = {
   /** Return true to ignore Escape (e.g. another modal is open). */
   shouldIgnoreEscape?: () => boolean;
   /** After successful create/edit (default: router.refresh). */
-  onSaved?: () => void;
+  onSaved?: (result: ParticipantContactSavedResult) => void;
 };
 
 export type ParticipantContactFormState = {
@@ -57,6 +63,12 @@ export type ParticipantContactFormState = {
   createAndAssignDraftGroup: (name: string) => void;
   clearDraftGroups: () => void;
   openEditContact: (id: number, anchor: ContactFormAnchor) => Promise<void>;
+  /** Open edit with an already-seeded draft (e.g. browse detail card). */
+  openEditFromDraft: (
+    id: number,
+    draft: ContactEditDraft,
+    anchor: ContactFormAnchor | null,
+  ) => void;
   openCreateContactWithHandle: (
     handle: string,
     anchor: ContactFormAnchor,
@@ -175,11 +187,14 @@ export function useParticipantContactForm(
     );
   }, []);
 
-  const finishSaved = useCallback(() => {
-    cancelContactForm();
-    if (onSaved) onSaved();
-    else router.refresh();
-  }, [cancelContactForm, onSaved, router]);
+  const finishSaved = useCallback(
+    (result: ParticipantContactSavedResult) => {
+      cancelContactForm();
+      if (onSaved) onSaved(result);
+      else router.refresh();
+    },
+    [cancelContactForm, onSaved, router],
+  );
 
   const openEditContact = useCallback(
     async (id: number, anchor: ContactFormAnchor) => {
@@ -204,6 +219,21 @@ export function useParticipantContactForm(
       }
     },
     [setStatus],
+  );
+
+  const openEditFromDraft = useCallback(
+    (
+      id: number,
+      draft: ContactEditDraft,
+      anchor: ContactFormAnchor | null,
+    ) => {
+      setFormAnchor(anchor);
+      setExtraDraftGroups([]);
+      setEditDraft(draft);
+      setEditContactId(id);
+      setContactCreating(false);
+    },
+    [],
   );
 
   const openCreateContactWithHandle = useCallback(
@@ -239,9 +269,10 @@ export function useParticipantContactForm(
 
   const saveContactEdit = useCallback(async () => {
     if (!editDraft || editContactId == null) return;
+    const id = editContactId;
     setContactSaving(true);
     try {
-      const res = await fetch(`/api/contacts/${editContactId}`, {
+      const res = await fetch(`/api/contacts/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -254,7 +285,11 @@ export function useParticipantContactForm(
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "save failed");
-      finishSaved();
+      finishSaved({
+        kind: "edit",
+        contactId: id,
+        contact: data.contact as ContactDetail | undefined,
+      });
     } catch (err) {
       console.error(err);
       setStatus?.(err instanceof Error ? err.message : "Save failed");
@@ -280,7 +315,12 @@ export function useParticipantContactForm(
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "create failed");
-      finishSaved();
+      const contact = data.contact as ContactDetail | undefined;
+      finishSaved({
+        kind: "create",
+        contactId: contact?.id ?? -1,
+        contact,
+      });
     } catch (err) {
       console.error(err);
       setStatus?.(err instanceof Error ? err.message : "Create failed");
@@ -309,6 +349,7 @@ export function useParticipantContactForm(
     createAndAssignDraftGroup,
     clearDraftGroups,
     openEditContact,
+    openEditFromDraft,
     openCreateContactWithHandle,
     onParticipantClick,
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  collapseContactGroupChats,
+  collapseGroupConversations,
   type CollapsedGroupConversation,
 } from "@/lib/groupChatList";
 import type { GroupChatThread } from "@/lib/types";
@@ -26,7 +26,7 @@ export function useCollapsedGroupChatList(options: {
       filterYear == null
         ? groupChats
         : groupChats.filter((g) => g.year === filterYear);
-    let items = collapseContactGroupChats(filtered);
+    let items = collapseGroupConversations(filtered);
     const q = query.trim().toLowerCase();
     if (q) {
       const qDigits = q.replace(/\D/g, "");

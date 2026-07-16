@@ -1,7 +1,7 @@
 /** Serializable undo/redo commands (no closures). */
 
 export const HISTORY_MAX_DEPTH = 20;
-export const HISTORY_TOAST_MS = 10_000;
+export const HISTORY_TOAST_MS = 15_000;
 
 export type TrashContactMode = "contact_and_messages" | "messages_only";
 
@@ -38,4 +38,32 @@ export type HistoryCommand =
 
 export type HistoryToast = {
   text: string;
+  /** When true, snackbar shows an Undo control (action toasts only). */
+  showUndo: boolean;
 };
+
+/** Past-tense snackbar copy for a just-pushed command. */
+export function toastTextForCommand(cmd: HistoryCommand): string {
+  switch (cmd.type) {
+    case "createContact": {
+      const name = cmd.label.replace(/^Create contact\s+/i, "").trim() || "contact";
+      return `Created new contact "${name}"`;
+    }
+    case "createGroup":
+      return `Created group "${cmd.name}"`;
+    case "deleteGroup":
+      return `Deleted group "${cmd.name}"`;
+    case "trashContacts": {
+      const n = cmd.contactIds.length;
+      return n === 1
+        ? "Deleted contact & messages"
+        : `Deleted ${n} contacts & messages`;
+    }
+    case "trashGroupThread": {
+      const n = cmd.conversationIds.length;
+      return n === 1
+        ? "Deleted group message"
+        : `Deleted ${n} group messages`;
+    }
+  }
+}

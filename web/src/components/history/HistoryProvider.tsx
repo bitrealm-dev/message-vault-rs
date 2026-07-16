@@ -15,6 +15,7 @@ import { redoCommand, undoCommand } from "./historyRunner";
 import {
   HISTORY_MAX_DEPTH,
   HISTORY_TOAST_MS,
+  toastTextForCommand,
   type HistoryCommand,
   type HistoryToast,
 } from "./historyTypes";
@@ -32,6 +33,7 @@ type HistoryContextValue = {
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   clear: () => void;
+  dismissToast: () => void;
 };
 
 const HistoryContext = createContext<HistoryContextValue | null>(null);
@@ -54,38 +56,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   pastRef.current = past;
   futureRef.current = future;
 
-  const showToast = useCallback((text: string) => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = null;
-    }
-    setToast({ text });
-    toastTimerRef.current = setTimeout(() => {
-      toastTimerRef.current = null;
-      setToast(null);
-    }, HISTORY_TOAST_MS);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
-
-  const push = useCallback((cmd: HistoryCommand) => {
-    setPast((prev) => {
-      const next = [...prev, cmd];
-      if (next.length > HISTORY_MAX_DEPTH) {
-        return next.slice(next.length - HISTORY_MAX_DEPTH);
-      }
-      return next;
-    });
-    setFuture([]);
-  }, []);
-
-  const clear = useCallback(() => {
-    setPast([]);
-    setFuture([]);
+  const dismissToast = useCallback(() => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
       toastTimerRef.current = null;
@@ -93,29 +64,72 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     setToast(null);
   }, []);
 
+  const showToast = useCallback(
+    (text: string, showUndo: boolean) => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+      setToast({ text, showUndo });
+      toastTimerRef.current = setTimeout(() => {
+        toastTimerRef.current = null;
+        setToast(null);
+      }, HISTORY_TOAST_MS);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  const push = useCallback(
+    (cmd: HistoryCommand) => {
+      setPast((prev) => {
+        const next = [...prev, cmd];
+        if (next.length > HISTORY_MAX_DEPTH) {
+          return next.slice(next.length - HISTORY_MAX_DEPTH);
+        }
+        return next;
+      });
+      setFuture([]);
+      showToast(toastTextForCommand(cmd), true);
+    },
+    [showToast],
+  );
+
+  const clear = useCallback(() => {
+    setPast([]);
+    setFuture([]);
+    dismissToast();
+  }, [dismissToast]);
+
   const undo = useCallback(async () => {
     if (busyRef.current) return;
     const cmd = pastRef.current[pastRef.current.length - 1];
     if (!cmd) return;
     busyRef.current = true;
     setBusy(true);
+    dismissToast();
     try {
       await undoCommand(cmd);
       setPast((prev) => prev.slice(0, -1));
       setFuture((prev) => [...prev, cmd]);
       setRevision((n) => n + 1);
-      showToast(`Undid: ${cmd.label}`);
       router.refresh();
     } catch (err) {
       console.error(err);
       showToast(
         err instanceof Error ? err.message : "Undo failed",
+        false,
       );
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, [router, showToast]);
+  }, [router, showToast, dismissToast]);
 
   const redo = useCallback(async () => {
     if (busyRef.current) return;
@@ -123,6 +137,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     if (!cmd) return;
     busyRef.current = true;
     setBusy(true);
+    dismissToast();
     try {
       await redoCommand(cmd);
       setFuture((prev) => prev.slice(0, -1));
@@ -134,18 +149,18 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         return next;
       });
       setRevision((n) => n + 1);
-      showToast(`Redid: ${cmd.label}`);
       router.refresh();
     } catch (err) {
       console.error(err);
       showToast(
         err instanceof Error ? err.message : "Redo failed",
+        false,
       );
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, [router, showToast]);
+  }, [router, showToast, dismissToast]);
 
   const value = useMemo<HistoryContextValue>(
     () => ({
@@ -160,8 +175,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       undo,
       redo,
       clear,
+      dismissToast,
     }),
-    [past, future, busy, toast, revision, push, undo, redo, clear],
+    [past, future, busy, toast, revision, push, undo, redo, clear, dismissToast],
   );
 
   return (

@@ -116,7 +116,7 @@ function TrashMoreMenu({
     refs: [rootRef],
   });
 
-  const viewLabel = tab === "group-chats" ? "Group messages" : "Contacts";
+  const viewLabel = tab === "group-chats" ? "Group Messages" : "Contacts";
 
   const toggle = () => {
     if (open) {
@@ -181,7 +181,7 @@ function TrashMoreMenu({
               onSwitch("group-chats");
             }}
           >
-            <span>Group messages</span>
+            <span>Group Messages</span>
             <span className="text-muted tabular-nums">{groupCount}</span>
           </button>
         </div>

@@ -178,14 +178,6 @@ export function GroupMessagesShell({
     enabled: !hasGroupSelection,
   });
 
-  const loadFullMessages = useCallback(
-    (conversationIds: number[], key: string) => {
-      setActiveThread(key);
-      setFullMessageIds(conversationIds);
-    },
-    [],
-  );
-
   const syncUrl = useCallback(
     (id: number | null, year: number | null) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -208,8 +200,6 @@ export function GroupMessagesShell({
       if (!hasGroupSelection && conversationId === g.conversationId) {
         setConversationId(null);
         setFocusYear(null);
-        setActiveThread(null);
-        setFullMessageIds(null);
         syncUrl(null, null);
         return;
       }
@@ -218,16 +208,8 @@ export function GroupMessagesShell({
       setFocusYear(year);
       pendingScrollYearRef.current = year;
       syncUrl(g.conversationId, year);
-      const key = `gfull-${g.conversationIds.join("-")}`;
-      loadFullMessages(g.conversationIds, key);
     },
-    [
-      hasGroupSelection,
-      conversationId,
-      filterYear,
-      syncUrl,
-      loadFullMessages,
-    ],
+    [hasGroupSelection, conversationId, filterYear, syncUrl],
   );
 
   const openGroupById = useCallback(
@@ -257,17 +239,20 @@ export function GroupMessagesShell({
     syncUrl(conversationId, nextYear);
   }, [groupChats, conversationId, focusYear, syncUrl]);
 
-  // Load messages when conversation is set (incl. initial URL).
+  // Single message-load path: derive ids from the collapsed row (incl. URL hydrate).
   useEffect(() => {
-    if (conversationId == null || hasGroupSelection) return;
-    loadFullMessages([conversationId], `gfull-${conversationId}`);
-  }, [conversationId, hasGroupSelection, loadFullMessages]);
-
-  useEffect(() => {
-    if (!hasGroupSelection) return;
-    setActiveThread(null);
-    setFullMessageIds(null);
-  }, [hasGroupSelection]);
+    if (conversationId == null || hasGroupSelection) {
+      setActiveThread(null);
+      setFullMessageIds(null);
+      return;
+    }
+    const g = collapsedById.get(conversationId);
+    const ids = g?.conversationIds?.length
+      ? g.conversationIds
+      : [conversationId];
+    setActiveThread(`gfull-${ids.join("-")}`);
+    setFullMessageIds(ids);
+  }, [conversationId, hasGroupSelection, collapsedById]);
 
   const clearFocusAfterRemoval = useCallback(
     (removedIds: number[]) => {

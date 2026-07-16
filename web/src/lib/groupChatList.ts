@@ -136,13 +136,6 @@ export function collapseGroupConversations(
   return [...map.values()];
 }
 
-/** Browse / group-messages: collapse contact group year threads. */
-export function collapseContactGroupChats(
-  rows: GroupChatThread[],
-): CollapsedGroupConversation[] {
-  return collapseGroupConversations(rows);
-}
-
 /** Trash groups sidebar: collapse GroupYearRow list. */
 export function collapseGroupYearRows(
   rows: GroupYearRow[],

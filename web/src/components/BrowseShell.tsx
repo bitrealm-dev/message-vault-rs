@@ -6,7 +6,6 @@ import type {
   ContactSection,
   GroupChatThread,
   GroupParticipant,
-  MessageRow,
   YearThread,
 } from "@/lib/types";
 import {
@@ -17,7 +16,6 @@ import {
   SORT_ORDER_ALLOWED,
 } from "@/lib/groupChatList";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
-import { phoneHandlesOnly } from "@/lib/handleKind";
 import {
   useCallback,
   useEffect,
@@ -28,13 +26,7 @@ import {
 } from "react";
 import { useVaultReadOnly } from "./useVaultReadOnly";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  draftHasName,
-  emptyContactEditDraft,
-  phonesForSave,
-  seedContactEditDraft,
-  type ContactEditDraft,
-} from "./contactEdit";
+import { seedContactEditDraft } from "./contactEdit";
 import {
   BrowseContactCtxMenu,
   BrowseMergeIntoPanel,
@@ -64,8 +56,9 @@ import {
 } from "./useBrowseContactList";
 import { useCollapsedGroupChatList } from "./useCollapsedGroupChatList";
 import { useListSelection } from "./useListSelection";
+import { useParticipantContactForm } from "./useParticipantContactForm";
 import { useTrashActions } from "./useTrashActions";
-import { fetchFullThreadMessages } from "./useThreadMessages";
+import { useThreadMessages } from "./useThreadMessages";
 import { useDismissible } from "./useDismissible";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
@@ -130,10 +123,11 @@ export function BrowseShell({
     GROUP_DATE_ALLOWED,
     "md",
   );
-  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [threadConversationIds, setThreadConversationIds] = useState<
+    number[] | null
+  >(null);
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
   const loadedContactIdRef = useRef<number | null>(null);
   /** State mirror of loadedContactIdRef so the thread pane can tell "empty" from "still loading". */
   const [threadsLoadedFor, setThreadsLoadedFor] = useState<number | null>(null);
@@ -143,13 +137,8 @@ export function BrowseShell({
   const allowAutoOpenThreadRef = useRef(initialContactId == null);
   const activeSourceRef = useRef<string | null>(null);
   activeSourceRef.current = source;
+  const cancelContactFormRef = useRef<() => void>(() => {});
 
-  const [contactEditing, setContactEditing] = useState(false);
-  const [contactCreating, setContactCreating] = useState(false);
-  const [editContactId, setEditContactId] = useState<number | null>(null);
-  const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
-  const [formAnchor, setFormAnchor] = useState<ContactFormAnchor | null>(null);
-  const [extraDraftGroups, setExtraDraftGroups] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [groupOverrides, setGroupOverrides] = useState<Map<number, string[]>>(
     () => new Map(),
@@ -341,18 +330,18 @@ export function BrowseShell({
       setSelectedGroupConversationId(null);
       setGroupChatFilterYear(null);
       setGroupChatQuery("");
-      setContactEditing(false);
-      setContactCreating(false);
-      setEditContactId(null);
-      setEditDraft(null);
-      setFormAnchor(null);
+      cancelContactFormRef.current();
       if (id === contactId) {
+        const dmIds = [
+          ...new Set(yearly.flatMap((y) => y.conversationIds)),
+        ];
         setActiveThread("dm");
+        setThreadConversationIds(dmIds.length > 0 ? dmIds : null);
         setThreadsEpoch((e) => e + 1);
         return;
       }
       setContactId(id);
-      setMessages([]);
+      setThreadConversationIds(null);
       setActiveThread(null);
       const params = new URLSearchParams(searchParams.toString());
       params.set("c", String(id));
@@ -361,14 +350,14 @@ export function BrowseShell({
       params.delete("conv");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [contactId, pathname, router, searchParams],
+    [contactId, pathname, router, searchParams, yearly],
   );
   selectContactRef.current = selectContact;
 
   const clearContactFocus = useCallback(() => {
     allowAutoOpenThreadRef.current = false;
     setContactId(null);
-    setMessages([]);
+    setThreadConversationIds(null);
     setActiveThread(null);
     setSelectedGroupConversationId(null);
     const params = new URLSearchParams(searchParams.toString());
@@ -391,11 +380,7 @@ export function BrowseShell({
     setGroupOverrides(new Map());
     setExcludeOverrides(new Map());
     selectionDirtyRef.current = false;
-    setContactEditing(false);
-    setContactCreating(false);
-    setEditContactId(null);
-    setEditDraft(null);
-    setFormAnchor(null);
+    cancelContactFormRef.current();
     setGroupChatQuery("");
   }, [paneStorageKey, setSelectedIds]);
 
@@ -429,10 +414,9 @@ export function BrowseShell({
       setGroupChats([]);
       setMessageSources([]);
       setSourceCounts({ all: 0, bySource: {} });
-      setMessages([]);
+      setThreadConversationIds(null);
       setActiveThread(null);
       setSelectedGroupConversationId(null);
-      setLoadingMessages(false);
       return;
     }
     let cancelled = false;
@@ -461,7 +445,7 @@ export function BrowseShell({
             setGroupChats([]);
             setMessageSources([]);
             setSourceCounts({ all: 0, bySource: {} });
-            setMessages([]);
+            setThreadConversationIds(null);
             setActiveThread(null);
           }
           return;
@@ -491,7 +475,7 @@ export function BrowseShell({
         }
 
         if (hydrateOnly) {
-          setMessages([]);
+          setThreadConversationIds(null);
           setActiveThread(null);
           setSelectedGroupConversationId(null);
           return;
@@ -534,7 +518,7 @@ export function BrowseShell({
         if (!key || key === "dm" || switchingContact) {
           if (dmIds.length === 0) {
             if (switchingContact) {
-              setMessages([]);
+              setThreadConversationIds(null);
               setActiveThread(null);
               setSelectedGroupConversationId(null);
             }
@@ -564,17 +548,10 @@ export function BrowseShell({
           }
         }
         if (!convIds?.length) {
-          setMessages([]);
+          setThreadConversationIds(null);
           return;
         }
-        setLoadingMessages(true);
-        fetchFullThreadMessages(convIds, sourceQuery)
-          .then((next) => {
-            if (!cancelled) setMessages(next);
-          })
-          .finally(() => {
-            if (!cancelled) setLoadingMessages(false);
-          });
+        setThreadConversationIds(convIds);
       })
       .finally(() => {
         if (!cancelled) setLoadingThreads(false);
@@ -584,17 +561,11 @@ export function BrowseShell({
     };
   }, [contactId, sourceQuery, setSource, threadsEpoch]);
 
-  const loadFullMessages = useCallback(
-    (conversationIds: number[], key: string) => {
-      allowAutoOpenThreadRef.current = true;
-      setActiveThread(key);
-      setLoadingMessages(true);
-      fetchFullThreadMessages(conversationIds, sourceQuery)
-        .then((next) => setMessages(next))
-        .finally(() => setLoadingMessages(false));
-    },
-    [sourceQuery],
-  );
+  const openThread = useCallback((conversationIds: number[], key: string) => {
+    allowAutoOpenThreadRef.current = true;
+    setActiveThread(key);
+    setThreadConversationIds(conversationIds);
+  }, []);
 
   const selectedContacts = useMemo(() => {
     const selected = new Set(selectedIds);
@@ -648,7 +619,7 @@ export function BrowseShell({
           if (!stillThere) {
             setActiveThread(null);
             setSelectedGroupConversationId(null);
-            setMessages([]);
+            setThreadConversationIds(null);
           }
         }
       })
@@ -729,18 +700,18 @@ export function BrowseShell({
       ) {
         setSelectedGroupConversationId(null);
         setActiveThread(null);
-        setMessages([]);
+        setThreadConversationIds(null);
         return;
       }
       setSelectedGroupConversationId(g.conversationId);
       const key = `gfull-${g.conversationIds.join("-")}`;
-      loadFullMessages(g.conversationIds, key);
+      openThread(g.conversationIds, key);
     },
     [
       hasGroupSelection,
       hasSelection,
       selectedGroupConversationId,
-      loadFullMessages,
+      openThread,
     ],
   );
 
@@ -757,7 +728,7 @@ export function BrowseShell({
   useEffect(() => {
     if (!hasGroupSelection) return;
     setActiveThread(null);
-    setMessages([]);
+    setThreadConversationIds(null);
     setSelectedGroupConversationId(null);
   }, [hasGroupSelection]);
 
@@ -766,8 +737,69 @@ export function BrowseShell({
     setSelectedGroupConversationId(null);
   }, [selectionIdsKey, contactId, paneStorageKey, clearGroupSelection]);
 
+  const { messages, loading: loadingMessages } = useThreadMessages({
+    conversationIds: threadConversationIds,
+    sourceQuery,
+    fullConversation: true,
+    enabled: !hasGroupSelection,
+    reloadToken: threadsEpoch,
+  });
+
+  const createDefaults = useMemo(() => {
+    if (typeof contactSection === "object") {
+      return { contactGroups: [contactSection.group], exclude: false };
+    }
+    if (contactSection === "excluded") {
+      return { contactGroups: [] as string[], exclude: true };
+    }
+    // all, no-group
+    return { contactGroups: [] as string[], exclude: false };
+  }, [contactSection]);
+
+  const participantForm = useParticipantContactForm({
+    vaultReadOnly,
+    knownGroups: allGroups,
+    createDefaults,
+    setStatus: setStatusMsg,
+    shouldIgnoreEscape: () =>
+      trashConfirm != null || ctxMenu != null || groupsPanelPos != null,
+    onSaved: (result) => {
+      if (result.kind === "edit") {
+        if (result.contact && result.contactId === contactId) {
+          setDetail(result.contact);
+        }
+        setThreadsEpoch((e) => e + 1);
+        router.refresh();
+        return;
+      }
+      if (result.contact) {
+        pushHistory({
+          type: "createContact",
+          contactId: result.contact.id,
+          label: `Create contact ${result.contact.displayName ?? "contact"}`,
+        });
+        if (contactId == null) {
+          setDetail(result.contact);
+          selectContact(result.contact.id);
+        } else {
+          setThreadsEpoch((e) => e + 1);
+        }
+      }
+      router.refresh();
+    },
+  });
+  cancelContactFormRef.current = participantForm.cancelContactForm;
+
+  const {
+    formOpen,
+    contactCreating,
+    editContactId,
+    contactSaving,
+  } = participantForm;
+  const contactEditing = editContactId != null;
+
   const canEditGroups =
-    !contactEditing && !contactCreating && (hasSelection || !!detail);
+    !formOpen && (hasSelection || !!detail);
 
   const clearSelection = useCallback(() => {
     clearSelectionBase();
@@ -796,29 +828,23 @@ export function BrowseShell({
 
   useEffect(() => {
     if (!hasSelection) return;
-    setContactEditing(false);
-    setContactCreating(false);
-    setEditContactId(null);
-    setEditDraft(null);
-    setFormAnchor(null);
+    participantForm.cancelContactForm();
     setGroupChatQuery("");
-  }, [hasSelection]);
+  }, [hasSelection, participantForm.cancelContactForm]);
 
   const beginContactEdit = useCallback(
     (anchor?: ContactFormAnchor | null) => {
       if (!detail || hasSelection || contactCreating) return;
-      setFormAnchor(anchor ?? null);
-      setExtraDraftGroups([]);
-      setEditDraft(
+      participantForm.openEditFromDraft(
+        detail.id,
         seedContactEditDraft({
           ...detail,
           contactGroups:
             groupOverrides.get(detail.id) ?? detail.contactGroups,
           exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
         }),
+        anchor ?? null,
       );
-      setEditContactId(detail.id);
-      setContactEditing(true);
     },
     [
       detail,
@@ -826,19 +852,20 @@ export function BrowseShell({
       contactCreating,
       groupOverrides,
       excludeOverrides,
+      participantForm.openEditFromDraft,
     ],
   );
 
   const onContactNameClick = useCallback(
     (anchorRect: DOMRect) => {
-      if (vaultReadOnly || saving || contactEditing || contactCreating) return;
+      if (vaultReadOnly || saving || contactSaving || formOpen) return;
       beginContactEdit(contactFormAnchorFromRect(anchorRect));
     },
     [
       vaultReadOnly,
       saving,
-      contactEditing,
-      contactCreating,
+      contactSaving,
+      formOpen,
       beginContactEdit,
     ],
   );
@@ -849,239 +876,32 @@ export function BrowseShell({
     if (pending == null || !detail || detail.id !== pending) return;
     if (hasSelection || contactCreating) return;
     pendingEditIdRef.current = null;
-    setFormAnchor(null);
-    setExtraDraftGroups([]);
-    setEditDraft(
+    participantForm.openEditFromDraft(
+      detail.id,
       seedContactEditDraft({
         ...detail,
         contactGroups:
           groupOverrides.get(detail.id) ?? detail.contactGroups,
         exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
       }),
+      null,
     );
-    setEditContactId(detail.id);
-    setContactEditing(true);
   }, [
     detail,
     hasSelection,
     contactCreating,
     groupOverrides,
     excludeOverrides,
+    participantForm.openEditFromDraft,
   ]);
-  const createDefaults = useMemo(() => {
-    if (typeof contactSection === "object") {
-      return { contactGroups: [contactSection.group], exclude: false };
-    }
-    if (contactSection === "excluded") {
-      return { contactGroups: [] as string[], exclude: true };
-    }
-    // all, no-group
-    return { contactGroups: [] as string[], exclude: false };
-  }, [contactSection]);
-
-  const openEditContactInPlace = useCallback(
-    async (id: number, anchor: ContactFormAnchor) => {
-      setFormAnchor(anchor);
-      setSaving(true);
-      try {
-        const res = await fetch(`/api/contacts/${id}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "load failed");
-        setExtraDraftGroups([]);
-        setEditDraft(seedContactEditDraft(data.contact));
-        setEditContactId(id);
-        setContactCreating(false);
-        setContactEditing(true);
-      } catch (err) {
-        console.error(err);
-        setFormAnchor(null);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [],
-  );
 
   const openCreateContactInPlace = useCallback(
     (handle: string, anchor: ContactFormAnchor) => {
       if (vaultReadOnly) return;
-      setFormAnchor(anchor);
-      setExtraDraftGroups([]);
-      setEditContactId(null);
-      setContactEditing(false);
-      setContactCreating(true);
-      const draft = emptyContactEditDraft(createDefaults);
-      setEditDraft({ ...draft, phones: [handle, ""] });
+      participantForm.openCreateContactWithHandle(handle, anchor);
     },
-    [createDefaults, vaultReadOnly],
+    [vaultReadOnly, participantForm.openCreateContactWithHandle],
   );
-
-  const cancelContactEdit = useCallback(() => {
-    setContactEditing(false);
-    setContactCreating(false);
-    setEditContactId(null);
-    setEditDraft(null);
-    setFormAnchor(null);
-    setExtraDraftGroups([]);
-  }, []);
-
-  useEffect(() => {
-    if (!contactEditing && !contactCreating) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (
-        trashConfirm != null ||
-        ctxMenu != null ||
-        groupsPanelPos != null
-      ) {
-        return;
-      }
-      e.preventDefault();
-      cancelContactEdit();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [
-    contactEditing,
-    contactCreating,
-    trashConfirm,
-    ctxMenu,
-    groupsPanelPos,
-    cancelContactEdit,
-  ]);
-
-  const saveContactEdit = useCallback(async () => {
-    if (!editDraft || editContactId == null) return;
-    const ok = await saveContactPatch(
-      {
-        firstName: editDraft.firstName.trim() || null,
-        lastName: editDraft.lastName.trim() || null,
-        phones: phonesForSave(editDraft.phones),
-        exclude: editDraft.exclude,
-        contactGroups: editDraft.contactGroups,
-      },
-      editContactId,
-    );
-    if (!ok) return;
-    setContactEditing(false);
-    setEditContactId(null);
-    setEditDraft(null);
-    setFormAnchor(null);
-    setExtraDraftGroups([]);
-    setThreadsEpoch((e) => e + 1);
-    router.refresh();
-  }, [editDraft, editContactId, saveContactPatch, router]);
-
-  const saveContactCreate = useCallback(async () => {
-    if (!editDraft || !draftHasName(editDraft)) return;
-    setSaving(true);
-    try {
-      const res = await fetch("/api/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName: editDraft.firstName.trim() || null,
-          lastName: editDraft.lastName.trim() || null,
-          phones: phonesForSave(editDraft.phones),
-          exclude: editDraft.exclude,
-          contactGroups: editDraft.contactGroups,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "create failed");
-      setContactCreating(false);
-      setEditContactId(null);
-      setEditDraft(null);
-      setFormAnchor(null);
-      setExtraDraftGroups([]);
-      if (data.contact) {
-        pushHistory({
-          type: "createContact",
-          contactId: data.contact.id,
-          label: `Create contact ${data.contact.displayName ?? "contact"}`,
-        });
-        if (contactId == null) {
-          setDetail(data.contact);
-          selectContact(data.contact.id);
-        } else {
-          setThreadsEpoch((e) => e + 1);
-        }
-      }
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  }, [editDraft, contactId, selectContact, router, pushHistory]);
-
-  const formOpen = (contactEditing || contactCreating) && !!editDraft;
-  const canSaveForm =
-    !!editDraft &&
-    draftHasName(editDraft) &&
-    phoneHandlesOnly(phonesForSave(editDraft.phones)).length > 0;
-
-  const draftMenuGroups = useMemo(() => {
-    const names = new Set([...allGroups, ...extraDraftGroups]);
-    for (const g of editDraft?.contactGroups ?? []) names.add(g);
-    return [...names].sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    );
-  }, [allGroups, extraDraftGroups, editDraft?.contactGroups]);
-
-  const draftGroupChecks = useMemo(() => {
-    const result: Record<string, GroupCheckState> = {};
-    const groups = editDraft?.contactGroups ?? [];
-    for (const name of draftMenuGroups) {
-      result[name] = groups.includes(name) ? "on" : "off";
-    }
-    return result;
-  }, [draftMenuGroups, editDraft?.contactGroups]);
-
-  const draftExcludedCheck = useMemo((): GroupCheckState => {
-    return editDraft?.exclude ? "on" : "off";
-  }, [editDraft?.exclude]);
-
-  const toggleDraftGroup = useCallback((name: string) => {
-    setEditDraft((prev) => {
-      if (!prev) return prev;
-      const has = prev.contactGroups.includes(name);
-      const contactGroups = has
-        ? prev.contactGroups.filter((g) => g !== name)
-        : [...prev.contactGroups, name].sort((a, b) =>
-            a.localeCompare(b, undefined, { sensitivity: "base" }),
-          );
-      return { ...prev, contactGroups };
-    });
-  }, []);
-
-  const createAndAssignDraftGroup = useCallback((name: string) => {
-    setExtraDraftGroups((prev) =>
-      prev.includes(name) ? prev : [...prev, name],
-    );
-    setEditDraft((prev) => {
-      if (!prev) return prev;
-      if (prev.contactGroups.includes(name)) return prev;
-      return {
-        ...prev,
-        contactGroups: [...prev.contactGroups, name].sort((a, b) =>
-          a.localeCompare(b, undefined, { sensitivity: "base" }),
-        ),
-      };
-    });
-  }, []);
-
-  const toggleDraftExcluded = useCallback(() => {
-    setEditDraft((prev) =>
-      prev ? { ...prev, exclude: !prev.exclude } : prev,
-    );
-  }, []);
-
-  const clearDraftGroups = useCallback(() => {
-    setEditDraft((prev) =>
-      prev ? { ...prev, contactGroups: [], exclude: false } : prev,
-    );
-  }, []);
 
   const canDelete =
     !contactCreating && (hasSelection || contactId != null);
@@ -1123,18 +943,14 @@ export function BrowseShell({
         setGroupOverrides(new Map());
         setExcludeOverrides(new Map());
         selectionDirtyRef.current = false;
-        setContactEditing(false);
-        setContactCreating(false);
-        setEditContactId(null);
-        setEditDraft(null);
-        setFormAnchor(null);
+        cancelContactFormRef.current();
 
         setDetail(null);
         setYearly([]);
         setGroupChats([]);
         setMessageSources([]);
         setSourceCounts({ all: 0, bySource: {} });
-        setMessages([]);
+        setThreadConversationIds(null);
         setActiveThread(null);
         setContactId(null);
         setGroupChatFilterYear(null);
@@ -1203,10 +1019,10 @@ export function BrowseShell({
 
   const onCtxEdit = useCallback(
     (anchorEl: HTMLElement) => {
-      if (!ctxMenu || hasSelection || contactCreating || contactEditing) return;
+      if (!ctxMenu || hasSelection || formOpen) return;
       const id = ctxMenu.id;
       setCtxMenu(null);
-      void openEditContactInPlace(
+      void participantForm.openEditContact(
         id,
         contactFormAnchorFromRect(anchorEl.getBoundingClientRect()),
       );
@@ -1214,9 +1030,8 @@ export function BrowseShell({
     [
       ctxMenu,
       hasSelection,
-      contactCreating,
-      contactEditing,
-      openEditContactInPlace,
+      formOpen,
+      participantForm.openEditContact,
     ],
   );
 
@@ -1287,7 +1102,7 @@ export function BrowseShell({
 
   const openCtxGroups = useCallback(
     (anchor: DOMRect) => {
-      if (!ctxMenu || contactCreating || contactEditing) return;
+      if (!ctxMenu || formOpen) return;
       const ids = trashIdsForContext(ctxMenu.id);
       if (ids.length === 0) return;
       cancelCloseGroupsPanel();
@@ -1304,8 +1119,7 @@ export function BrowseShell({
     },
     [
       ctxMenu,
-      contactCreating,
-      contactEditing,
+      formOpen,
       trashIdsForContext,
       cancelCloseGroupsPanel,
     ],
@@ -1421,7 +1235,7 @@ export function BrowseShell({
       ) {
         return;
       }
-      if (contactCreating || contactEditing) return;
+      if (formOpen) return;
       if (!canDelete) return;
       const t = e.target;
       if (t instanceof HTMLElement) {
@@ -1446,8 +1260,7 @@ export function BrowseShell({
     trashConfirm,
     ctxMenu,
     groupsPanelPos,
-    contactCreating,
-    contactEditing,
+    formOpen,
     canDelete,
     deleteTargetIds,
   ]);
@@ -1888,21 +1701,14 @@ export function BrowseShell({
 
   const onGroupParticipantClick = useCallback(
     (participant: GroupParticipant, anchorRect: DOMRect) => {
-      if (vaultReadOnly || saving || contactEditing || contactCreating) return;
-      const anchor = contactFormAnchorFromRect(anchorRect);
-      if (participant.contactId != null) {
-        void openEditContactInPlace(participant.contactId, anchor);
-        return;
-      }
-      openCreateContactInPlace(participant.handle, anchor);
+      if (vaultReadOnly || saving || contactSaving) return;
+      participantForm.onParticipantClick(participant, anchorRect);
     },
     [
       vaultReadOnly,
       saving,
-      contactEditing,
-      contactCreating,
-      openEditContactInPlace,
-      openCreateContactInPlace,
+      contactSaving,
+      participantForm.onParticipantClick,
     ],
   );
 
@@ -1972,7 +1778,7 @@ export function BrowseShell({
     onRemoved: (targets) => {
       clearGroupSelection();
       setSelectedGroupConversationId(null);
-      setMessages([]);
+      setThreadConversationIds(null);
       setActiveThread(null);
       const removed = new Set(targets);
       setGroupChats((prev) =>
@@ -2213,7 +2019,7 @@ export function BrowseShell({
           allGroups={menuGroups}
           checks={groupChecks}
           excludedCheck={excludedCheck}
-          disabled={contactCreating || contactEditing}
+          disabled={formOpen}
           onToggle={toggleGroup}
           onToggleExcluded={() => void toggleExcludedForSelection()}
           onCreate={createAndAssignGroup}
@@ -2232,25 +2038,7 @@ export function BrowseShell({
     <ParticipantContactFormOverlay
       titleId="mv-contact-form-title"
       phonesView={detail?.phones ?? []}
-      form={{
-        formOpen,
-        editDraft,
-        setEditDraft,
-        formAnchor,
-        contactCreating,
-        contactSaving: saving,
-        canSaveForm,
-        draftMenuGroups,
-        draftGroupChecks,
-        draftExcludedCheck,
-        cancelContactForm: cancelContactEdit,
-        saveContactEdit,
-        saveContactCreate,
-        toggleDraftGroup,
-        toggleDraftExcluded,
-        createAndAssignDraftGroup,
-        clearDraftGroups,
-      }}
+      form={participantForm}
     />
     {trashConfirm && trashConfirmCopy && (
       <BrowseTrashConfirmDialog

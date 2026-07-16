@@ -1,6 +1,6 @@
 "use client";
 
-import type { MessageRow, UnassignedHandle, YearThread } from "@/lib/types";
+import type { UnassignedHandle, YearThread } from "@/lib/types";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type SortOrder, type TrashSortBy } from "./SortByMenu";
@@ -14,7 +14,7 @@ import { useListSelection } from "./useListSelection";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
 import { usePanelLayoutStorage } from "./panelLayoutStorage";
-import { fetchThreadMessages } from "./useThreadMessages";
+import { useThreadMessages } from "./useThreadMessages";
 import { useConfirmDialog } from "./useConfirmDialog";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
@@ -76,10 +76,8 @@ export function TrashContactsShell({
     all: number;
     bySource: Record<string, number>;
   }>({ all: 0, bySource: {} });
-  const [messages, setMessages] = useState<MessageRow[]>([]);
   const [activeYear, setActiveYear] = useState<number | null>(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
@@ -241,7 +239,6 @@ export function TrashContactsShell({
   const selectHandle = useCallback(
     (next: string) => {
       setHandle(next);
-      setMessages([]);
       setActiveYear(null);
       setCtxMenu(null);
       setSelectedHandles(new Set());
@@ -264,7 +261,6 @@ export function TrashContactsShell({
     if (handle && !initialHandles.some((h) => h.handle === handle)) {
       setHandle(null);
       setYearly([]);
-      setMessages([]);
       setActiveYear(null);
     }
   }, [initialHandles, handle]);
@@ -272,7 +268,6 @@ export function TrashContactsShell({
   useEffect(() => {
     if (multiSelected) {
       setYearly([]);
-      setMessages([]);
       setActiveYear(null);
       setMessageSources([]);
       setSourceCounts({ all: 0, bySource: {} });
@@ -302,6 +297,7 @@ export function TrashContactsShell({
         if (cancelled) return;
         if (data.error) {
           setYearly([]);
+          setActiveYear(null);
           setMessageSources([]);
           setSourceCounts({ all: 0, bySource: {} });
           return;
@@ -316,57 +312,16 @@ export function TrashContactsShell({
           setSource(null);
         }
 
-        if (nextYearly.length === 1) {
-          const y = nextYearly[0]!;
-          setActiveYear(y.year);
-          setLoadingMessages(true);
-          const ids = y.conversationIds.join(",");
-          fetch(
-            `/api/messages?conversationIds=${ids}&year=${y.year}${sourceQuery}`,
-          )
-            .then((r) => r.json())
-            .then((msgData) => {
-              if (!cancelled) setMessages(msgData.messages ?? []);
-            })
-            .finally(() => {
-              if (!cancelled) setLoadingMessages(false);
-            });
-        } else if (
-          activeYear != null &&
-          nextYearly.some((t) => t.year === activeYear)
-        ) {
-          const y = nextYearly.find((t) => t.year === activeYear)!;
-          setLoadingMessages(true);
-          const ids = y.conversationIds.join(",");
-          fetch(
-            `/api/messages?conversationIds=${ids}&year=${y.year}${sourceQuery}`,
-          )
-            .then((r) => r.json())
-            .then((msgData) => {
-              if (!cancelled) setMessages(msgData.messages ?? []);
-            })
-            .finally(() => {
-              if (!cancelled) setLoadingMessages(false);
-            });
-        } else if (nextYearly.length > 0) {
-          const y = nextYearly[0]!;
-          setActiveYear(y.year);
-          setLoadingMessages(true);
-          const ids = y.conversationIds.join(",");
-          fetch(
-            `/api/messages?conversationIds=${ids}&year=${y.year}${sourceQuery}`,
-          )
-            .then((r) => r.json())
-            .then((msgData) => {
-              if (!cancelled) setMessages(msgData.messages ?? []);
-            })
-            .finally(() => {
-              if (!cancelled) setLoadingMessages(false);
-            });
-        } else {
+        if (nextYearly.length === 0) {
           setActiveYear(null);
-          setMessages([]);
+          return;
         }
+        setActiveYear((prev) => {
+          if (prev != null && nextYearly.some((t) => t.year === prev)) {
+            return prev;
+          }
+          return nextYearly[0]!.year;
+        });
       })
       .finally(() => {
         if (!cancelled) setLoadingThreads(false);
@@ -374,30 +329,35 @@ export function TrashContactsShell({
     return () => {
       cancelled = true;
     };
-    // activeYear intentionally omitted — only reload on handle/source change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     handle,
     selectedTrashKind,
     selectedContactId,
     source,
-    sourceQuery,
     setSource,
     multiSelected,
   ]);
 
-  const loadYear = (year: number, conversationIds: number[]) => {
+  const threadConversationIds = useMemo(() => {
+    if (activeYear == null) return null;
+    const y = yearly.find((t) => t.year === activeYear);
+    return y?.conversationIds?.length ? y.conversationIds : null;
+  }, [yearly, activeYear]);
+
+  const { messages, loading: loadingMessages } = useThreadMessages({
+    conversationIds: threadConversationIds,
+    year: activeYear,
+    sourceQuery,
+    enabled: !multiSelected && handle != null,
+  });
+
+  const loadYear = (year: number, _conversationIds: number[]) => {
     setActiveYear(year);
-    setLoadingMessages(true);
-    fetchThreadMessages(conversationIds, year, sourceQuery)
-      .then(setMessages)
-      .finally(() => setLoadingMessages(false));
   };
 
   const clearFocus = useCallback(() => {
     setHandle(null);
     setYearly([]);
-    setMessages([]);
     setActiveYear(null);
     setMessageSources([]);
     setSourceCounts({ all: 0, bySource: {} });

@@ -49,6 +49,11 @@ export function useThreadMessages(options: {
    * (year may be null/omitted). GroupChatsShell keeps the default (year-scoped).
    */
   fullConversation?: boolean;
+  /**
+   * When this value changes, refetch even if ids/year/source are unchanged
+   * (e.g. browse threadsEpoch after same-contact re-open).
+   */
+  reloadToken?: number | string;
 }): {
   messages: MessageRow[];
   loading: boolean;
@@ -60,6 +65,7 @@ export function useThreadMessages(options: {
     sourceQuery,
     enabled = true,
     fullConversation = false,
+    reloadToken,
   } = options;
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -98,7 +104,7 @@ export function useThreadMessages(options: {
     };
     // idsKey stands in for conversationIds identity
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canFetch, idsKey, year, sourceQuery, fullConversation]);
+  }, [canFetch, idsKey, year, sourceQuery, fullConversation, reloadToken]);
 
   return { messages, loading, setMessages };
 }
