@@ -2,7 +2,6 @@ import { currentAccountId } from "./accountScope";
 import { getDb, hasDuplicateOfColumn, hasTrashedContactsTable } from "./dbCore";
 import { countContacts } from "./contactsRead";
 import { countGroupChats } from "./groupChatsRead";
-import { countUnassignedHandles } from "./unassignedRead";
 import type { HomeStats } from "./types";
 
 export function homeStats(): HomeStats {
@@ -48,7 +47,6 @@ export function homeStats(): HomeStats {
     all: countContacts("all"),
     excluded: countContacts("excluded"),
     noMessages: countContacts("no-messages"),
-    unassigned: countUnassignedHandles(),
     groupChats: countGroupChats(),
     messages,
     messageDuplicates,

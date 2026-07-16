@@ -33,18 +33,12 @@ export function HomePageClient({
     all: number;
     excluded: number;
     noMessages: number;
-    unassigned: number;
     groupChats: number;
     messages: number;
     messageDuplicates: number;
     contacts: number;
   };
 }) {
-  const otherCards = [
-    { href: "/unassigned", label: "Unassigned", value: stats.unassigned },
-    { href: "/group-chats", label: "Group Chats", value: stats.groupChats },
-  ];
-
   return (
     <AppShell active="/" groups={groups}>
       <main className="h-full min-h-0 min-w-0 overflow-y-auto bg-bg px-8 py-10">
@@ -73,9 +67,11 @@ export function HomePageClient({
         </section>
 
         <div className="mt-6 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3">
-          {otherCards.map((c) => (
-            <StatCard key={c.href} {...c} />
-          ))}
+          <StatCard
+            href="/group-chats-2"
+            label="Group Chats"
+            value={stats.groupChats}
+          />
         </div>
 
         <div className="mt-6 text-[13px] text-muted">

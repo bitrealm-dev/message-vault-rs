@@ -27,7 +27,6 @@ import {
   contactFormAnchorFromRect,
   type ContactFormAnchor,
 } from "./ContactFormOverlay";
-import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { TrashListChrome } from "./TrashListChrome";
@@ -140,18 +139,12 @@ export function GroupChatsShell({
   initialYear,
   mode = "group-chats",
   trashTabBar = null,
-  embedded = false,
-  listLayout,
 }: {
   groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
   mode?: "group-chats" | "trash";
   trashTabBar?: ReactNode;
-  /** @deprecated Prefer listLayout="sidebar". */
-  embedded?: boolean;
-  /** years = stacked year table; sidebar = collapsed list | messages. */
-  listLayout?: "years" | "sidebar";
 }) {
   const router = useRouter();
 
@@ -203,11 +196,6 @@ export function GroupChatsShell({
     conversationId: number;
   } | null>(null);
   const storage = usePanelLayoutStorage();
-  const threadsLayout = useDefaultLayout({
-    id: "mv-group-chats-threads",
-    panelIds: ["list", "messages"],
-    storage,
-  });
   const trashSideLayout = useDefaultLayout({
     id: mode === "trash" ? "mv-trash-groups-side" : "mv-group-chats-2-side",
     panelIds: ["list", "messages"],
@@ -216,9 +204,6 @@ export function GroupChatsShell({
   const messagesPaneRef = useRef<HTMLElement>(null);
   const pendingScrollYearRef = useRef<number | null>(initialYear);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
-
-  const sidebarLayout =
-    listLayout === "sidebar" || (listLayout == null && embedded);
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -244,43 +229,25 @@ export function GroupChatsShell({
     [yearScoped],
   );
 
-  const sidebarListItems = useMemo(() => {
-    if (!sidebarLayout) return [] as TrashGroupConversation[];
-    return sortTrashGroups(
-      searchCollapsedGroups(collapsed, query),
-      groupSidebarSortBy,
-      groupSidebarSortOrder,
-    );
-  }, [
-    sidebarLayout,
-    collapsed,
-    query,
-    groupSidebarSortBy,
-    groupSidebarSortOrder,
-  ]);
-
-  const filtered = useMemo(
-    () => searchGroups(yearScoped, query),
-    [yearScoped, query],
+  const sidebarListItems = useMemo(
+    () =>
+      sortTrashGroups(
+        searchCollapsedGroups(collapsed, query),
+        groupSidebarSortBy,
+        groupSidebarSortOrder,
+      ),
+    [collapsed, query, groupSidebarSortBy, groupSidebarSortOrder],
   );
 
-  /** Unique conversation ids in filtered list order (first appearance). */
-  const uniqueIds = useMemo(() => {
-    if (sidebarLayout) return sidebarListItems.map((g) => g.id);
-    const ids: number[] = [];
-    const seen = new Set<number>();
-    for (const g of filtered) {
-      if (seen.has(g.id)) continue;
-      seen.add(g.id);
-      ids.push(g.id);
-    }
-    return ids;
-  }, [sidebarLayout, sidebarListItems, filtered]);
+  const uniqueIds = useMemo(
+    () => sidebarListItems.map((g) => g.id),
+    [sidebarListItems],
+  );
 
-  const validIds = useMemo(() => {
-    if (sidebarLayout) return collapsed.map((g) => g.id);
-    return groupChats.map((g) => g.id);
-  }, [sidebarLayout, collapsed, groupChats]);
+  const validIds = useMemo(
+    () => collapsed.map((g) => g.id),
+    [collapsed],
+  );
 
   const {
     selectedIds,
@@ -300,24 +267,13 @@ export function GroupChatsShell({
     multiThreshold: "any",
     focusedId: conversationId,
     ctrlSeedSkipsTarget: false,
-    rowClickMode: sidebarLayout
-      ? "alwaysOpen"
-      : "openWhenEmptyElseToggleIfSelected",
+    rowClickMode: "alwaysOpen",
     checkboxEvents: "stopOnly",
     escapeToClear: true,
     escapeBlocked: () => ctxMenu != null,
     selectAllSetsAnchor: false,
   });
 
-  const rowsByYear = useMemo(() => {
-    const map = new Map<number, GroupYearRow[]>();
-    for (const g of filtered) {
-      const list = map.get(g.year) ?? [];
-      list.push(g);
-      map.set(g.year, list);
-    }
-    return [...map.entries()].sort(([a], [b]) => b - a);
-  }, [filtered]);
 
   const selectedRow = useMemo(() => {
     if (conversationId == null || focusYear == null) return null;
@@ -456,7 +412,7 @@ export function GroupChatsShell({
     onRemoved: clearFocusAfterRemoval,
     onDismissMenus: () => setCtxMenu(null),
     afterTrash: () => {
-      if (sidebarLayout && mode === "group-chats") {
+      if (mode === "group-chats") {
         router.refresh();
         return;
       }
@@ -477,53 +433,6 @@ export function GroupChatsShell({
       router.refresh();
     },
   });
-
-  const canAct = actionTargets.length > 0 && !saving;
-
-  const selectGroup = useCallback(
-    (row: GroupYearRow) => {
-      if (conversationId === row.id && focusYear === row.year) {
-        setSelectedIds(new Set());
-        return;
-      }
-      setSelectedIds(new Set());
-      selectionAnchorRef.current = row.id;
-      setConversationId(row.id);
-      setFocusYear(row.year);
-      setMessages([]);
-      pendingScrollYearRef.current = row.year;
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("g", String(row.id));
-      params.set("y", String(row.year));
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    },
-    [
-      focusYear,
-      conversationId,
-      pathname,
-      router,
-      searchParams,
-      setMessages,
-      setSelectedIds,
-      selectionAnchorRef,
-    ],
-  );
-
-  const onYearRowClick = useCallback(
-    (row: GroupYearRow, e: MouseEvent) => {
-      if (
-        !e.shiftKey &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        selectedIds.size === 0
-      ) {
-        selectGroup(row);
-        return;
-      }
-      onRowClickId(row.id, e);
-    },
-    [onRowClickId, selectGroup, selectedIds.size],
-  );
 
   const onSidebarListRowClick = useCallback(
     (g: TrashGroupConversation, e: MouseEvent) => {
@@ -604,11 +513,6 @@ export function GroupChatsShell({
     }
     pendingScrollYearRef.current = null;
   }, [loading, messages, focusYear, multiSelected]);
-
-  const activeKey =
-    conversationId != null && focusYear != null && !multiSelected
-      ? `${conversationId}-${focusYear}`
-      : null;
 
   const formOpen = (editContactId != null || contactCreating) && !!editDraft;
   const canSaveForm =
@@ -815,7 +719,7 @@ export function GroupChatsShell({
       loading={loading}
       messages={messages}
       conversationSelected={conversationId != null}
-      prominentHeader={sidebarLayout}
+      prominentHeader
       onParticipantClick={
         vaultReadOnly ? undefined : onParticipantClick
       }
@@ -826,7 +730,7 @@ export function GroupChatsShell({
     <>
       <div className="flex h-full min-h-0 w-full flex-col bg-bg">
         <div className="min-h-0 flex-1">
-          {sidebarLayout ? (
+
             <Group
               id={
                 mode === "trash"
@@ -915,59 +819,6 @@ export function GroupChatsShell({
                 {messagesPane}
               </Panel>
             </Group>
-          ) : (
-            <Group
-              id="mv-group-chats-threads"
-              orientation="vertical"
-              className="h-full w-full bg-bg"
-              defaultLayout={threadsLayout.defaultLayout}
-              onLayoutChanged={threadsLayout.onLayoutChanged}
-            >
-              <Panel
-                id="list"
-                defaultSize="40%"
-                minSize="25%"
-                maxSize="75%"
-                className="min-h-0"
-              >
-                <GroupChatsListPane
-                  mode={mode}
-                  trashTabBar={trashTabBar}
-                  embedded={false}
-                  selectAllRef={selectAllRef}
-                  allSelected={allSelected}
-                  uniqueIdsCount={uniqueIds.length}
-                  query={query}
-                  onQueryChange={setQuery}
-                  onToggleSelectAll={toggleSelectAll}
-                  filteredCount={filtered.length}
-                  groupsCount={groupChats.length}
-                  status={status}
-                  canAct={canAct}
-                  years={years}
-                  filterYear={filterYear}
-                  onFilterYearChange={setFilterYear}
-                  groupDateFormat={groupDateFormat}
-                  onGroupDateFormatChange={setGroupDateFormat}
-                  onMoveToTrash={() => void moveToTrash()}
-                  onRestore={() => void restoreFromTrash()}
-                  onPermanentDelete={() => void permanentlyDeleteFromTrash()}
-                  rowsByYear={rowsByYear}
-                  activeKey={activeKey}
-                  selectedIds={selectedIds}
-                  onSelectColumnClick={onSelectColumnClick}
-                  onRowClick={onYearRowClick}
-                  onOpenCtxMenu={openCtxMenu}
-                />
-              </Panel>
-
-              <PaneSeparator orientation="horizontal" />
-
-              <Panel id="messages" minSize="25%" className="min-h-0">
-                {messagesPane}
-              </Panel>
-            </Group>
-          )}
         </div>
       </div>
 

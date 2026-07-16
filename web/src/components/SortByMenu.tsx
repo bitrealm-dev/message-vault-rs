@@ -5,7 +5,6 @@ import { IconHoverTarget } from "./IconHoverLabel";
 import { useDismissible } from "./useDismissible";
 
 export type SortMode = "first" | "last" | "messages" | "phone";
-export type UnassignedSortBy = "phone" | "date" | "messages";
 export type SortOrder = "asc" | "desc";
 
 type SortField<T extends string> = { id: T; label: string };
@@ -144,35 +143,6 @@ export function SortByMenu({
       order={order}
       onChange={onChange}
       ariaLabel="Sort by"
-    />
-  );
-}
-
-const UNASSIGNED_SORT_FIELDS: SortField<UnassignedSortBy>[] = [
-  { id: "phone", label: "Phone number" },
-  { id: "date", label: "Date" },
-  { id: "messages", label: "Message Count" },
-];
-
-/** Phone/date/messages + ascending/descending for Unassigned. */
-export function UnassignedSortMenu({
-  sortBy,
-  order,
-  onChange,
-}: {
-  sortBy: UnassignedSortBy;
-  order: SortOrder;
-  onChange: (next: { sortBy: UnassignedSortBy; order: SortOrder }) => void;
-}) {
-  return (
-    <SortMenu
-      fields={UNASSIGNED_SORT_FIELDS}
-      sort={sortBy}
-      order={order}
-      onChange={({ sort, order: nextOrder }) =>
-        onChange({ sortBy: sort, order: nextOrder })
-      }
-      ariaLabel="Sort unassigned"
     />
   );
 }

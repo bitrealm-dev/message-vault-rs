@@ -3,6 +3,7 @@ import {
   restoreHandle,
   trashHandle,
 } from "@/lib/handlesWrite";
+import { ensureUnknownContacts } from "@/lib/contactsWrite";
 import {
   unauthorizedResponse,
   withAccountHandler,
@@ -60,6 +61,8 @@ export async function DELETE(req: Request) {
         return NextResponse.json({ ok: true, handle, permanent: true });
       }
       restoreHandle(handle);
+      // Promote restored unassigned handles to nameless contacts (no Unassigned UI).
+      ensureUnknownContacts();
       return NextResponse.json({ ok: true, handle });
     });
   } catch (err) {

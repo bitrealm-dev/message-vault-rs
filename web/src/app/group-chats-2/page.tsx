@@ -26,7 +26,6 @@ export default async function GroupChats2Page({
           groupChats={groupChats}
           initialConversationId={conversationId}
           initialYear={year}
-          listLayout="sidebar"
         />
       </BrowsePageLayout>
     );

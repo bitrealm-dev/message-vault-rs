@@ -24,58 +24,9 @@ async function jsonFetch(
   if (!res.ok) throw new Error(await readError(res, fallback));
 }
 
-async function trashUnassignedHandles(handles: string[]): Promise<void> {
-  for (const handle of handles) {
-    await jsonFetch(
-      "/api/unassigned/trash",
-      { method: "POST", body: JSON.stringify({ handle }) },
-      "trash failed",
-    );
-  }
-}
-
-async function restoreUnassignedHandles(handles: string[]): Promise<void> {
-  for (const handle of handles) {
-    await jsonFetch(
-      "/api/unassigned/trash",
-      { method: "DELETE", body: JSON.stringify({ handle }) },
-      "restore failed",
-    );
-  }
-}
-
-async function assignHandles(
-  contactId: number,
-  handles: string[],
-): Promise<void> {
-  for (const handle of handles) {
-    await jsonFetch(
-      `/api/contacts/${contactId}/handles`,
-      { method: "POST", body: JSON.stringify({ handle }) },
-      "assign failed",
-    );
-  }
-}
-
-async function unassignHandles(
-  contactId: number,
-  handles: string[],
-): Promise<void> {
-  for (const handle of handles) {
-    await jsonFetch(
-      `/api/contacts/${contactId}/handles`,
-      { method: "DELETE", body: JSON.stringify({ handle }) },
-      "unassign failed",
-    );
-  }
-}
-
 /** Run the inverse of a forward command (undo). */
 export async function undoCommand(cmd: HistoryCommand): Promise<void> {
   switch (cmd.type) {
-    case "assignHandles":
-      await unassignHandles(cmd.contactId, cmd.handles);
-      return;
     case "trashContacts":
       if (cmd.mode === "messages_only") {
         const handles = cmd.handles ?? [];
@@ -160,9 +111,6 @@ export async function undoCommand(cmd: HistoryCommand): Promise<void> {
         "restore group failed",
       );
       return;
-    case "trashUnassignedHandles":
-      await restoreUnassignedHandles(cmd.handles);
-      return;
     default: {
       const _exhaustive: never = cmd;
       void _exhaustive;
@@ -174,9 +122,6 @@ export async function undoCommand(cmd: HistoryCommand): Promise<void> {
 /** Re-apply a forward command (redo). */
 export async function redoCommand(cmd: HistoryCommand): Promise<void> {
   switch (cmd.type) {
-    case "assignHandles":
-      await assignHandles(cmd.contactId, cmd.handles);
-      return;
     case "trashContacts":
       await jsonFetch(
         "/api/contacts/trash",
@@ -225,9 +170,6 @@ export async function redoCommand(cmd: HistoryCommand): Promise<void> {
         { method: "DELETE", body: JSON.stringify({ name: cmd.name }) },
         "delete group failed",
       );
-      return;
-    case "trashUnassignedHandles":
-      await trashUnassignedHandles(cmd.handles);
       return;
     default: {
       const _exhaustive: never = cmd;

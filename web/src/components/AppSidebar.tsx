@@ -20,7 +20,6 @@ import {
   PersonDetailIcon,
   PlusIcon,
   ProhibitedIcon,
-  QuestionHandleIcon,
   TrashIcon,
 } from "./icons";
 import { useHistory } from "./history";
@@ -595,18 +594,6 @@ export function AppSidebar({
               Messages
             </span>
           </div>
-          <NavLink
-            href="/unassigned"
-            label="Unassigned"
-            active={active === "/unassigned"}
-            icon={<QuestionHandleIcon className="size-5 shrink-0 opacity-80" />}
-          />
-          <NavLink
-            href="/group-chats"
-            label="Group Chats"
-            active={active === "/group-chats"}
-            icon={groupIcon}
-          />
           <NavLink
             href="/group-chats-2"
             label="Group Chats 2"

@@ -162,7 +162,6 @@ export type HomeStats = {
   all: number;
   excluded: number;
   noMessages: number;
-  unassigned: number;
   groupChats: number;
   /** Soft-deduped messages (`duplicate_of IS NULL`). */
   messages: number;

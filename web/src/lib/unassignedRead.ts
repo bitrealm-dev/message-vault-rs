@@ -14,39 +14,6 @@ import {
 import { contactGroupChatThreadsForPhones } from "./groupChatsRead";
 import type { GroupChatThread, UnassignedHandle, YearThread } from "./types";
 
-export function countUnassignedHandles(): number {
-  const accountId = currentAccountId();
-  const db = getDb();
-  const hideDupes = hasDuplicateOfColumn() ? " AND m.duplicate_of IS NULL" : "";
-  const hasTrash = hasTrashedHandlesTable(db);
-  const trashFilter = !hasTrash
-    ? ""
-    : `AND NOT EXISTS (
-         SELECT 1 FROM trashed_handles th
-         WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
-       )`;
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM (
-         SELECT c.id
-         FROM conversations c
-         JOIN messages m ON m.conversation_id = c.id
-         WHERE c.account_id = ?
-           AND c.conversation_type = 'individual'
-           AND NOT EXISTS (
-             SELECT 1 FROM contact_handles cp
-             WHERE cp.handle = c.chat_identifier AND cp.account_id = c.account_id
-           )
-           ${trashFilter}${hideDupes}
-         GROUP BY c.id
-         HAVING COUNT(m.id) > 0
-       )`,
-    )
-    .get(accountId) as { n: number };
-  return row.n;
-}
-
-
 /** 1:1 conversations with messages whose handle is not on any contact. */
 export function listUnassignedHandles(): UnassignedHandle[] {
   return listHandleSection("unassigned");

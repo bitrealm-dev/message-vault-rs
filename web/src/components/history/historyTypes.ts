@@ -7,12 +7,6 @@ export type TrashContactMode = "contact_and_messages" | "messages_only";
 
 export type HistoryCommand =
   | {
-      type: "assignHandles";
-      contactId: number;
-      handles: string[];
-      label: string;
-    }
-  | {
       type: "trashContacts";
       contactIds: number[];
       mode: TrashContactMode;
@@ -39,11 +33,6 @@ export type HistoryCommand =
       type: "deleteGroup";
       name: string;
       memberContactIds: number[];
-      label: string;
-    }
-  | {
-      type: "trashUnassignedHandles";
-      handles: string[];
       label: string;
     };
 

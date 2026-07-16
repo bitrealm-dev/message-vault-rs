@@ -264,9 +264,7 @@ export function TrashShell({
     <div className="h-full min-h-0 min-w-0">
       {tab === "contacts" ? (
         <UnassignedShell
-          mode="trash"
           handles={contactList}
-          assignContacts={[]}
           initialHandle={initialHandle}
           trashTabBar={tabBar}
         />
@@ -276,7 +274,6 @@ export function TrashShell({
           groupChats={groupChats}
           initialConversationId={initialConversationId}
           initialYear={initialYear}
-          listLayout="sidebar"
           trashTabBar={tabBar}
         />
       )}
