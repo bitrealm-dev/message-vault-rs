@@ -582,9 +582,9 @@ export function AppSidebar({
             icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
           />
           <NavLink
-            href="/group-chats-2"
+            href="/group-messages"
             label="Group Messages"
-            active={active === "/group-chats-2"}
+            active={active === "/group-messages"}
             icon={groupMessagesIcon}
           />
 

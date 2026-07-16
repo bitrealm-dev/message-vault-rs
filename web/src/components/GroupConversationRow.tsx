@@ -1,0 +1,173 @@
+"use client";
+
+import type { CollapsedGroupConversation } from "@/lib/groupChatList";
+import {
+  formatGroupDateTable,
+  type GroupDateFormat,
+} from "@/lib/groupDateFormat";
+import { MessageIcon, PeopleCountIcon } from "./icons";
+
+export const GROUP_NAME_SEP = "  ·  ";
+export const MAX_VISIBLE_GROUP_NAMES = 8;
+
+/** Soft wrap gap around · so whole names stay together. */
+export function GroupNameSep({
+  variant = "browse",
+}: {
+  variant?: "browse" | "trash";
+}) {
+  if (variant === "trash") {
+    return (
+      <span className="px-1.5 font-normal text-muted" aria-hidden>
+        ·
+      </span>
+    );
+  }
+  return (
+    <span className="font-normal text-muted" aria-hidden>
+      {" · "}
+    </span>
+  );
+}
+
+/** Show up to 8 names; 9+ adds +n for the remainder. */
+export function visibleParticipantLabels(labels: string[]): string[] {
+  if (labels.length <= MAX_VISIBLE_GROUP_NAMES) return labels;
+  return [
+    ...labels.slice(0, MAX_VISIBLE_GROUP_NAMES),
+    `+${labels.length - MAX_VISIBLE_GROUP_NAMES}`,
+  ];
+}
+
+export function formatCollapsedDateRange(
+  start: string,
+  end: string,
+  style: GroupDateFormat,
+): string {
+  const a = formatGroupDateTable(start, style);
+  if (end === start) return a;
+  return `${a} – ${formatGroupDateTable(end, style)}`;
+}
+
+/** Prefer names, then handles, then parse title (browse fallback). */
+export function collapsedParticipantLabels(
+  g: CollapsedGroupConversation,
+): string[] {
+  if (g.participantNames.length > 0) return g.participantNames;
+  if (g.participantHandles.length > 0) return g.participantHandles;
+  if (g.title && g.title !== "Group chat" && g.title !== "Group message") {
+    return g.title
+      .split(/\u00a0*\u00a0·\u00a0\u00a0| {2}· {2}/)
+      .map((n) => n.replace(/\u00a0/g, " ").trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+/** Shared names / date / message+people counts for group conversation rows. */
+export function GroupConversationRowBody({
+  conversation: g,
+  groupDateFormat,
+  variant = "browse",
+}: {
+  conversation: CollapsedGroupConversation;
+  groupDateFormat: GroupDateFormat;
+  variant?: "browse" | "trash";
+}) {
+  const allNames = collapsedParticipantLabels(g);
+  const names = visibleParticipantLabels(allNames);
+  const namesTitle =
+    allNames.length > 0
+      ? allNames.join(GROUP_NAME_SEP)
+      : g.titleFull || g.title;
+  const dateLabel = formatCollapsedDateRange(
+    g.dateStart,
+    g.dateEnd,
+    groupDateFormat,
+  );
+
+  if (variant === "trash") {
+    return (
+      <div className="flex w-full gap-2">
+        <div className="min-w-0 flex-1">
+          {g.namedTitle ? (
+            <div className="mb-1 truncate text-[12px] font-medium text-text">
+              {g.namedTitle}
+            </div>
+          ) : null}
+          <div
+            className="flex min-w-0 flex-wrap gap-y-0.5 text-[13px] leading-snug font-medium text-text"
+            title={namesTitle}
+          >
+            {names.map((name, idx) => (
+              <span
+                key={`${g.conversationId}-name-${idx}`}
+                className="whitespace-nowrap"
+              >
+                {name}
+                {idx < names.length - 1 ? (
+                  <GroupNameSep variant="trash" />
+                ) : null}
+              </span>
+            ))}
+          </div>
+          <div className="mt-1.5 truncate font-mono text-[12px] text-muted">
+            {dateLabel}
+          </div>
+        </div>
+        <div className="flex w-[4.5rem] shrink-0 flex-col items-end justify-between pt-0.5">
+          <span className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
+            <MessageIcon className="size-3.5 opacity-80" />
+            {g.messageCount.toLocaleString()}
+          </span>
+          <span className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
+            <PeopleCountIcon className="size-3.5 opacity-80" />
+            {g.participantCount.toLocaleString()}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <span className="min-w-0 flex-1">
+        {g.namedTitle ? (
+          <span className="mb-0.5 block truncate text-[12px] font-medium text-text">
+            {g.namedTitle}
+          </span>
+        ) : null}
+        {names.length > 0 ? (
+          <span
+            className="line-clamp-3 text-[13px] font-medium leading-snug text-text"
+            title={namesTitle}
+          >
+            {names.map((name, idx) => (
+              <span key={`${g.conversationId}-name-${idx}`}>
+                {idx > 0 ? <GroupNameSep /> : null}
+                <span className="whitespace-nowrap">{name}</span>
+              </span>
+            ))}
+          </span>
+        ) : !g.namedTitle ? (
+          <span className="line-clamp-3 text-[13px] font-medium leading-snug text-text">
+            {g.title}
+          </span>
+        ) : null}
+        <span className="mt-0.5 block text-[11px] text-muted tabular-nums">
+          {dateLabel}
+        </span>
+      </span>
+      <span className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch py-0.5 text-[11px] text-muted">
+        <span className="inline-flex items-center gap-0.5 tabular-nums">
+          <MessageIcon className="size-3.5 shrink-0 opacity-80" />
+          {g.messageCount.toLocaleString()}
+        </span>
+        <span className="inline-flex items-center gap-0.5 tabular-nums">
+          <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
+          {g.participantCount.toLocaleString()}
+        </span>
+      </span>
+    </>
+  );
+}

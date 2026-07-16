@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type SortOrder, type TrashSortBy } from "./SortByMenu";
 import { TrashContactList } from "./TrashContactList";
-import { UnassignedDetailPane } from "./UnassignedDetailPane";
-import { UnassignedMessagesPane } from "./UnassignedMessagesPane";
+import { TrashContactsDetailPane } from "./TrashContactsDetailPane";
+import { TrashContactsMessagesPane } from "./TrashContactsMessagesPane";
 import { useHistory } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
@@ -35,7 +35,7 @@ function trashLetterFor(h: UnassignedHandle, sortBy: TrashSortBy): string {
   return ch >= "A" && ch <= "Z" ? ch : "#";
 }
 
-export function UnassignedShell({
+export function TrashContactsShell({
   handles: initialHandles,
   initialHandle,
   trashTabBar = null,
@@ -90,12 +90,12 @@ export function UnassignedShell({
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const storage = usePanelLayoutStorage();
   const sideLayout = useDefaultLayout({
-    id: "mv-browse-side",
+    id: "mv-trash-contacts-side",
     panelIds: ["list", "right"],
     storage,
   });
   const threadsLayout = useDefaultLayout({
-    id: "mv-unassigned-threads",
+    id: "mv-trash-contacts-threads",
     panelIds: ["detail", "messages"],
     storage,
   });
@@ -568,7 +568,7 @@ export function UnassignedShell({
   return (
     <>
       <Group
-        id="mv-browse-side"
+        id="mv-trash-contacts-side"
         orientation="horizontal"
         className="h-full w-full"
         defaultLayout={sideLayout.defaultLayout}
@@ -643,7 +643,7 @@ export function UnassignedShell({
               <div className="min-h-0 flex-1" />
             ) : (
               <Group
-                id="mv-unassigned-threads"
+                id="mv-trash-contacts-threads"
                 orientation="vertical"
                 className="min-h-0 flex-1"
                 defaultLayout={threadsLayout.defaultLayout}
@@ -656,7 +656,7 @@ export function UnassignedShell({
                   maxSize="75%"
                   className="min-h-0"
                 >
-                  <UnassignedDetailPane
+                  <TrashContactsDetailPane
                     mode="trash"
                     multiSelected={multiSelected}
                     selected={selected}
@@ -681,7 +681,7 @@ export function UnassignedShell({
                 <PaneSeparator orientation="horizontal" />
 
                 <Panel id="messages" minSize="25%" className="min-h-0">
-                  <UnassignedMessagesPane
+                  <TrashContactsMessagesPane
                     multiSelected={multiSelected}
                     activeYear={activeYear}
                     loadingMessages={loadingMessages}

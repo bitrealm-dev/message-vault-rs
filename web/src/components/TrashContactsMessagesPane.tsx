@@ -4,7 +4,7 @@ import type { MessageRow } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
 import { ThreadMessagesHeader } from "./ThreadMessagesHeader";
 
-export function UnassignedMessagesPane({
+export function TrashContactsMessagesPane({
   multiSelected,
   activeYear,
   loadingMessages,

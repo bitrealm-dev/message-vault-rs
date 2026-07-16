@@ -41,17 +41,13 @@ export function reservedGroupError(name: string): string {
     return "No messages is a reserved group";
   }
   if (
+    key === "groups" ||
     key === "group chats" ||
     key === "group-chats" ||
-    key === "group messages" ||
-    key === "group-messages" ||
-    key === "groups"
-  ) {
-    return "Group messages is a reserved name";
-  }
-  if (
     key === "group chats 2" ||
     key === "group-chats-2" ||
+    key === "group messages" ||
+    key === "group-messages" ||
     key === "group messages 2" ||
     key === "group-messages-2"
   ) {

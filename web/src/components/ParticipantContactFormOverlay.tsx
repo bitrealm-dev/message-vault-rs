@@ -1,0 +1,118 @@
+"use client";
+
+import type { ContactEditDraft } from "./contactEdit";
+import { ContactDetailsCard } from "./ContactDetailsCard";
+import {
+  ContactFormOverlay,
+  type ContactFormAnchor,
+} from "./ContactFormOverlay";
+import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import type { Dispatch, SetStateAction } from "react";
+
+/** Props needed to render the shared participant contact form overlay. */
+export type ParticipantContactFormView = {
+  formOpen: boolean;
+  editDraft: ContactEditDraft | null;
+  setEditDraft: Dispatch<SetStateAction<ContactEditDraft | null>>;
+  formAnchor: ContactFormAnchor | null;
+  contactCreating: boolean;
+  contactSaving: boolean;
+  canSaveForm: boolean;
+  draftMenuGroups: string[];
+  draftGroupChecks: Record<string, GroupCheckState>;
+  draftExcludedCheck: GroupCheckState;
+  cancelContactForm: () => void;
+  saveContactEdit: () => Promise<void>;
+  saveContactCreate: () => Promise<void>;
+  toggleDraftGroup: (name: string) => void;
+  toggleDraftExcluded: () => void;
+  createAndAssignDraftGroup: (name: string) => void;
+  clearDraftGroups: () => void;
+};
+
+export function ParticipantContactFormOverlay({
+  form,
+  titleId,
+  phonesView = [],
+}: {
+  form: ParticipantContactFormView;
+  titleId: string;
+  phonesView?: string[];
+}) {
+  const {
+    formOpen,
+    editDraft,
+    setEditDraft,
+    formAnchor,
+    contactCreating,
+    contactSaving,
+    canSaveForm,
+    draftMenuGroups,
+    draftGroupChecks,
+    draftExcludedCheck,
+    cancelContactForm,
+    saveContactCreate,
+    saveContactEdit,
+    toggleDraftGroup,
+    toggleDraftExcluded,
+    createAndAssignDraftGroup,
+    clearDraftGroups,
+  } = form;
+
+  if (!formOpen || !editDraft) return null;
+
+  return (
+    <ContactFormOverlay
+      anchor={formAnchor}
+      titleId={titleId}
+      title={contactCreating ? "Add new contact" : "Edit contact"}
+      busy={contactSaving}
+      onDismiss={cancelContactForm}
+      footer={
+        <>
+          <button
+            type="button"
+            disabled={contactSaving}
+            onClick={cancelContactForm}
+            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={contactSaving || (contactCreating && !canSaveForm)}
+            onClick={() =>
+              void (contactCreating ? saveContactCreate() : saveContactEdit())
+            }
+            className="rounded-md bg-accent/25 px-3 py-1.5 text-[13px] font-medium text-text transition-colors hover:bg-accent/35 disabled:opacity-50"
+          >
+            Save
+          </button>
+        </>
+      }
+    >
+      <ContactDetailsCard
+        formOpen
+        framed={false}
+        draft={editDraft}
+        onDraftChange={setEditDraft}
+        groups={editDraft.contactGroups}
+        excluded={editDraft.exclude}
+        phonesView={phonesView}
+        groupsEditor={
+          <GroupsMenu
+            labeled
+            allGroups={draftMenuGroups}
+            checks={draftGroupChecks}
+            excludedCheck={draftExcludedCheck}
+            disabled={contactSaving}
+            onToggle={toggleDraftGroup}
+            onToggleExcluded={toggleDraftExcluded}
+            onCreate={createAndAssignDraftGroup}
+            onClearAll={clearDraftGroups}
+          />
+        }
+      />
+    </ContactFormOverlay>
+  );
+}

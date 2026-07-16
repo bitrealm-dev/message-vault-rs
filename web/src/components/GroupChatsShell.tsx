@@ -1,9 +1,15 @@
 "use client";
 
-import type { GroupParticipant, GroupYearRow } from "@/lib/types";
+import type { GroupYearRow } from "@/lib/types";
+import {
+  collapseGroupYearRows,
+  GROUP_DATE_ALLOWED,
+  newestYearForConversation,
+  SORT_ORDER_ALLOWED,
+  type CollapsedGroupConversation,
+} from "@/lib/groupChatList";
 import { searchGroups } from "@/lib/groupSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
-import { phoneHandlesOnly } from "@/lib/handleKind";
 import {
   useCallback,
   useEffect,
@@ -14,36 +20,21 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  draftHasName,
-  emptyContactEditDraft,
-  phonesForSave,
-  seedContactEditDraft,
-  type ContactEditDraft,
-} from "./contactEdit";
-import { ContactDetailsCard } from "./ContactDetailsCard";
-import {
-  ContactFormOverlay,
-  contactFormAnchorFromRect,
-  type ContactFormAnchor,
-} from "./ContactFormOverlay";
+import { createGroupChatTrashOptions } from "./groupChatTrash";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
-import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import { ParticipantContactFormOverlay } from "./ParticipantContactFormOverlay";
 import { TrashListChrome } from "./TrashListChrome";
-import {
-  collapseGroupConversations,
-  TrashGroupChatList,
-  type TrashGroupConversation,
-} from "./TrashGroupChatList";
+import { TrashGroupChatList } from "./TrashGroupChatList";
 import {
   type GroupTrashSortBy,
   type SortOrder,
 } from "./SortByMenu";
 import { YearFilterMenu } from "./YearFilterMenu";
-import { useHistory, ListHistoryMenu } from "./history";
+import { useHistory } from "./history";
 import { useSourceFilter } from "./SourceFilter";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
+import { useParticipantContactForm } from "./useParticipantContactForm";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
 import { usePanelLayoutStorage } from "./panelLayoutStorage";
@@ -52,7 +43,6 @@ import { useTrashActions } from "./useTrashActions";
 import { useVaultReadOnly } from "./useVaultReadOnly";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
-const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 const GROUP_SIDEBAR_SORT_BY_KEY = "mv-group-sidebar-sort-by";
 const GROUP_SIDEBAR_SORT_ORDER_KEY = "mv-group-sidebar-sort-order";
 const GROUP_SIDEBAR_SORT_BY_ALLOWED = [
@@ -61,33 +51,19 @@ const GROUP_SIDEBAR_SORT_BY_ALLOWED = [
   "people",
   "messages",
 ] as const;
-const GROUP_SIDEBAR_SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
-
-/** Newest calendar year for a conversation in the year-row list. */
-function newestYearForConversation(
-  rows: GroupYearRow[],
-  id: number,
-): number | null {
-  let newest: number | null = null;
-  for (const g of rows) {
-    if (g.id !== id) continue;
-    if (newest == null || g.year > newest) newest = g.year;
-  }
-  return newest;
-}
 
 function sortTrashGroups(
-  items: TrashGroupConversation[],
+  items: CollapsedGroupConversation[],
   sortBy: GroupTrashSortBy,
   order: SortOrder,
-): TrashGroupConversation[] {
+): CollapsedGroupConversation[] {
   const dir = order === "asc" ? 1 : -1;
   return [...items].sort((a, b) => {
     let cmp = 0;
     if (sortBy === "start") {
-      cmp = a.conversationDateStart.localeCompare(b.conversationDateStart);
+      cmp = a.dateStart.localeCompare(b.dateStart);
     } else if (sortBy === "end") {
-      cmp = a.conversationDateEnd.localeCompare(b.conversationDateEnd);
+      cmp = a.dateEnd.localeCompare(b.dateEnd);
     } else if (sortBy === "people") {
       cmp = a.participantCount - b.participantCount;
     } else {
@@ -99,30 +75,30 @@ function sortTrashGroups(
 }
 
 function searchCollapsedGroups(
-  items: TrashGroupConversation[],
+  items: CollapsedGroupConversation[],
   query: string,
-): TrashGroupConversation[] {
+): CollapsedGroupConversation[] {
   if (!query.trim()) return items;
   const asRows: GroupYearRow[] = items.map((c) => ({
-    id: c.id,
+    id: c.conversationId,
     year: c.newestYear,
     title: c.title,
-    titleFull: c.title,
+    titleFull: c.titleFull || c.title,
     namedTitle: c.namedTitle,
     participantCount: c.participantCount,
     participantNames: c.participantNames,
     participantHandles: c.participantHandles,
     participants: c.participants,
     messageCount: c.messageCount,
-    dateStart: c.conversationDateStart,
-    dateEnd: c.conversationDateEnd,
-    conversationDateStart: c.conversationDateStart,
-    conversationDateEnd: c.conversationDateEnd,
-    spansMultipleYears: c.conversationDateStart !== c.conversationDateEnd,
+    dateStart: c.dateStart,
+    dateEnd: c.dateEnd,
+    conversationDateStart: c.dateStart,
+    conversationDateEnd: c.dateEnd,
+    spansMultipleYears: c.dateStart !== c.dateEnd,
   }));
   const hits = searchGroups(asRows, query);
-  const byId = new Map(items.map((c) => [c.id, c]));
-  const out: TrashGroupConversation[] = [];
+  const byId = new Map(items.map((c) => [c.conversationId, c]));
+  const out: CollapsedGroupConversation[] = [];
   const seen = new Set<number>();
   for (const h of hits) {
     if (seen.has(h.id)) continue;
@@ -137,13 +113,11 @@ export function GroupChatsShell({
   groupChats: initialGroupChats,
   initialConversationId,
   initialYear,
-  mode = "group-chats",
   trashTabBar = null,
 }: {
   groupChats: GroupYearRow[];
   initialConversationId: number | null;
   initialYear: number | null;
-  mode?: "group-chats" | "trash";
   trashTabBar?: ReactNode;
 }) {
   const router = useRouter();
@@ -151,7 +125,7 @@ export function GroupChatsShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const vaultReadOnly = useVaultReadOnly();
-  const { push: pushHistory, clear: clearHistory } = useHistory();
+  const { clear: clearHistory } = useHistory();
   const { sourceQuery } = useSourceFilter();
   const [groupChats, setGroupChats] = useState(initialGroupChats);
   const [conversationId, setConversationId] = useState<number | null>(
@@ -162,12 +136,6 @@ export function GroupChatsShell({
   const [query, setQuery] = useState("");
   /** null = All years */
   const [filterYear, setFilterYear] = useState<number | null>(null);
-  const [editContactId, setEditContactId] = useState<number | null>(null);
-  const [contactCreating, setContactCreating] = useState(false);
-  const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
-  const [formAnchor, setFormAnchor] = useState<ContactFormAnchor | null>(null);
-  const [extraDraftGroups, setExtraDraftGroups] = useState<string[]>([]);
-  const [contactSaving, setContactSaving] = useState(false);
   const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
     GROUP_DATE_FORMAT_KEY,
     GROUP_DATE_ALLOWED,
@@ -180,7 +148,7 @@ export function GroupChatsShell({
   );
   const [groupSidebarSortOrder, setGroupSidebarSortOrder] = usePersistedEnum(
     GROUP_SIDEBAR_SORT_ORDER_KEY,
-    GROUP_SIDEBAR_SORT_ORDER_ALLOWED,
+    SORT_ORDER_ALLOWED,
     "desc",
   );
   const setGroupSidebarSort = useCallback(
@@ -197,7 +165,7 @@ export function GroupChatsShell({
   } | null>(null);
   const storage = usePanelLayoutStorage();
   const trashSideLayout = useDefaultLayout({
-    id: mode === "trash" ? "mv-trash-groups-side" : "mv-group-chats-2-side",
+    id: "mv-trash-groups-side",
     panelIds: ["list", "messages"],
     storage,
   });
@@ -225,7 +193,7 @@ export function GroupChatsShell({
   );
 
   const collapsed = useMemo(
-    () => collapseGroupConversations(yearScoped),
+    () => collapseGroupYearRows(yearScoped),
     [yearScoped],
   );
 
@@ -240,12 +208,12 @@ export function GroupChatsShell({
   );
 
   const uniqueIds = useMemo(
-    () => sidebarListItems.map((g) => g.id),
+    () => sidebarListItems.map((g) => g.conversationId),
     [sidebarListItems],
   );
 
   const validIds = useMemo(
-    () => collapsed.map((g) => g.id),
+    () => collapsed.map((g) => g.conversationId),
     [collapsed],
   );
 
@@ -374,61 +342,31 @@ export function GroupChatsShell({
     [actionTargets, multiSelected],
   );
 
+  const groupTrash = useMemo(
+    () =>
+      createGroupChatTrashOptions({
+        conversationSpansMultipleYears,
+      }),
+    [conversationSpansMultipleYears],
+  );
+
   const {
     saving,
-    moveToTrash,
     restoreFromTrash,
     permanentlyDeleteFromTrash,
     confirmDialog,
   } = useTrashActions<number>({
-    endpoint: "/api/group-chats/trash",
-    idField: "conversationId",
+    endpoint: groupTrash.endpoint,
+    idField: groupTrash.idField,
     getTargets: getTrashTargets,
-    canTrash: mode === "group-chats",
-    canRestoreOrDelete: mode === "trash",
-    confirmTrash: (targets) => {
-      const multiYear =
-        targets.length === 1 &&
-        conversationSpansMultipleYears(targets[0]!);
-      if (targets.length === 1) {
-        return multiYear
-          ? "Move this group message to Trash? It appears under multiple years and will be removed from all of them."
-          : "Move this group message to Trash?";
-      }
-      return `Move ${targets.length} group messages to Trash? Each chat will be removed from every year it appears under.`;
-    },
-    confirmPermanent: (targets) => {
-      if (targets.length === 1) return "Delete forever?";
-      return `Delete ${targets.length} group messages forever?`;
-    },
-    status: {
-      trashedOne: "Moved to Trash",
-      trashedMany: (n) => `Moved ${n} to Trash`,
-      restoredOne: "Undeleted — back in Group Messages",
-      restoredMany: (n) => `Undeleted ${n} group messages`,
-      deletedOne: "Deleted forever",
-      deletedMany: (n) => `Deleted ${n} group messages forever`,
-    },
+    canTrash: false,
+    canRestoreOrDelete: true,
+    confirmTrash: groupTrash.confirmTrash,
+    confirmPermanent: groupTrash.confirmPermanent,
+    status: groupTrash.status,
     setStatus,
     onRemoved: clearFocusAfterRemoval,
     onDismissMenus: () => setCtxMenu(null),
-    afterTrash: () => {
-      if (mode === "group-chats") {
-        router.refresh();
-        return;
-      }
-      router.push("/trash?tab=group-chats");
-    },
-    onTrashed: (ids) => {
-      pushHistory({
-        type: "trashGroupThread",
-        conversationIds: ids,
-        label:
-          ids.length === 1
-            ? "Delete group message"
-            : `Delete ${ids.length} group messages`,
-      });
-    },
     afterPermanent: () => {
       clearHistory();
       router.refresh();
@@ -436,7 +374,7 @@ export function GroupChatsShell({
   });
 
   const onSidebarListRowClick = useCallback(
-    (g: TrashGroupConversation, e: MouseEvent) => {
+    (g: CollapsedGroupConversation, e: MouseEvent) => {
       if (
         !e.shiftKey &&
         !e.metaKey &&
@@ -445,18 +383,18 @@ export function GroupChatsShell({
       ) {
         const year = filterYear ?? g.newestYear;
         setSelectedIds(new Set());
-        selectionAnchorRef.current = g.id;
-        setConversationId(g.id);
+        selectionAnchorRef.current = g.conversationId;
+        setConversationId(g.conversationId);
         setFocusYear(year);
         setMessages([]);
         pendingScrollYearRef.current = year;
         const params = new URLSearchParams(searchParams.toString());
-        params.set("g", String(g.id));
+        params.set("g", String(g.conversationId));
         params.set("y", String(year));
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         return;
       }
-      onRowClickId(g.id, e);
+      onRowClickId(g.conversationId, e);
     },
     [
       filterYear,
@@ -515,200 +453,10 @@ export function GroupChatsShell({
     pendingScrollYearRef.current = null;
   }, [loading, messages, focusYear, multiSelected]);
 
-  const formOpen = (editContactId != null || contactCreating) && !!editDraft;
-  const canSaveForm =
-    !!editDraft &&
-    draftHasName(editDraft) &&
-    phoneHandlesOnly(phonesForSave(editDraft.phones)).length > 0;
-
-  const draftMenuGroups = useMemo(() => {
-    const names = new Set([...extraDraftGroups]);
-    for (const g of editDraft?.contactGroups ?? []) names.add(g);
-    return [...names].sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    );
-  }, [extraDraftGroups, editDraft?.contactGroups]);
-
-  const draftGroupChecks = useMemo(() => {
-    const result: Record<string, GroupCheckState> = {};
-    const groups = editDraft?.contactGroups ?? [];
-    for (const name of draftMenuGroups) {
-      result[name] = groups.includes(name) ? "on" : "off";
-    }
-    return result;
-  }, [draftMenuGroups, editDraft?.contactGroups]);
-
-  const draftExcludedCheck = useMemo((): GroupCheckState => {
-    return editDraft?.exclude ? "on" : "off";
-  }, [editDraft?.exclude]);
-
-  const cancelContactForm = useCallback(() => {
-    setEditContactId(null);
-    setContactCreating(false);
-    setEditDraft(null);
-    setFormAnchor(null);
-    setExtraDraftGroups([]);
-  }, []);
-
-  useEffect(() => {
-    if (!formOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      if (!contactSaving) cancelContactForm();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [formOpen, contactSaving, cancelContactForm]);
-
-  const toggleDraftGroup = useCallback((name: string) => {
-    setEditDraft((prev) => {
-      if (!prev) return prev;
-      const has = prev.contactGroups.includes(name);
-      const contactGroups = has
-        ? prev.contactGroups.filter((g) => g !== name)
-        : [...prev.contactGroups, name].sort((a, b) =>
-            a.localeCompare(b, undefined, { sensitivity: "base" }),
-          );
-      return { ...prev, contactGroups };
-    });
-  }, []);
-
-  const createAndAssignDraftGroup = useCallback((name: string) => {
-    setExtraDraftGroups((prev) =>
-      prev.includes(name) ? prev : [...prev, name],
-    );
-    setEditDraft((prev) => {
-      if (!prev) return prev;
-      if (prev.contactGroups.includes(name)) return prev;
-      return {
-        ...prev,
-        contactGroups: [...prev.contactGroups, name].sort((a, b) =>
-          a.localeCompare(b, undefined, { sensitivity: "base" }),
-        ),
-      };
-    });
-  }, []);
-
-  const toggleDraftExcluded = useCallback(() => {
-    setEditDraft((prev) =>
-      prev ? { ...prev, exclude: !prev.exclude } : prev,
-    );
-  }, []);
-
-  const clearDraftGroups = useCallback(() => {
-    setEditDraft((prev) =>
-      prev ? { ...prev, contactGroups: [], exclude: false } : prev,
-    );
-  }, []);
-
-  const openEditContact = useCallback(
-    async (id: number, anchor: ContactFormAnchor) => {
-      setFormAnchor(anchor);
-      setContactSaving(true);
-      try {
-        const res = await fetch(`/api/contacts/${id}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "load failed");
-        setExtraDraftGroups([]);
-        setEditDraft(seedContactEditDraft(data.contact));
-        setEditContactId(id);
-        setContactCreating(false);
-      } catch (err) {
-        console.error(err);
-        setFormAnchor(null);
-        setStatus(err instanceof Error ? err.message : "Failed to load contact");
-      } finally {
-        setContactSaving(false);
-      }
-    },
-    [],
-  );
-
-  const openCreateContactWithHandle = useCallback(
-    (handle: string, anchor: ContactFormAnchor) => {
-      setFormAnchor(anchor);
-      setExtraDraftGroups([]);
-      setEditContactId(null);
-      setContactCreating(true);
-      const draft = emptyContactEditDraft();
-      setEditDraft({ ...draft, phones: [handle, ""] });
-    },
-    [],
-  );
-
-  const onParticipantClick = useCallback(
-    (participant: GroupParticipant, anchorRect: DOMRect) => {
-      if (vaultReadOnly || contactSaving || formOpen) return;
-      const anchor = contactFormAnchorFromRect(anchorRect);
-      if (participant.contactId != null) {
-        void openEditContact(participant.contactId, anchor);
-        return;
-      }
-      openCreateContactWithHandle(participant.handle, anchor);
-    },
-    [
-      vaultReadOnly,
-      contactSaving,
-      formOpen,
-      openEditContact,
-      openCreateContactWithHandle,
-    ],
-  );
-
-  const saveContactEdit = useCallback(async () => {
-    if (!editDraft || editContactId == null) return;
-    setContactSaving(true);
-    try {
-      const res = await fetch(`/api/contacts/${editContactId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName: editDraft.firstName.trim() || null,
-          lastName: editDraft.lastName.trim() || null,
-          phones: phonesForSave(editDraft.phones),
-          exclude: editDraft.exclude,
-          contactGroups: editDraft.contactGroups,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "save failed");
-      cancelContactForm();
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setContactSaving(false);
-    }
-  }, [editDraft, editContactId, cancelContactForm, router]);
-
-  const saveContactCreate = useCallback(async () => {
-    if (!editDraft || !draftHasName(editDraft)) return;
-    setContactSaving(true);
-    try {
-      const res = await fetch("/api/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName: editDraft.firstName.trim() || null,
-          lastName: editDraft.lastName.trim() || null,
-          phones: phonesForSave(editDraft.phones),
-          exclude: editDraft.exclude,
-          contactGroups: editDraft.contactGroups,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "create failed");
-      cancelContactForm();
-      router.refresh();
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Create failed");
-    } finally {
-      setContactSaving(false);
-    }
-  }, [editDraft, cancelContactForm, router]);
+  const participantForm = useParticipantContactForm({
+    vaultReadOnly: !!vaultReadOnly,
+    setStatus,
+  });
 
   const messagesPane = (
     <GroupChatsMessagesPane
@@ -722,7 +470,7 @@ export function GroupChatsShell({
       conversationSelected={conversationId != null}
       prominentHeader
       onParticipantClick={
-        vaultReadOnly ? undefined : onParticipantClick
+        vaultReadOnly ? undefined : participantForm.onParticipantClick
       }
     />
   );
@@ -731,99 +479,77 @@ export function GroupChatsShell({
     <>
       <div className="flex h-full min-h-0 w-full flex-col bg-bg">
         <div className="min-h-0 flex-1">
-
-            <Group
-              id={
-                mode === "trash"
-                  ? "mv-trash-groups-side"
-                  : "mv-group-chats-2-side"
-              }
-              orientation="horizontal"
-              className="h-full w-full"
-              defaultLayout={trashSideLayout.defaultLayout}
-              onLayoutChanged={trashSideLayout.onLayoutChanged}
+          <Group
+            id="mv-trash-groups-side"
+            orientation="horizontal"
+            className="h-full w-full"
+            defaultLayout={trashSideLayout.defaultLayout}
+            onLayoutChanged={trashSideLayout.onLayoutChanged}
+          >
+            <Panel
+              id="list"
+              defaultSize={320}
+              minSize={200}
+              maxSize="70%"
+              className="min-h-0"
             >
-              <Panel
-                id="list"
-                defaultSize={320}
-                minSize={200}
-                maxSize="70%"
-                className="min-h-0"
-              >
-                <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
-                  <TrashListChrome
-                    variant={mode === "trash" ? "trash" : "active"}
-                    tabBar={
-                      <>
-                        {mode === "trash" ? trashTabBar : null}
-                        {yearFilterMenu}
-                      </>
-                    }
-                    selectAllRef={selectAllRef}
-                    allSelected={allSelected}
-                    selectedCount={selectedIds.size}
-                    itemCount={sidebarListItems.length}
+              <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
+                <TrashListChrome
+                  variant="trash"
+                  tabBar={
+                    <>
+                      {trashTabBar}
+                      {yearFilterMenu}
+                    </>
+                  }
+                  selectAllRef={selectAllRef}
+                  allSelected={allSelected}
+                  selectedCount={selectedIds.size}
+                  itemCount={sidebarListItems.length}
+                  query={query}
+                  onQueryChange={setQuery}
+                  saving={saving}
+                  canDeleteForever={actionTargets.length > 0}
+                  onToggleSelectAll={toggleSelectAll}
+                  onDeleteForever={() => void permanentlyDeleteFromTrash()}
+                  selectAllLabel="Select all trashed groups"
+                  sort={{
+                    kind: "groups",
+                    sortBy: groupSidebarSortBy,
+                    order: groupSidebarSortOrder,
+                    onChange: (next) =>
+                      setGroupSidebarSort({
+                        sortBy: next.sortBy as GroupTrashSortBy,
+                        order: next.order,
+                      }),
+                  }}
+                />
+                <div className="min-h-0 flex-1">
+                  <TrashGroupChatList
+                    items={sidebarListItems}
+                    conversationId={conversationId}
+                    selectedIds={selectedIds}
                     query={query}
-                    onQueryChange={setQuery}
-                    saving={saving}
-                    canDeleteForever={actionTargets.length > 0}
-                    onToggleSelectAll={toggleSelectAll}
-                    onDeleteForever={() =>
-                      void (mode === "trash"
-                        ? permanentlyDeleteFromTrash()
-                        : moveToTrash())
-                    }
-                    selectAllLabel={
-                      mode === "trash"
-                        ? "Select all trashed groups"
-                        : "Select all groups"
-                    }
-                    sort={{
-                      kind: "groups",
-                      sortBy: groupSidebarSortBy,
-                      order: groupSidebarSortOrder,
-                      onChange: (next) =>
-                        setGroupSidebarSort({
-                          sortBy: next.sortBy as GroupTrashSortBy,
-                          order: next.order,
-                        }),
-                    }}
-                    trailing={
-                      mode === "group-chats" ? <ListHistoryMenu /> : null
-                    }
+                    groupDateFormat={groupDateFormat}
+                    onSelectColumnClick={onSelectColumnClick}
+                    onRowClick={onSidebarListRowClick}
+                    onOpenCtxMenu={openCtxMenu}
+                    emptyLabel="No trashed group messages"
                   />
-                  <div className="min-h-0 flex-1">
-                    <TrashGroupChatList
-                      items={sidebarListItems}
-                      conversationId={conversationId}
-                      selectedIds={selectedIds}
-                      query={query}
-                      groupDateFormat={groupDateFormat}
-                      onSelectColumnClick={onSelectColumnClick}
-                      onRowClick={onSidebarListRowClick}
-                      onOpenCtxMenu={
-                        mode === "trash" ? openCtxMenu : undefined
-                      }
-                      emptyLabel={
-                        mode === "trash"
-                          ? "No trashed group messages"
-                          : "No group messages"
-                      }
-                    />
-                  </div>
                 </div>
-              </Panel>
+              </div>
+            </Panel>
 
-              <PaneSeparator orientation="vertical" />
+            <PaneSeparator orientation="vertical" />
 
-              <Panel id="messages" minSize="30%" className="min-h-0 min-w-0">
-                {messagesPane}
-              </Panel>
-            </Group>
+            <Panel id="messages" minSize="30%" className="min-h-0 min-w-0">
+              {messagesPane}
+            </Panel>
+          </Group>
         </div>
       </div>
 
-      {ctxMenu && mode === "trash" && (
+      {ctxMenu && (
         <div
           ref={ctxMenuRef}
           className="fixed z-50 min-w-[180px] rounded-md border border-border bg-elevated py-1 shadow-lg"
@@ -848,64 +574,10 @@ export function GroupChatsShell({
         </div>
       )}
       {confirmDialog}
-      {formOpen && editDraft && (
-        <ContactFormOverlay
-          anchor={formAnchor}
-          titleId="mv-group-contact-form-title"
-          title={contactCreating ? "Add new contact" : "Edit contact"}
-          busy={contactSaving}
-          onDismiss={cancelContactForm}
-          footer={
-            <>
-              <button
-                type="button"
-                disabled={contactSaving}
-                onClick={cancelContactForm}
-                className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={
-                  contactSaving || (contactCreating && !canSaveForm)
-                }
-                onClick={() =>
-                  void (contactCreating
-                    ? saveContactCreate()
-                    : saveContactEdit())
-                }
-                className="rounded-md bg-accent/25 px-3 py-1.5 text-[13px] font-medium text-text transition-colors hover:bg-accent/35 disabled:opacity-50"
-              >
-                Save
-              </button>
-            </>
-          }
-        >
-          <ContactDetailsCard
-            formOpen
-            framed={false}
-            draft={editDraft}
-            onDraftChange={setEditDraft}
-            groups={editDraft.contactGroups}
-            excluded={editDraft.exclude}
-            phonesView={[]}
-            groupsEditor={
-              <GroupsMenu
-                labeled
-                allGroups={draftMenuGroups}
-                checks={draftGroupChecks}
-                excludedCheck={draftExcludedCheck}
-                disabled={contactSaving}
-                onToggle={toggleDraftGroup}
-                onToggleExcluded={toggleDraftExcluded}
-                onCreate={createAndAssignDraftGroup}
-                onClearAll={clearDraftGroups}
-              />
-            }
-          />
-        </ContactFormOverlay>
-      )}
+      <ParticipantContactFormOverlay
+        form={participantForm}
+        titleId="mv-group-contact-form-title"
+      />
     </>
   );
 }

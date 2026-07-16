@@ -7,7 +7,7 @@ import { loadVaultOwner } from "@/lib/vaultOwner";
 
 export const dynamic = "force-dynamic";
 
-export default async function GroupChats2Page({
+export default async function GroupMessagesPage({
   searchParams,
 }: {
   searchParams: Promise<{ g?: string; y?: string }>;
@@ -24,7 +24,7 @@ export default async function GroupChats2Page({
     const owner = loadVaultOwner(currentAccountId());
 
     return (
-      <BrowsePageLayout active="/group-chats-2" groups={contactGroups}>
+      <BrowsePageLayout active="/group-messages" groups={contactGroups}>
         <GroupMessagesShell
           owner={owner}
           groupChats={groupChats}

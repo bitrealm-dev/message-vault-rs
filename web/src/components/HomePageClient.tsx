@@ -68,7 +68,7 @@ export function HomePageClient({
 
         <div className="mt-6 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3">
           <StatCard
-            href="/group-chats-2"
+            href="/group-messages"
             label="Group Messages"
             value={stats.groupChats}
           />

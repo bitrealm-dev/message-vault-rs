@@ -18,7 +18,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GroupChatsShell } from "./GroupChatsShell";
 import { useHistory } from "./history";
 import { ChevronDownIcon } from "./icons";
-import { UnassignedShell } from "./UnassignedShell";
+import { TrashContactsShell } from "./TrashContactsShell";
 import { useDismissible } from "./useDismissible";
 
 type TrashTab = "contacts" | "group-chats";
@@ -263,14 +263,13 @@ export function TrashShell({
   return (
     <div className="h-full min-h-0 min-w-0">
       {tab === "contacts" ? (
-        <UnassignedShell
+        <TrashContactsShell
           handles={contactList}
           initialHandle={initialHandle}
           trashTabBar={tabBar}
         />
       ) : (
         <GroupChatsShell
-          mode="trash"
           groupChats={groupChats}
           initialConversationId={initialConversationId}
           initialYear={initialYear}

@@ -7,7 +7,7 @@ import type { ContactEditDraft } from "./contactEdit";
 import { MessageSourcePicker } from "./MessageSourcePicker";
 import { YearThreadPicker } from "./YearThreadPicker";
 
-export function UnassignedDetailPane({
+export function TrashContactsDetailPane({
   mode,
   multiSelected,
   selected,
