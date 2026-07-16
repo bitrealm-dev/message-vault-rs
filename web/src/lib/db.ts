@@ -7,6 +7,7 @@ export {
   listContacts,
   getContact,
   contactThreadsBundle,
+  groupChatsContainingContacts,
   listContactsForPicker,
   listTrashedContacts,
   listTrashedContactMessages,

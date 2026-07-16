@@ -22,6 +22,11 @@ import {
   type ContactEditDraft,
 } from "./contactEdit";
 import { ContactDetailsCard } from "./ContactDetailsCard";
+import {
+  ContactFormOverlay,
+  contactFormAnchorFromRect,
+  type ContactFormAnchor,
+} from "./ContactFormOverlay";
 import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
@@ -167,6 +172,7 @@ export function GroupChatsShell({
   const [editContactId, setEditContactId] = useState<number | null>(null);
   const [contactCreating, setContactCreating] = useState(false);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
+  const [formAnchor, setFormAnchor] = useState<ContactFormAnchor | null>(null);
   const [extraDraftGroups, setExtraDraftGroups] = useState<string[]>([]);
   const [contactSaving, setContactSaving] = useState(false);
   const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
@@ -635,6 +641,7 @@ export function GroupChatsShell({
     setEditContactId(null);
     setContactCreating(false);
     setEditDraft(null);
+    setFormAnchor(null);
     setExtraDraftGroups([]);
   }, []);
 
@@ -690,40 +697,50 @@ export function GroupChatsShell({
     );
   }, []);
 
-  const openEditContact = useCallback(async (id: number) => {
-    setContactSaving(true);
-    try {
-      const res = await fetch(`/api/contacts/${id}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "load failed");
-      setExtraDraftGroups([]);
-      setEditDraft(seedContactEditDraft(data.contact));
-      setEditContactId(id);
-      setContactCreating(false);
-    } catch (err) {
-      console.error(err);
-      setStatus(err instanceof Error ? err.message : "Failed to load contact");
-    } finally {
-      setContactSaving(false);
-    }
-  }, []);
+  const openEditContact = useCallback(
+    async (id: number, anchor: ContactFormAnchor) => {
+      setFormAnchor(anchor);
+      setContactSaving(true);
+      try {
+        const res = await fetch(`/api/contacts/${id}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "load failed");
+        setExtraDraftGroups([]);
+        setEditDraft(seedContactEditDraft(data.contact));
+        setEditContactId(id);
+        setContactCreating(false);
+      } catch (err) {
+        console.error(err);
+        setFormAnchor(null);
+        setStatus(err instanceof Error ? err.message : "Failed to load contact");
+      } finally {
+        setContactSaving(false);
+      }
+    },
+    [],
+  );
 
-  const openCreateContactWithHandle = useCallback((handle: string) => {
-    setExtraDraftGroups([]);
-    setEditContactId(null);
-    setContactCreating(true);
-    const draft = emptyContactEditDraft();
-    setEditDraft({ ...draft, phones: [handle, ""] });
-  }, []);
+  const openCreateContactWithHandle = useCallback(
+    (handle: string, anchor: ContactFormAnchor) => {
+      setFormAnchor(anchor);
+      setExtraDraftGroups([]);
+      setEditContactId(null);
+      setContactCreating(true);
+      const draft = emptyContactEditDraft();
+      setEditDraft({ ...draft, phones: [handle, ""] });
+    },
+    [],
+  );
 
   const onParticipantClick = useCallback(
-    (participant: GroupParticipant) => {
+    (participant: GroupParticipant, anchorRect: DOMRect) => {
       if (vaultReadOnly || contactSaving || formOpen) return;
+      const anchor = contactFormAnchorFromRect(anchorRect);
       if (participant.contactId != null) {
-        void openEditContact(participant.contactId);
+        void openEditContact(participant.contactId, anchor);
         return;
       }
-      openCreateContactWithHandle(participant.handle);
+      openCreateContactWithHandle(participant.handle, anchor);
     },
     [
       vaultReadOnly,
@@ -980,51 +997,14 @@ export function GroupChatsShell({
       )}
       {confirmDialog}
       {formOpen && editDraft && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-4"
-          role="presentation"
-          onClick={() => {
-            if (!contactSaving) cancelContactForm();
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="mv-group-contact-form-title"
-            className="w-full max-w-lg rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2
-              id="mv-group-contact-form-title"
-              className="text-[16px] font-semibold text-text"
-            >
-              {contactCreating ? "Add new contact" : "Edit contact"}
-            </h2>
-            <div className="mt-4">
-              <ContactDetailsCard
-                formOpen
-                framed={false}
-                draft={editDraft}
-                onDraftChange={setEditDraft}
-                groups={editDraft.contactGroups}
-                excluded={editDraft.exclude}
-                phonesView={[]}
-                groupsEditor={
-                  <GroupsMenu
-                    labeled
-                    allGroups={draftMenuGroups}
-                    checks={draftGroupChecks}
-                    excludedCheck={draftExcludedCheck}
-                    disabled={contactSaving}
-                    onToggle={toggleDraftGroup}
-                    onToggleExcluded={toggleDraftExcluded}
-                    onCreate={createAndAssignDraftGroup}
-                    onClearAll={clearDraftGroups}
-                  />
-                }
-              />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
+        <ContactFormOverlay
+          anchor={formAnchor}
+          titleId="mv-group-contact-form-title"
+          title={contactCreating ? "Add new contact" : "Edit contact"}
+          busy={contactSaving}
+          onDismiss={cancelContactForm}
+          footer={
+            <>
               <button
                 type="button"
                 disabled={contactSaving}
@@ -1047,9 +1027,32 @@ export function GroupChatsShell({
               >
                 Save
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <ContactDetailsCard
+            formOpen
+            framed={false}
+            draft={editDraft}
+            onDraftChange={setEditDraft}
+            groups={editDraft.contactGroups}
+            excluded={editDraft.exclude}
+            phonesView={[]}
+            groupsEditor={
+              <GroupsMenu
+                labeled
+                allGroups={draftMenuGroups}
+                checks={draftGroupChecks}
+                excludedCheck={draftExcludedCheck}
+                disabled={contactSaving}
+                onToggle={toggleDraftGroup}
+                onToggleExcluded={toggleDraftExcluded}
+                onCreate={createAndAssignDraftGroup}
+                onClearAll={clearDraftGroups}
+              />
+            }
+          />
+        </ContactFormOverlay>
       )}
     </>
   );

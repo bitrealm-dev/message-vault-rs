@@ -206,12 +206,38 @@ export function contactGroupChatThreadsForPhones(
   phones: string[],
   source?: string | null,
 ): GroupChatThread[] {
-  if (!phones.length) return [];
+  return contactGroupChatThreadsForPhoneSets([phones], source);
+}
+
+/**
+ * Group chats where each phone set appears as a participant (AND).
+ * Extra participants outside these sets are allowed.
+ */
+export function contactGroupChatThreadsForPhoneSets(
+  phoneSets: string[][],
+  source?: string | null,
+): GroupChatThread[] {
+  const sets = phoneSets
+    .map((phones) => [
+      ...new Set(phones.map((p) => p.trim()).filter(Boolean)),
+    ])
+    .filter((phones) => phones.length > 0);
+  if (!sets.length) return [];
+
   const accountId = currentAccountId();
   const db = getDb();
-  const placeholders = phones.map(() => "?").join(",");
   const sourceSql = source ? " AND m.source = ?" : "";
-  const params: Array<string | number> = [accountId, ...phones];
+  const params: Array<string | number> = [accountId];
+  const existsSql = sets
+    .map((phones) => {
+      const placeholders = phones.map(() => "?").join(",");
+      params.push(...phones);
+      return `AND EXISTS (
+           SELECT 1 FROM participants p
+           WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
+         )`;
+    })
+    .join("\n         ");
   if (source) params.push(source);
   const hasTrash = hasTrashedConversationsTable(db);
   const trashFilter = hasTrash
@@ -220,6 +246,7 @@ export function contactGroupChatThreadsForPhones(
          WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
        )`
     : "";
+  const excludePhones = sets.flat();
   const rows = db
     .prepare(
       `SELECT c.id AS conversation_id,
@@ -231,10 +258,7 @@ export function contactGroupChatThreadsForPhones(
        JOIN messages m ON m.conversation_id = c.id
        WHERE c.account_id = ?
          AND c.conversation_type = 'group'
-         AND EXISTS (
-           SELECT 1 FROM participants p
-           WHERE p.conversation_id = c.id AND p.handle IN (${placeholders})
-         )${trashFilter}${sourceSql}${combinedDedupeSql(source, "m")}
+         ${existsSql}${trashFilter}${sourceSql}${combinedDedupeSql(source, "m")}
        GROUP BY c.id, year
        HAVING message_count > 0
        ORDER BY year DESC, c.id`,
@@ -248,7 +272,7 @@ export function contactGroupChatThreadsForPhones(
   }>;
 
   const conversationIds = [...new Set(rows.map((r) => r.conversation_id))];
-  const titles = groupPeopleTitles(conversationIds, phones);
+  const titles = groupPeopleTitles(conversationIds, excludePhones);
   const fingerprints = groupParticipantFingerprints(conversationIds);
 
   const mapped = rows.map((r) => {

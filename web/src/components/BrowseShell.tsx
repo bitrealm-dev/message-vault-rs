@@ -30,6 +30,11 @@ import {
 } from "./BrowseGroupChatsPane";
 import { BrowseThreadPane } from "./BrowseThreadPane";
 import { ContactDetailsCard } from "./ContactDetailsCard";
+import {
+  ContactFormOverlay,
+  contactFormAnchorFromRect,
+  type ContactFormAnchor,
+} from "./ContactFormOverlay";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { useHistory } from "./history";
 import {
@@ -130,6 +135,7 @@ export function BrowseShell({
   const [contactCreating, setContactCreating] = useState(false);
   const [editContactId, setEditContactId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
+  const [formAnchor, setFormAnchor] = useState<ContactFormAnchor | null>(null);
   const [extraDraftGroups, setExtraDraftGroups] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [groupOverrides, setGroupOverrides] = useState<Map<number, string[]>>(
@@ -201,6 +207,10 @@ export function BrowseShell({
   const [groupChatQuery, setGroupChatQuery] = useState("");
   const [selectedGroupConversationId, setSelectedGroupConversationId] =
     useState<number | null>(null);
+  const [selectionGroupChats, setSelectionGroupChats] = useState<
+    GroupChatThread[]
+  >([]);
+  const [loadingSelectionGroups, setLoadingSelectionGroups] = useState(false);
 
   const saveContactPatch = useCallback(
     async (
@@ -355,6 +365,7 @@ export function BrowseShell({
       setContactCreating(false);
       setEditContactId(null);
       setEditDraft(null);
+      setFormAnchor(null);
       if (id === contactId) {
         setActiveThread("dm");
         setThreadsEpoch((e) => e + 1);
@@ -382,8 +393,9 @@ export function BrowseShell({
     setContactCreating(false);
     setEditContactId(null);
     setEditDraft(null);
+    setFormAnchor(null);
     setGroupChatQuery("");
-  }, [paneStorageKey, query, setSelectedIds]);
+  }, [paneStorageKey, setSelectedIds]);
 
   useEffect(() => {
     return () => {
@@ -555,11 +567,96 @@ export function BrowseShell({
     [sourceQuery],
   );
 
+  const selectGroupConversation = useCallback(
+    (g: ContactGroupConversation) => {
+      if (hasSelection && selectedGroupConversationId === g.conversationId) {
+        setSelectedGroupConversationId(null);
+        setActiveThread(null);
+        setMessages([]);
+        return;
+      }
+      setSelectedGroupConversationId(g.conversationId);
+      const key = `gfull-${g.conversationIds.join("-")}`;
+      loadFullMessages(g.conversationIds, key);
+    },
+    [hasSelection, selectedGroupConversationId, loadFullMessages],
+  );
+
+  const selectedContacts = useMemo(() => {
+    const selected = new Set(selectedIds);
+    const fromSorted = sorted.filter((c) => selected.has(c.id));
+    if (fromSorted.length === selectedIds.size) return fromSorted;
+    // Keep contacts that left the visible list (e.g. Excluded while on All).
+    const have = new Set(fromSorted.map((c) => c.id));
+    const byId = new Map(contacts.map((c) => [c.id, c]));
+    const extras: ContactListItem[] = [];
+    for (const id of selectedIds) {
+      if (have.has(id)) continue;
+      const c = byId.get(id);
+      if (c) extras.push(c);
+    }
+    return [...fromSorted, ...extras];
+  }, [sorted, selectedIds, contacts]);
+
+  const selectionIdsKey = useMemo(
+    () =>
+      [...selectedIds]
+        .sort((a, b) => a - b)
+        .join(","),
+    [selectedIds],
+  );
+
+  useEffect(() => {
+    if (!selectionIdsKey) {
+      setSelectionGroupChats([]);
+      setLoadingSelectionGroups(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSelectionGroups(true);
+    const params = new URLSearchParams({ ids: selectionIdsKey });
+    if (source) params.set("source", source);
+    fetch(`/api/contacts/shared-group-chats?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const next: GroupChatThread[] = data.groupChats ?? [];
+        setSelectionGroupChats(next);
+        const prev = activeThreadRef.current;
+        if (prev?.startsWith("gfull-")) {
+          const stillThere = next.some((t) => {
+            const ids =
+              t.conversationIds?.length > 0
+                ? t.conversationIds
+                : [t.conversationId];
+            return `gfull-${ids.join("-")}` === prev;
+          });
+          if (!stillThere) {
+            setActiveThread(null);
+            setSelectedGroupConversationId(null);
+            setMessages([]);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) setSelectionGroupChats([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSelectionGroups(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectionIdsKey, source]);
+
+  const panelGroupChats = hasSelection ? selectionGroupChats : groupChats;
+
   const groupChatYears = useMemo(() => {
     const years = new Set<number>();
-    for (const g of groupChats) years.add(g.year);
+    for (const g of panelGroupChats) years.add(g.year);
     return [...years].sort((a, b) => b - a);
-  }, [groupChats]);
+  }, [panelGroupChats]);
 
   useEffect(() => {
     if (
@@ -573,8 +670,8 @@ export function BrowseShell({
   const collapsedGroupChats = useMemo(() => {
     const filtered =
       groupChatFilterYear == null
-        ? groupChats
-        : groupChats.filter((g) => g.year === groupChatFilterYear);
+        ? panelGroupChats
+        : panelGroupChats.filter((g) => g.year === groupChatFilterYear);
     let items = collapseContactGroupChats(filtered);
     const q = groupChatQuery.trim().toLowerCase();
     if (q) {
@@ -604,37 +701,13 @@ export function BrowseShell({
     });
     return items;
   }, [
-    groupChats,
+    panelGroupChats,
     groupChatFilterYear,
     groupChatQuery,
     groupChatSortBy,
     groupChatSortOrder,
   ]);
 
-  const selectGroupConversation = useCallback(
-    (g: ContactGroupConversation) => {
-      setSelectedGroupConversationId(g.conversationId);
-      const key = `gfull-${g.conversationIds.join("-")}`;
-      loadFullMessages(g.conversationIds, key);
-    },
-    [loadFullMessages],
-  );
-
-  const selectedContacts = useMemo(() => {
-    const selected = new Set(selectedIds);
-    const fromSorted = sorted.filter((c) => selected.has(c.id));
-    if (fromSorted.length === selectedIds.size) return fromSorted;
-    // Keep contacts that left the visible list (e.g. Excluded while on All).
-    const have = new Set(fromSorted.map((c) => c.id));
-    const byId = new Map(contacts.map((c) => [c.id, c]));
-    const extras: ContactListItem[] = [];
-    for (const id of selectedIds) {
-      if (have.has(id)) continue;
-      const c = byId.get(id);
-      if (c) extras.push(c);
-    }
-    return [...fromSorted, ...extras];
-  }, [sorted, selectedIds, contacts]);
   const canEditGroups =
     !contactEditing && !contactCreating && (hasSelection || !!detail);
 
@@ -669,29 +742,48 @@ export function BrowseShell({
     setContactCreating(false);
     setEditContactId(null);
     setEditDraft(null);
+    setFormAnchor(null);
     setGroupChatQuery("");
   }, [hasSelection]);
 
-  const beginContactEdit = useCallback(() => {
-    if (!detail || hasSelection || contactCreating) return;
-    setExtraDraftGroups([]);
-    setEditDraft(
-      seedContactEditDraft({
-        ...detail,
-        contactGroups:
-          groupOverrides.get(detail.id) ?? detail.contactGroups,
-        exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
-      }),
-    );
-    setEditContactId(detail.id);
-    setContactEditing(true);
-  }, [
-    detail,
-    hasSelection,
-    contactCreating,
-    groupOverrides,
-    excludeOverrides,
-  ]);
+  const beginContactEdit = useCallback(
+    (anchor?: ContactFormAnchor | null) => {
+      if (!detail || hasSelection || contactCreating) return;
+      setFormAnchor(anchor ?? null);
+      setExtraDraftGroups([]);
+      setEditDraft(
+        seedContactEditDraft({
+          ...detail,
+          contactGroups:
+            groupOverrides.get(detail.id) ?? detail.contactGroups,
+          exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
+        }),
+      );
+      setEditContactId(detail.id);
+      setContactEditing(true);
+    },
+    [
+      detail,
+      hasSelection,
+      contactCreating,
+      groupOverrides,
+      excludeOverrides,
+    ],
+  );
+
+  const onContactNameClick = useCallback(
+    (anchorRect: DOMRect) => {
+      if (vaultReadOnly || saving || contactEditing || contactCreating) return;
+      beginContactEdit(contactFormAnchorFromRect(anchorRect));
+    },
+    [
+      vaultReadOnly,
+      saving,
+      contactEditing,
+      contactCreating,
+      beginContactEdit,
+    ],
+  );
 
   // Finish Edit from context menu once the contact detail has loaded.
   useEffect(() => {
@@ -699,6 +791,7 @@ export function BrowseShell({
     if (pending == null || !detail || detail.id !== pending) return;
     if (hasSelection || contactCreating) return;
     pendingEditIdRef.current = null;
+    setFormAnchor(null);
     setExtraDraftGroups([]);
     setEditDraft(
       seedContactEditDraft({
@@ -747,6 +840,7 @@ export function BrowseShell({
     setContactEditing(false);
     setContactCreating(true);
     setEditContactId(null);
+    setFormAnchor(null);
     setEditDraft(emptyContactEditDraft(createDefaults));
     setExtraDraftGroups([]);
     const params = new URLSearchParams(searchParams.toString());
@@ -757,27 +851,33 @@ export function BrowseShell({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [pathname, router, searchParams, createDefaults, vaultReadOnly]);
 
-  const openEditContactInPlace = useCallback(async (id: number) => {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/contacts/${id}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "load failed");
-      setExtraDraftGroups([]);
-      setEditDraft(seedContactEditDraft(data.contact));
-      setEditContactId(id);
-      setContactCreating(false);
-      setContactEditing(true);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  }, []);
+  const openEditContactInPlace = useCallback(
+    async (id: number, anchor: ContactFormAnchor) => {
+      setFormAnchor(anchor);
+      setSaving(true);
+      try {
+        const res = await fetch(`/api/contacts/${id}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "load failed");
+        setExtraDraftGroups([]);
+        setEditDraft(seedContactEditDraft(data.contact));
+        setEditContactId(id);
+        setContactCreating(false);
+        setContactEditing(true);
+      } catch (err) {
+        console.error(err);
+        setFormAnchor(null);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
 
   const openCreateContactInPlace = useCallback(
-    (handle: string) => {
+    (handle: string, anchor: ContactFormAnchor) => {
       if (vaultReadOnly) return;
+      setFormAnchor(anchor);
       setExtraDraftGroups([]);
       setEditContactId(null);
       setContactEditing(false);
@@ -793,6 +893,7 @@ export function BrowseShell({
     setContactCreating(false);
     setEditContactId(null);
     setEditDraft(null);
+    setFormAnchor(null);
     setExtraDraftGroups([]);
   }, []);
 
@@ -839,6 +940,7 @@ export function BrowseShell({
     setContactEditing(false);
     setEditContactId(null);
     setEditDraft(null);
+    setFormAnchor(null);
     setExtraDraftGroups([]);
     setThreadsEpoch((e) => e + 1);
     router.refresh();
@@ -864,6 +966,7 @@ export function BrowseShell({
       setContactCreating(false);
       setEditContactId(null);
       setEditDraft(null);
+      setFormAnchor(null);
       setExtraDraftGroups([]);
       if (data.contact) {
         pushHistory({
@@ -1008,6 +1111,7 @@ export function BrowseShell({
         setContactCreating(false);
         setEditContactId(null);
         setEditDraft(null);
+        setFormAnchor(null);
 
         if (mode === "contact_and_messages") {
           setDetail(null);
@@ -1652,8 +1756,40 @@ export function BrowseShell({
             (t) => `gfull-${t.conversationIds.join("-")}` === activeThread,
           );
           if (!g) return null;
+          const participants: GroupParticipant[] = [
+            ...(g.participants ?? []),
+          ];
+          const extras = hasSelection
+            ? selectedContacts
+            : detail
+              ? [detail]
+              : [];
+          for (const c of extras) {
+            const handles = new Set(
+              [
+                c.preferredHandle,
+                ...("phones" in c && Array.isArray(c.phones) ? c.phones : []),
+              ]
+                .filter(Boolean)
+                .map((h) => String(h).trim()),
+            );
+            const already = participants.some(
+              (p) =>
+                p.contactId === c.id ||
+                (p.handle && handles.has(p.handle.trim())),
+            );
+            if (already) continue;
+            participants.push({
+              name: c.displayName || c.preferredHandle || "Contact",
+              handle: c.preferredHandle ?? "",
+              contactId: c.id,
+            });
+          }
+          participants.sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+          );
           return {
-            participants: g.participants ?? [],
+            participants,
             dateStart: g.dateStart,
             dateEnd: g.dateEnd,
             messageCount: g.messageCount,
@@ -1662,13 +1798,14 @@ export function BrowseShell({
       : null;
 
   const onGroupParticipantClick = useCallback(
-    (participant: GroupParticipant) => {
+    (participant: GroupParticipant, anchorRect: DOMRect) => {
       if (vaultReadOnly || saving || contactEditing || contactCreating) return;
+      const anchor = contactFormAnchorFromRect(anchorRect);
       if (participant.contactId != null) {
-        void openEditContactInPlace(participant.contactId);
+        void openEditContactInPlace(participant.contactId, anchor);
         return;
       }
-      openCreateContactInPlace(participant.handle);
+      openCreateContactInPlace(participant.handle, anchor);
     },
     [
       vaultReadOnly,
@@ -1762,38 +1899,36 @@ export function BrowseShell({
         maxSize={520}
         className="min-h-0"
       >
-        {hasSelection ? (
-          <div className="flex h-full items-center justify-center bg-sidebar px-4">
-            <p className="text-center text-[13px] text-muted">
-              Clear selection to browse group chats
-            </p>
-          </div>
-        ) : (
-          <BrowseGroupChatsPane
-            items={collapsedGroupChats}
-            selectedConversationId={selectedGroupConversationId}
-            years={groupChatYears}
-            filterYear={groupChatFilterYear}
-            onFilterYearChange={setGroupChatFilterYear}
-            sortBy={groupChatSortBy}
-            sortOrder={groupChatSortOrder}
-            onSortChange={setGroupChatSort}
-            searchQuery={groupChatQuery}
-            onSearchQueryChange={setGroupChatQuery}
-            searchDisabled={!contactId}
-            groupDateFormat={groupDateFormat}
-            onSelect={selectGroupConversation}
-            emptyLabel={
-              !contactId
+        <BrowseGroupChatsPane
+          items={collapsedGroupChats}
+          selectedConversationId={selectedGroupConversationId}
+          years={groupChatYears}
+          filterYear={groupChatFilterYear}
+          onFilterYearChange={setGroupChatFilterYear}
+          sortBy={groupChatSortBy}
+          sortOrder={groupChatSortOrder}
+          onSortChange={setGroupChatSort}
+          searchQuery={groupChatQuery}
+          onSearchQueryChange={setGroupChatQuery}
+          searchDisabled={!hasSelection && !contactId}
+          groupDateFormat={groupDateFormat}
+          onSelect={selectGroupConversation}
+          emptyLabel={
+            hasSelection
+              ? loadingSelectionGroups
+                ? "Loading…"
+                : groupChatQuery.trim()
+                  ? "No matches"
+                  : "No shared group chats"
+              : !contactId
                 ? "Choose a contact"
                 : loadingThreads
                   ? "Loading…"
                   : groupChatQuery.trim()
                     ? "No matches"
                     : "No group chats"
-            }
-          />
-        )}
+          }
+        />
       </Panel>
 
       <PaneSeparator orientation="vertical" />
@@ -1810,7 +1945,7 @@ export function BrowseShell({
           )}
         </div>
 
-        {hasSelection ? (
+        {hasSelection && !(activeThread?.startsWith("gfull-")) ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-bg px-5 pt-8 pb-5">
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
@@ -1863,9 +1998,16 @@ export function BrowseShell({
               yearly={yearly}
               messages={messages}
               loadingMessages={loadingMessages}
-              threadsReady={threadsLoadedFor === contactId}
+              threadsReady={
+                hasSelection
+                  ? !loadingSelectionGroups
+                  : threadsLoadedFor === contactId
+              }
               activeThread={activeThread}
               groupThread={groupThread}
+              onContactNameClick={
+                vaultReadOnly ? undefined : onContactNameClick
+              }
               onParticipantClick={
                 vaultReadOnly ? undefined : onGroupParticipantClick
               }
@@ -1973,51 +2115,14 @@ export function BrowseShell({
       </div>
     )}
     {formOpen && editDraft && (
-      <div
-        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-4"
-        role="presentation"
-        onClick={() => {
-          if (!saving) cancelContactEdit();
-        }}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mv-contact-form-title"
-          className="w-full max-w-lg rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <h2
-            id="mv-contact-form-title"
-            className="text-[16px] font-semibold text-text"
-          >
-            {contactCreating ? "Add new contact" : "Edit contact"}
-          </h2>
-          <div className="mt-4">
-            <ContactDetailsCard
-              formOpen
-              framed={false}
-              draft={editDraft}
-              onDraftChange={setEditDraft}
-              groups={editDraft.contactGroups}
-              excluded={editDraft.exclude}
-              phonesView={detail?.phones ?? []}
-              groupsEditor={
-                <GroupsMenu
-                  labeled
-                  allGroups={draftMenuGroups}
-                  checks={draftGroupChecks}
-                  excludedCheck={draftExcludedCheck}
-                  disabled={saving}
-                  onToggle={toggleDraftGroup}
-                  onToggleExcluded={toggleDraftExcluded}
-                  onCreate={createAndAssignDraftGroup}
-                  onClearAll={clearDraftGroups}
-                />
-              }
-            />
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
+      <ContactFormOverlay
+        anchor={formAnchor}
+        titleId="mv-contact-form-title"
+        title={contactCreating ? "Add new contact" : "Edit contact"}
+        busy={saving}
+        onDismiss={cancelContactEdit}
+        footer={
+          <>
             <button
               type="button"
               disabled={saving}
@@ -2036,9 +2141,32 @@ export function BrowseShell({
             >
               Save
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      >
+        <ContactDetailsCard
+          formOpen
+          framed={false}
+          draft={editDraft}
+          onDraftChange={setEditDraft}
+          groups={editDraft.contactGroups}
+          excluded={editDraft.exclude}
+          phonesView={detail?.phones ?? []}
+          groupsEditor={
+            <GroupsMenu
+              labeled
+              allGroups={draftMenuGroups}
+              checks={draftGroupChecks}
+              excludedCheck={draftExcludedCheck}
+              disabled={saving}
+              onToggle={toggleDraftGroup}
+              onToggleExcluded={toggleDraftExcluded}
+              onCreate={createAndAssignDraftGroup}
+              onClearAll={clearDraftGroups}
+            />
+          }
+        />
+      </ContactFormOverlay>
     )}
     {trashConfirm && trashConfirmCopy && (
       <div

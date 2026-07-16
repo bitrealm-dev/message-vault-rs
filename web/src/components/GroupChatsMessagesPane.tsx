@@ -17,7 +17,10 @@ function groupMessageHeader(
     showYearHint: boolean;
     messageCount: number;
     attachmentCount: number;
-    onParticipantClick?: (participant: GroupParticipant) => void;
+    onParticipantClick?: (
+      participant: GroupParticipant,
+      anchor: DOMRect,
+    ) => void;
   },
 ) {
   const participants =
@@ -53,7 +56,7 @@ function groupMessageHeader(
               {opts.onParticipantClick ? (
                 <GroupParticipantChip
                   label={p.name}
-                  onClick={() => opts.onParticipantClick?.(p)}
+                  onClick={(anchor) => opts.onParticipantClick?.(p, anchor)}
                 />
               ) : (
                 <span className="whitespace-nowrap px-1.5 py-0.5">{p.name}</span>
@@ -129,7 +132,10 @@ export function GroupChatsMessagesPane({
   /** True when a conversation id is focused (year may still be resolving). */
   conversationSelected: boolean;
   prominentHeader?: boolean;
-  onParticipantClick?: (participant: GroupParticipant) => void;
+  onParticipantClick?: (
+    participant: GroupParticipant,
+    anchor: DOMRect,
+  ) => void;
 }) {
   const showThread = !multiSelected && selectedRow != null;
   const attachmentCount = messages.reduce(

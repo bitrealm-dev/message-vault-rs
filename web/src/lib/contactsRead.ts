@@ -9,7 +9,7 @@ import {
   sortFields,
 } from "./dbCore";
 import { groupSlug } from "./groupSlug";
-import { contactGroupChatThreadsForPhones } from "./groupChatsRead";
+import { contactGroupChatThreadsForPhones, contactGroupChatThreadsForPhoneSets } from "./groupChatsRead";
 import { RESERVED_GROUP_NAMES } from "./reservedGroups";
 import type {
   ContactDetail,
@@ -515,6 +515,19 @@ export function contactThreadsBundle(
     messageSources: Object.keys(anySourceCounts.bySource).sort(),
     sourceCounts,
   };
+}
+
+/** Group chats that include every listed contact (extra participants allowed). */
+export function groupChatsContainingContacts(
+  contactIds: number[],
+  source?: string | null,
+): GroupChatThread[] {
+  const uniqueIds = [...new Set(contactIds.filter((id) => Number.isFinite(id)))];
+  if (!uniqueIds.length) return [];
+  const phoneSets = uniqueIds.map((id) => contactPhones(id));
+  // Any contact without handles cannot appear as a participant.
+  if (phoneSets.some((phones) => phones.length === 0)) return [];
+  return contactGroupChatThreadsForPhoneSets(phoneSets, source);
 }
 
 export function contactYearlyThreadsForPhones(

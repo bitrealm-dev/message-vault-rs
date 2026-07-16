@@ -223,7 +223,7 @@ export function GroupsMenu({
 
   const panelClass = isFixed
     ? "w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl"
-    : "fixed z-[100] w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl";
+    : "fixed z-[220] w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl";
 
   const panelStyle =
     !isFixed && menuPos
