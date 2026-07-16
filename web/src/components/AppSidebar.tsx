@@ -15,7 +15,6 @@ import {
 import {
   AddressBookIcon,
   EllipsisIcon,
-  EmptyChatIcon,
   PeopleGroupIcon,
   PersonDetailIcon,
   PlusIcon,
@@ -581,12 +580,6 @@ export function AppSidebar({
             label="Inactive"
             active={active === "/excluded"}
             icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
-          />
-          <NavLink
-            href="/no-messages"
-            label="No Messages"
-            active={active === "/no-messages"}
-            icon={<EmptyChatIcon className="size-5 shrink-0 opacity-80" />}
           />
 
           <div className={`mt-3 ${navHeadingClass}`}>
