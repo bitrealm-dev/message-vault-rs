@@ -563,11 +563,6 @@ export function AppSidebar({
 
       {!collapsed && (
         <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-          <div className={`mt-3 ${navHeadingClass}`}>
-            <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
-              Contacts
-            </span>
-          </div>
           <NavLink
             href="/all"
             label="All"
@@ -586,18 +581,15 @@ export function AppSidebar({
             active={active === "/excluded"}
             icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
           />
-
-          <div className={`mt-3 ${navHeadingClass}`}>
-            <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
-              Messages
-            </span>
-          </div>
           <NavLink
             href="/group-chats-2"
-            label="Group messages"
+            label="Group Messages"
             active={active === "/group-chats-2"}
             icon={groupMessagesIcon}
           />
+
+          <div className="mt-3" aria-hidden />
+
           <NavLink
             href="/trash"
             label="Trash"
