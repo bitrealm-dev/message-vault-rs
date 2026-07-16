@@ -37,6 +37,12 @@ export type YearThread = {
   conversationIds: number[];
 };
 
+export type GroupParticipant = {
+  name: string;
+  handle: string;
+  contactId: number | null;
+};
+
 export type GroupChatThread = {
   conversationId: number;
   conversationIds: number[];
@@ -46,6 +52,7 @@ export type GroupChatThread = {
   participantCount: number;
   participantNames: string[];
   participantHandles: string[];
+  participants: GroupParticipant[];
   year: number;
   messageCount: number;
   dateStart: string;
@@ -62,6 +69,7 @@ export type GroupYearRow = {
   participantCount: number;
   participantNames: string[];
   participantHandles: string[];
+  participants: GroupParticipant[];
   /** Messages in this year only. */
   messageCount: number;
   dateStart: string;

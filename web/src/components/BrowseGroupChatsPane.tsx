@@ -1,6 +1,6 @@
 "use client";
 
-import type { GroupChatThread } from "@/lib/types";
+import type { GroupChatThread, GroupParticipant } from "@/lib/types";
 import {
   formatGroupDateTable,
   type GroupDateFormat,
@@ -22,6 +22,7 @@ export type ContactGroupConversation = {
   participantCount: number;
   participantNames: string[];
   participantHandles: string[];
+  participants: GroupParticipant[];
   messageCount: number;
   dateStart: string;
   dateEnd: string;
@@ -48,6 +49,7 @@ export function collapseContactGroupChats(
         participantCount: r.participantCount,
         participantNames: [...(r.participantNames ?? [])],
         participantHandles: [...(r.participantHandles ?? [])],
+        participants: [...(r.participants ?? [])],
         messageCount: r.messageCount,
         dateStart: r.dateStart,
         dateEnd: r.dateEnd,
@@ -68,6 +70,11 @@ export function collapseContactGroupChats(
         prev.participantHandles.push(handle);
       }
     }
+    for (const p of r.participants ?? []) {
+      if (!prev.participants.some((x) => x.handle === p.handle)) {
+        prev.participants.push(p);
+      }
+    }
     for (const id of ids) {
       if (!prev.conversationIds.includes(id)) prev.conversationIds.push(id);
     }
@@ -83,6 +90,38 @@ function formatRange(
   const a = formatGroupDateTable(start, style);
   if (end === start) return a;
   return `${a} – ${formatGroupDateTable(end, style)}`;
+}
+
+const NAME_SEP = "  ·  ";
+const MAX_VISIBLE_NAMES = 8;
+
+/** Soft wrap gap around · so whole names stay together. */
+function NameSep() {
+  return (
+    <span className="font-normal text-muted" aria-hidden>
+      {" · "}
+    </span>
+  );
+}
+
+/** Show up to 8 names; 9+ adds +n for the remainder. */
+function visibleParticipantLabels(labels: string[]): string[] {
+  if (labels.length <= MAX_VISIBLE_NAMES) return labels;
+  return [
+    ...labels.slice(0, MAX_VISIBLE_NAMES),
+    `+${labels.length - MAX_VISIBLE_NAMES}`,
+  ];
+}
+
+function rowPeopleNames(g: ContactGroupConversation): string[] {
+  if (g.participantNames.length > 0) return g.participantNames;
+  if (g.title && g.title !== "Group chat") {
+    return g.title
+      .split(/\u00a0*\u00a0·\u00a0\u00a0| {2}· {2}/)
+      .map((n) => n.replace(/\u00a0/g, " ").trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 export function BrowseGroupChatsPane({
@@ -159,6 +198,10 @@ export function BrowseGroupChatsPane({
               g.dateEnd,
               groupDateFormat,
             );
+            const allNames = rowPeopleNames(g);
+            const names = visibleParticipantLabels(allNames);
+            const namesTitle =
+              allNames.length > 0 ? allNames.join(NAME_SEP) : g.titleFull;
             return (
               <button
                 key={g.conversationId}
@@ -178,9 +221,28 @@ export function BrowseGroupChatsPane({
                   />
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 text-[13px] font-medium leading-snug text-text">
-                    {g.namedTitle || g.title}
-                  </span>
+                  {g.namedTitle ? (
+                    <span className="mb-0.5 block truncate text-[12px] font-medium text-text">
+                      {g.namedTitle}
+                    </span>
+                  ) : null}
+                  {names.length > 0 ? (
+                    <span
+                      className="line-clamp-3 text-[13px] font-medium leading-snug text-text"
+                      title={namesTitle}
+                    >
+                      {names.map((name, idx) => (
+                        <span key={`${g.conversationId}-name-${idx}`}>
+                          {idx > 0 ? <NameSep /> : null}
+                          <span className="whitespace-nowrap">{name}</span>
+                        </span>
+                      ))}
+                    </span>
+                  ) : !g.namedTitle ? (
+                    <span className="line-clamp-3 text-[13px] font-medium leading-snug text-text">
+                      {g.title}
+                    </span>
+                  ) : null}
                   <span className="mt-0.5 block text-[11px] text-muted tabular-nums">
                     {dateLabel}
                   </span>

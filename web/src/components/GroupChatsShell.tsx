@@ -1,8 +1,9 @@
 "use client";
 
-import type { GroupYearRow } from "@/lib/types";
+import type { GroupParticipant, GroupYearRow } from "@/lib/types";
 import { searchGroups } from "@/lib/groupSearch";
 import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
+import { phoneHandlesOnly } from "@/lib/handleKind";
 import {
   useCallback,
   useEffect,
@@ -13,8 +14,17 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  draftHasName,
+  emptyContactEditDraft,
+  phonesForSave,
+  seedContactEditDraft,
+  type ContactEditDraft,
+} from "./contactEdit";
+import { ContactDetailsCard } from "./ContactDetailsCard";
 import { GroupChatsListPane } from "./GroupChatsListPane";
 import { GroupChatsMessagesPane } from "./GroupChatsMessagesPane";
+import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { TrashListChrome } from "./TrashListChrome";
 import {
   collapseGroupConversations,
@@ -35,6 +45,7 @@ import { PaneSeparator } from "./PaneSeparator";
 import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { useThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
+import { useVaultReadOnly } from "./useVaultReadOnly";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
@@ -97,6 +108,7 @@ function searchCollapsedGroups(
     participantCount: c.participantCount,
     participantNames: c.participantNames,
     participantHandles: c.participantHandles,
+    participants: c.participants,
     messageCount: c.messageCount,
     dateStart: c.conversationDateStart,
     dateEnd: c.conversationDateEnd,
@@ -140,6 +152,7 @@ export function GroupChatsShell({
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const vaultReadOnly = useVaultReadOnly();
   const { push: pushHistory, clear: clearHistory } = useHistory();
   const { sourceQuery } = useSourceFilter();
   const [groupChats, setGroupChats] = useState(initialGroupChats);
@@ -151,6 +164,11 @@ export function GroupChatsShell({
   const [query, setQuery] = useState("");
   /** null = All years */
   const [filterYear, setFilterYear] = useState<number | null>(null);
+  const [editContactId, setEditContactId] = useState<number | null>(null);
+  const [contactCreating, setContactCreating] = useState(false);
+  const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
+  const [extraDraftGroups, setExtraDraftGroups] = useState<string[]>([]);
+  const [contactSaving, setContactSaving] = useState(false);
   const [groupDateFormat, setGroupDateFormat] = usePersistedEnum(
     GROUP_DATE_FORMAT_KEY,
     GROUP_DATE_ALLOWED,
@@ -586,6 +604,190 @@ export function GroupChatsShell({
       ? `${conversationId}-${focusYear}`
       : null;
 
+  const formOpen = (editContactId != null || contactCreating) && !!editDraft;
+  const canSaveForm =
+    !!editDraft &&
+    draftHasName(editDraft) &&
+    phoneHandlesOnly(phonesForSave(editDraft.phones)).length > 0;
+
+  const draftMenuGroups = useMemo(() => {
+    const names = new Set([...extraDraftGroups]);
+    for (const g of editDraft?.contactGroups ?? []) names.add(g);
+    return [...names].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [extraDraftGroups, editDraft?.contactGroups]);
+
+  const draftGroupChecks = useMemo(() => {
+    const result: Record<string, GroupCheckState> = {};
+    const groups = editDraft?.contactGroups ?? [];
+    for (const name of draftMenuGroups) {
+      result[name] = groups.includes(name) ? "on" : "off";
+    }
+    return result;
+  }, [draftMenuGroups, editDraft?.contactGroups]);
+
+  const draftExcludedCheck = useMemo((): GroupCheckState => {
+    return editDraft?.exclude ? "on" : "off";
+  }, [editDraft?.exclude]);
+
+  const cancelContactForm = useCallback(() => {
+    setEditContactId(null);
+    setContactCreating(false);
+    setEditDraft(null);
+    setExtraDraftGroups([]);
+  }, []);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      if (!contactSaving) cancelContactForm();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [formOpen, contactSaving, cancelContactForm]);
+
+  const toggleDraftGroup = useCallback((name: string) => {
+    setEditDraft((prev) => {
+      if (!prev) return prev;
+      const has = prev.contactGroups.includes(name);
+      const contactGroups = has
+        ? prev.contactGroups.filter((g) => g !== name)
+        : [...prev.contactGroups, name].sort((a, b) =>
+            a.localeCompare(b, undefined, { sensitivity: "base" }),
+          );
+      return { ...prev, contactGroups };
+    });
+  }, []);
+
+  const createAndAssignDraftGroup = useCallback((name: string) => {
+    setExtraDraftGroups((prev) =>
+      prev.includes(name) ? prev : [...prev, name],
+    );
+    setEditDraft((prev) => {
+      if (!prev) return prev;
+      if (prev.contactGroups.includes(name)) return prev;
+      return {
+        ...prev,
+        contactGroups: [...prev.contactGroups, name].sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" }),
+        ),
+      };
+    });
+  }, []);
+
+  const toggleDraftExcluded = useCallback(() => {
+    setEditDraft((prev) =>
+      prev ? { ...prev, exclude: !prev.exclude } : prev,
+    );
+  }, []);
+
+  const clearDraftGroups = useCallback(() => {
+    setEditDraft((prev) =>
+      prev ? { ...prev, contactGroups: [], exclude: false } : prev,
+    );
+  }, []);
+
+  const openEditContact = useCallback(async (id: number) => {
+    setContactSaving(true);
+    try {
+      const res = await fetch(`/api/contacts/${id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "load failed");
+      setExtraDraftGroups([]);
+      setEditDraft(seedContactEditDraft(data.contact));
+      setEditContactId(id);
+      setContactCreating(false);
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Failed to load contact");
+    } finally {
+      setContactSaving(false);
+    }
+  }, []);
+
+  const openCreateContactWithHandle = useCallback((handle: string) => {
+    setExtraDraftGroups([]);
+    setEditContactId(null);
+    setContactCreating(true);
+    const draft = emptyContactEditDraft();
+    setEditDraft({ ...draft, phones: [handle, ""] });
+  }, []);
+
+  const onParticipantClick = useCallback(
+    (participant: GroupParticipant) => {
+      if (vaultReadOnly || contactSaving || formOpen) return;
+      if (participant.contactId != null) {
+        void openEditContact(participant.contactId);
+        return;
+      }
+      openCreateContactWithHandle(participant.handle);
+    },
+    [
+      vaultReadOnly,
+      contactSaving,
+      formOpen,
+      openEditContact,
+      openCreateContactWithHandle,
+    ],
+  );
+
+  const saveContactEdit = useCallback(async () => {
+    if (!editDraft || editContactId == null) return;
+    setContactSaving(true);
+    try {
+      const res = await fetch(`/api/contacts/${editContactId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: editDraft.firstName.trim() || null,
+          lastName: editDraft.lastName.trim() || null,
+          phones: phonesForSave(editDraft.phones),
+          exclude: editDraft.exclude,
+          contactGroups: editDraft.contactGroups,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "save failed");
+      cancelContactForm();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setContactSaving(false);
+    }
+  }, [editDraft, editContactId, cancelContactForm, router]);
+
+  const saveContactCreate = useCallback(async () => {
+    if (!editDraft || !draftHasName(editDraft)) return;
+    setContactSaving(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: editDraft.firstName.trim() || null,
+          lastName: editDraft.lastName.trim() || null,
+          phones: phonesForSave(editDraft.phones),
+          exclude: editDraft.exclude,
+          contactGroups: editDraft.contactGroups,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "create failed");
+      cancelContactForm();
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Create failed");
+    } finally {
+      setContactSaving(false);
+    }
+  }, [editDraft, cancelContactForm, router]);
+
   const messagesPane = (
     <GroupChatsMessagesPane
       messagesPaneRef={messagesPaneRef}
@@ -597,6 +799,9 @@ export function GroupChatsShell({
       messages={messages}
       conversationSelected={conversationId != null}
       prominentHeader={sidebarLayout}
+      onParticipantClick={
+        vaultReadOnly ? undefined : onParticipantClick
+      }
     />
   );
 
@@ -774,6 +979,78 @@ export function GroupChatsShell({
         </div>
       )}
       {confirmDialog}
+      {formOpen && editDraft && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-4"
+          role="presentation"
+          onClick={() => {
+            if (!contactSaving) cancelContactForm();
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mv-group-contact-form-title"
+            className="w-full max-w-lg rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="mv-group-contact-form-title"
+              className="text-[16px] font-semibold text-text"
+            >
+              {contactCreating ? "Add new contact" : "Edit contact"}
+            </h2>
+            <div className="mt-4">
+              <ContactDetailsCard
+                formOpen
+                framed={false}
+                draft={editDraft}
+                onDraftChange={setEditDraft}
+                groups={editDraft.contactGroups}
+                excluded={editDraft.exclude}
+                phonesView={[]}
+                groupsEditor={
+                  <GroupsMenu
+                    labeled
+                    allGroups={draftMenuGroups}
+                    checks={draftGroupChecks}
+                    excludedCheck={draftExcludedCheck}
+                    disabled={contactSaving}
+                    onToggle={toggleDraftGroup}
+                    onToggleExcluded={toggleDraftExcluded}
+                    onCreate={createAndAssignDraftGroup}
+                    onClearAll={clearDraftGroups}
+                  />
+                }
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={contactSaving}
+                onClick={cancelContactForm}
+                className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  contactSaving || (contactCreating && !canSaveForm)
+                }
+                onClick={() =>
+                  void (contactCreating
+                    ? saveContactCreate()
+                    : saveContactEdit())
+                }
+                className="rounded-md bg-accent/25 px-3 py-1.5 text-[13px] font-medium text-text transition-colors hover:bg-accent/35 disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

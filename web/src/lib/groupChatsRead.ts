@@ -9,7 +9,7 @@ import {
   resetDb,
   usefulNameHint,
 } from "./dbCore";
-import type { GroupChatThread, GroupYearRow } from "./types";
+import type { GroupChatThread, GroupParticipant, GroupYearRow } from "./types";
 
 const MAX_VISIBLE_NAMES = 8;
 
@@ -70,7 +70,7 @@ function formatPeopleTitle(
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
 
-  const names = unique.map((l) => l.name);
+  const names = unique.map((l) => l.name.replace(/ /g, "\u00a0"));
   const sep = "\u00a0\u00a0·\u00a0\u00a0";
   const full = names.join(sep);
   if (names.length === 0) {
@@ -94,6 +94,7 @@ type GroupPeopleTitle = {
   participantCount: number;
   participantNames: string[];
   participantHandles: string[];
+  participants: GroupParticipant[];
 };
 
 /** Resolve people labels for group conversations, excluding owner (+ optional focus contact). */
@@ -128,7 +129,7 @@ function groupPeopleTitles(
   const rows = db
     .prepare(
       `SELECT p.conversation_id, p.handle, p.name_hint,
-              c.first_name, c.last_name
+              c.id AS contact_id, c.first_name, c.last_name
        FROM participants p
        JOIN conversations conv ON conv.id = p.conversation_id
        LEFT JOIN contact_handles cp ON cp.handle = p.handle AND cp.account_id = conv.account_id
@@ -139,19 +140,29 @@ function groupPeopleTitles(
     conversation_id: number;
     handle: string;
     name_hint: string | null;
+    contact_id: number | null;
     first_name: string | null;
     last_name: string | null;
   }>;
 
   const byConv = new Map<
     number,
-    Array<{ name: string; unknown: boolean; handle: string }>
+    Array<{
+      name: string;
+      unknown: boolean;
+      handle: string;
+      contactId: number | null;
+    }>
   >();
   for (const r of rows) {
     const handle = r.handle.trim();
     if (exclude.has(handle)) continue;
     const list = byConv.get(r.conversation_id) ?? [];
-    list.push({ ...participantLabel(r), handle });
+    list.push({
+      ...participantLabel(r),
+      handle,
+      contactId: r.contact_id ?? null,
+    });
     byConv.set(r.conversation_id, list);
   }
 
@@ -159,27 +170,33 @@ function groupPeopleTitles(
     const entries = byConv.get(id) ?? [];
     const people = formatPeopleTitle(entries);
     const namedTitle = namedById.get(id) ?? null;
-    const nameSeen = new Set<string>();
-    const participantNames: string[] = [];
+
     const handleSeen = new Set<string>();
-    const participantHandles: string[] = [];
+    const participants: GroupParticipant[] = [];
     for (const e of entries) {
-      if (e.name && !nameSeen.has(e.name)) {
-        nameSeen.add(e.name);
-        participantNames.push(e.name);
-      }
-      if (e.handle && !handleSeen.has(e.handle)) {
-        handleSeen.add(e.handle);
-        participantHandles.push(e.handle);
-      }
+      if (!e.handle || handleSeen.has(e.handle)) continue;
+      handleSeen.add(e.handle);
+      participants.push({
+        name: e.name,
+        handle: e.handle,
+        contactId: e.contactId,
+      });
     }
+    participants.sort((a, b) => {
+      const aUnknown = a.contactId == null && a.name === a.handle;
+      const bUnknown = b.contactId == null && b.name === b.handle;
+      if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
     out.set(id, {
       title: people.short,
       titleFull: namedTitle ? `${namedTitle}\n${people.full}` : people.full,
       namedTitle,
       participantCount: people.count,
-      participantNames,
-      participantHandles,
+      participantNames: participants.map((p) => p.name),
+      participantHandles: participants.map((p) => p.handle),
+      participants,
     });
   }
   return out;
@@ -242,6 +259,7 @@ export function contactGroupChatThreadsForPhones(
       participantCount: 0,
       participantNames: [] as string[],
       participantHandles: [] as string[],
+      participants: [] as GroupParticipant[],
     };
     return {
       conversationId: r.conversation_id,
@@ -252,6 +270,7 @@ export function contactGroupChatThreadsForPhones(
       participantCount: t.participantCount,
       participantNames: t.participantNames,
       participantHandles: t.participantHandles,
+      participants: t.participants,
       year: r.year,
       messageCount: r.message_count,
       dateStart: r.date_start,
@@ -288,6 +307,7 @@ export function contactGroupChatThreadsForPhones(
       existing.namedTitle = row.namedTitle;
       existing.participantNames = row.participantNames;
       existing.participantHandles = row.participantHandles;
+      existing.participants = row.participants;
     }
   }
 
@@ -477,6 +497,7 @@ function listGroupYearRowsSection(
     participantCount: 0,
     participantNames: [] as string[],
     participantHandles: [] as string[],
+    participants: [] as GroupParticipant[],
   };
 
   const items: GroupYearRow[] = rows.map((r) => {
@@ -492,6 +513,7 @@ function listGroupYearRowsSection(
       participantCount: t.participantCount,
       participantNames: t.participantNames,
       participantHandles: t.participantHandles,
+      participants: t.participants,
       messageCount: r.message_count,
       dateStart: r.date_start,
       dateEnd: r.date_end,

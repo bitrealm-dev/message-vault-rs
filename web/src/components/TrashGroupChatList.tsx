@@ -1,6 +1,6 @@
 "use client";
 
-import type { GroupYearRow } from "@/lib/types";
+import type { GroupParticipant, GroupYearRow } from "@/lib/types";
 import {
   formatGroupDateTable,
   type GroupDateFormat,
@@ -13,6 +13,7 @@ export type TrashGroupConversation = {
   newestYear: number;
   participantNames: string[];
   participantHandles: string[];
+  participants: GroupParticipant[];
   participantCount: number;
   messageCount: number;
   conversationDateStart: string;
@@ -55,6 +56,7 @@ export function collapseGroupConversations(
         newestYear: r.year,
         participantNames: r.participantNames,
         participantHandles: r.participantHandles,
+        participants: r.participants ?? [],
         participantCount: r.participantCount,
         messageCount: r.messageCount,
         conversationDateStart: r.conversationDateStart,
@@ -74,6 +76,9 @@ export function collapseGroupConversations(
       r.participantHandles.length > 0
     ) {
       prev.participantHandles = r.participantHandles;
+    }
+    if (prev.participants.length === 0 && (r.participants?.length ?? 0) > 0) {
+      prev.participants = r.participants;
     }
   }
   return [...map.values()];

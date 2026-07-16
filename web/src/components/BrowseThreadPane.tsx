@@ -1,21 +1,34 @@
 "use client";
 
-import type { ContactDetail, MessageRow, YearThread } from "@/lib/types";
+import type {
+  ContactDetail,
+  GroupParticipant,
+  MessageRow,
+  YearThread,
+} from "@/lib/types";
 import { formatSourceLabel } from "@/lib/sourceLabels";
 import { useMemo, useRef } from "react";
-import { displayGroupNames } from "./contactEdit";
-import { PeopleGroupIcon, PhoneIcon } from "./icons";
+import {
+  GroupParticipantChip,
+  GroupParticipantNameSep,
+} from "./GroupParticipantChip";
 import { MessageBubble } from "./MessageBubble";
+import { MessageIcon, PaperclipIcon } from "./icons";
 
 function yearFromTimestamp(ts: string): number | null {
   const y = Number(ts.slice(0, 4));
   return Number.isFinite(y) ? y : null;
 }
 
+export type BrowseGroupThreadMeta = {
+  participants: GroupParticipant[];
+  dateStart: string;
+  dateEnd: string;
+  messageCount: number;
+};
+
 export function BrowseThreadPane({
   detail,
-  groups,
-  excluded,
   sources,
   messageSources,
   sourceCounts,
@@ -26,11 +39,10 @@ export function BrowseThreadPane({
   loadingMessages,
   threadsReady = false,
   activeThread,
-  threadTitle,
+  groupThread,
+  onParticipantClick,
 }: {
   detail: ContactDetail | null;
-  groups: string[];
-  excluded: boolean;
   sources: string[];
   messageSources: string[];
   sourceCounts: { all: number; bySource: Record<string, number> };
@@ -42,14 +54,34 @@ export function BrowseThreadPane({
   /** True once the current contact's threads have finished loading (so an empty state means "no messages"). */
   threadsReady?: boolean;
   activeThread: string | null;
-  /** When viewing a group thread, show this under the contact name. */
-  threadTitle?: string | null;
+  /** When viewing a group thread, show participants / date / counts under the contact name. */
+  groupThread?: BrowseGroupThreadMeta | null;
+  onParticipantClick?: (participant: GroupParticipant) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const displayName = detail?.displayName ?? null;
-  const phonesView = detail?.phones ?? [];
-  const shownGroups = displayGroupNames(groups, excluded);
+  const threadStats = useMemo(() => {
+    if (groupThread) {
+      return {
+        messageCount: groupThread.messageCount,
+        attachmentCount: messages.reduce((n, m) => n + m.attachments.length, 0),
+      };
+    }
+    if (activeThread === "dm" && yearly.length > 0) {
+      return {
+        messageCount: yearly.reduce((n, y) => n + y.messageCount, 0),
+        attachmentCount: yearly.reduce((n, y) => n + y.attachmentCount, 0),
+      };
+    }
+    if (messages.length > 0) {
+      return {
+        messageCount: messages.length,
+        attachmentCount: messages.reduce((n, m) => n + m.attachments.length, 0),
+      };
+    }
+    return null;
+  }, [groupThread, activeThread, yearly, messages]);
 
   const yearsInThread = useMemo(() => {
     if (yearly.length > 0 && activeThread === "dm") {
@@ -138,71 +170,67 @@ export function BrowseThreadPane({
     onClick: () => jumpToYear(y.year),
   }));
 
+  const dateLabel = groupThread
+    ? groupThread.dateStart === groupThread.dateEnd
+      ? groupThread.dateStart
+      : `${groupThread.dateStart} — ${groupThread.dateEnd}`
+    : null;
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-bg">
       {detail && (
-        <div className="shrink-0 border-b border-border px-5 py-4">
-          <div className="grid grid-cols-[auto_minmax(1rem,1fr)_max-content_max-content] items-baseline gap-x-4">
-            <h1 className="col-start-1 row-start-1 whitespace-nowrap text-2xl font-semibold tracking-tight text-text">
-              {displayName || "Contact"}
-            </h1>
-            {phonesView.length > 0 && (
-              <>
-                <div className="col-start-3 row-start-1 flex min-w-0 items-baseline gap-2 justify-self-end">
-                  <PhoneIcon className="relative top-[3px] size-4 shrink-0 text-muted" />
-                  <span className="min-w-0 truncate text-[12px] leading-5 tabular-nums text-text">
-                    {phonesView[0]}
-                  </span>
-                </div>
-                {phonesView.slice(1).map((phone, i) => (
-                  <div
-                    key={phone}
-                    className="col-start-3 min-w-0 truncate text-right text-[12px] leading-5 tabular-nums text-text justify-self-end"
-                    style={{ gridRow: i + 2 }}
-                  >
-                    {phone}
-                  </div>
-                ))}
-              </>
-            )}
-            {shownGroups.length > 0 && (
-              <>
-                <div className="col-start-4 row-start-1 flex min-w-0 items-baseline justify-end gap-2 justify-self-end">
-                  <PeopleGroupIcon className="relative top-[3px] size-4 shrink-0 text-muted" />
-                  <span
-                    className={
-                      shownGroups[0] === "Inactive"
-                        ? "min-w-0 truncate text-[12px] font-semibold leading-5 text-amber-400/90"
-                        : "min-w-0 truncate text-[12px] leading-5 text-text"
-                    }
-                  >
-                    {shownGroups[0]}
-                  </span>
-                </div>
-                {shownGroups.slice(1).map((name, i) => (
-                  <div
-                    key={name}
-                    className={
-                      name === "Inactive"
-                        ? "col-start-4 min-w-0 truncate text-right text-[12px] font-semibold leading-5 text-amber-400/90 justify-self-end"
-                        : "col-start-4 min-w-0 truncate text-right text-[12px] leading-5 text-text justify-self-end"
-                    }
-                    style={{ gridRow: i + 2 }}
-                  >
-                    {name}
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-          {threadTitle && (
-            <p className="mt-1 truncate text-[13px] text-muted">
-              {threadTitle}
-            </p>
+        <div className="shrink-0 border-b border-border px-5 py-4 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">
+            {displayName || "Contact"}
+          </h1>
+
+          {groupThread && groupThread.participants.length > 0 && (
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-y-0.5 text-[14px] font-medium text-text">
+              {groupThread.participants.map((p, idx) => (
+                <span
+                  key={`${p.handle}-${idx}`}
+                  className="inline-flex items-center"
+                >
+                  {onParticipantClick ? (
+                    <GroupParticipantChip
+                      label={p.name}
+                      onClick={() => onParticipantClick(p)}
+                    />
+                  ) : (
+                    <span className="whitespace-nowrap px-1.5 py-0.5">
+                      {p.name}
+                    </span>
+                  )}
+                  {idx < groupThread.participants.length - 1 ? (
+                    <GroupParticipantNameSep />
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {dateLabel && (
+            <div className="mt-1.5 text-[14px] text-muted tabular-nums">
+              {dateLabel}
+            </div>
+          )}
+
+          {threadStats && (
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px] text-muted">
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <MessageIcon className="size-3.5 shrink-0 opacity-80" />
+                {threadStats.messageCount.toLocaleString()}
+              </span>
+              <span className="opacity-50">·</span>
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <PaperclipIcon className="size-3.5 shrink-0 opacity-80" />
+                {threadStats.attachmentCount.toLocaleString()}
+              </span>
+            </div>
           )}
 
           {stripItems.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-y-1.5">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-y-1.5">
               {stripItems.map((item, i) => (
                 <span key={item.key} className="flex items-center">
                   {i > 0 && (
@@ -276,7 +304,11 @@ export function BrowseThreadPane({
             }`}
           >
             {messagesByYear.map((section) => (
-              <div key={section.year} id={`year-${section.year}`} className="scroll-mt-3">
+              <div
+                key={section.year}
+                id={`year-${section.year}`}
+                className="scroll-mt-3"
+              >
                 <div className="sticky top-0 z-10 -mx-1 mb-2 bg-bg/95 px-1 py-1.5 backdrop-blur-sm">
                   <div className="text-[13px] font-semibold text-text">
                     {section.year || "Unknown"}

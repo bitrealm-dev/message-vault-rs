@@ -1,7 +1,11 @@
 "use client";
 
-import type { GroupYearRow, MessageRow } from "@/lib/types";
+import type { GroupParticipant, GroupYearRow, MessageRow } from "@/lib/types";
 import type { RefObject } from "react";
+import {
+  GroupParticipantChip,
+  GroupParticipantNameSep,
+} from "./GroupParticipantChip";
 import { MessageBubble } from "./MessageBubble";
 import { MessageIcon, PaperclipIcon } from "./icons";
 
@@ -13,12 +17,17 @@ function groupMessageHeader(
     showYearHint: boolean;
     messageCount: number;
     attachmentCount: number;
+    onParticipantClick?: (participant: GroupParticipant) => void;
   },
 ) {
-  const title =
-    selectedRow.participantNames.length > 0
-      ? selectedRow.participantNames.join(" · ")
-      : selectedRow.title;
+  const participants =
+    selectedRow.participants?.length > 0
+      ? selectedRow.participants
+      : selectedRow.participantNames.map((name, i) => ({
+          name,
+          handle: selectedRow.participantHandles[i] ?? name,
+          contactId: null as number | null,
+        }));
   const dateLabel = selectedRow.spansMultipleYears
     ? `${selectedRow.conversationDateStart} — ${selectedRow.conversationDateEnd}`
     : selectedRow.dateStart === selectedRow.dateEnd
@@ -32,13 +41,31 @@ function groupMessageHeader(
       }`}
     >
       <div
-        className={`px-2 break-words text-text whitespace-normal ${
+        className={`flex flex-wrap items-center justify-center gap-y-0.5 px-2 text-text ${
           opts.prominent
             ? "text-2xl font-semibold tracking-tight"
             : "text-[13px] font-medium"
         }`}
       >
-        {title}
+        {participants.length > 0 ? (
+          participants.map((p, idx) => (
+            <span key={`${p.handle}-${idx}`} className="inline-flex items-center">
+              {opts.onParticipantClick ? (
+                <GroupParticipantChip
+                  label={p.name}
+                  onClick={() => opts.onParticipantClick?.(p)}
+                />
+              ) : (
+                <span className="whitespace-nowrap px-1.5 py-0.5">{p.name}</span>
+              )}
+              {idx < participants.length - 1 ? (
+                <GroupParticipantNameSep />
+              ) : null}
+            </span>
+          ))
+        ) : (
+          <span>{selectedRow.title}</span>
+        )}
       </div>
       {selectedRow.namedTitle ? (
         <div
@@ -90,6 +117,7 @@ export function GroupChatsMessagesPane({
   conversationSelected,
   /** Trash: single pane — larger title header, no year-bucket hint. */
   prominentHeader = false,
+  onParticipantClick,
 }: {
   messagesPaneRef: RefObject<HTMLElement | null>;
   multiSelected: boolean;
@@ -101,6 +129,7 @@ export function GroupChatsMessagesPane({
   /** True when a conversation id is focused (year may still be resolving). */
   conversationSelected: boolean;
   prominentHeader?: boolean;
+  onParticipantClick?: (participant: GroupParticipant) => void;
 }) {
   const showThread = !multiSelected && selectedRow != null;
   const attachmentCount = messages.reduce(
@@ -145,6 +174,7 @@ export function GroupChatsMessagesPane({
             showYearHint: !prominentHeader,
             messageCount: selectedRow.messageCount,
             attachmentCount,
+            onParticipantClick,
           })}
           {loading && messages.length === 0 && (
             <p className="pt-4 text-center text-[13px] text-muted">
