@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import { ChevronDownIcon } from "./icons";
+import { IconHoverTarget } from "./IconHoverLabel";
 import { useDismissible } from "./useDismissible";
 
-/** Year filter combo: All + calendar years, with a down chevron. */
+/** Year filter combo: All years + calendar years, with a down chevron. */
 export function YearFilterMenu({
   years,
   value,
@@ -15,6 +16,7 @@ export function YearFilterMenu({
   value: number | null;
   onChange: (year: number | null) => void;
 }) {
+  const disabled = years.length === 0;
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
     null,
@@ -31,9 +33,10 @@ export function YearFilterMenu({
     refs: [rootRef],
   });
 
-  const label = value == null ? "All" : String(value);
+  const label = value == null ? "All years" : String(value);
 
   const toggle = () => {
+    if (disabled) return;
     if (open) {
       setOpen(false);
       setMenuPos(null);
@@ -52,26 +55,27 @@ export function YearFilterMenu({
     onChange(next);
   };
 
-  if (years.length === 0) return null;
-
   return (
     <div ref={rootRef} className="relative inline-flex shrink-0 items-center">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label="Filter by year"
-        onClick={toggle}
-        className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors ${
-          open
-            ? "bg-accent/20 text-accent"
-            : "bg-elevated text-muted hover:text-text"
-        }`}
-      >
-        <span className="tabular-nums">{label}</span>
-        <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-      </button>
+      <IconHoverTarget label="Filter by year" placement="bottom" hidden={open}>
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label="Filter by year"
+          disabled={disabled}
+          onClick={toggle}
+          className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+            open
+              ? "bg-accent/20 text-accent"
+              : "bg-elevated text-muted hover:text-text"
+          }`}
+        >
+          <span className="tabular-nums">{label}</span>
+          <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+        </button>
+      </IconHoverTarget>
       {open && menuPos && (
         <div
           role="listbox"
@@ -87,7 +91,7 @@ export function YearFilterMenu({
             }`}
             onClick={() => pick(null)}
           >
-            All
+            All years
           </button>
           {years.map((y) => (
             <button

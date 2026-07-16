@@ -2,7 +2,8 @@
 
 import { isReservedGroupName } from "@/lib/reservedGroups";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PeopleGroupIcon } from "./icons";
+import { IconHoverTarget } from "./IconHoverLabel";
+import { EraserIcon, PeopleGroupIcon } from "./icons";
 import { useDismissible } from "./useDismissible";
 
 export type GroupCheckState = "on" | "off" | "mixed";
@@ -14,9 +15,14 @@ export function GroupsMenu({
   onToggle,
   onToggleExcluded,
   onCreate,
+  onClearAll,
   onOpenChange,
   onModeChange,
   disabled = false,
+  /** Render the trigger as a compact icon-only button with a hover tooltip. */
+  iconOnly = false,
+  /** Show "Groups" text + chevron (for contact edit dialog). */
+  labeled = false,
   /** When set, render only the panel at this fixed position (no toolbar trigger). */
   fixedPosition = null,
 }: {
@@ -29,10 +35,14 @@ export function GroupsMenu({
   onToggleExcluded?: () => void;
   /** Called when a new group is created; should add it to the current target(s). */
   onCreate?: (name: string) => void;
+  /** Remove all group memberships (and Inactive) from the current target(s). */
+  onClearAll?: () => void;
   onOpenChange?: (open: boolean) => void;
   /** Fired when switching between the group list and the create form. */
   onModeChange?: (mode: "list" | "create") => void;
   disabled?: boolean;
+  iconOnly?: boolean;
+  labeled?: boolean;
   fixedPosition?: { x: number; y: number } | null;
 }) {
   const [open, setOpen] = useState(fixedPosition != null);
@@ -40,6 +50,13 @@ export function GroupsMenu({
   const [query, setQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [localGroups, setLocalGroups] = useState<string[]>(allGroups);
+  /** Viewport-fixed panel position anchored to the trigger (avoids pane clipping). */
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    left?: number;
+    right?: number;
+  } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -60,10 +77,31 @@ export function GroupsMenu({
   const closeMenu = useCallback(() => {
     setOpen(false);
     setMenuMode("list");
+    setMenuPos(null);
     onOpenChangeRef.current?.(false);
   }, [setMenuMode]);
 
   const openMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      if (labeled) {
+        // Open to the right of the trigger so membership names under the
+        // button stay visible while the user toggles groups.
+        const panelW = 256;
+        const left = Math.min(
+          rect.right + 4,
+          window.innerWidth - panelW - 8,
+        );
+        setMenuPos({ top: rect.top, left: Math.max(8, left) });
+      } else if (iconOnly) {
+        setMenuPos({
+          top: rect.bottom + 4,
+          right: window.innerWidth - rect.right,
+        });
+      } else {
+        setMenuPos({ top: rect.bottom + 4, left: rect.left });
+      }
+    }
     setOpen(true);
     setMenuMode("list");
     onOpenChangeRef.current?.(true);
@@ -174,44 +212,111 @@ export function GroupsMenu({
     setMenuMode("list");
   };
 
+  const hasAnyMembership =
+    excludedCheck !== "off" ||
+    Object.values(checks).some((state) => state === "on" || state === "mixed");
+
+  const clearAll = () => {
+    if (disabled || !onClearAll || !hasAnyMembership) return;
+    onClearAll();
+  };
+
   const panelClass = isFixed
     ? "w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl"
-    : "absolute top-full left-0 z-50 mt-1 w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl";
+    : "fixed z-[100] w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl";
+
+  const panelStyle =
+    !isFixed && menuPos
+      ? { top: menuPos.top, left: menuPos.left, right: menuPos.right }
+      : undefined;
 
   return (
     <div
       ref={rootRef}
-      className={isFixed ? "fixed z-50" : "relative inline-flex shrink-0 items-center"}
+      className={
+        isFixed
+          ? "fixed z-50"
+          : labeled
+            ? "relative flex w-full shrink-0 items-center"
+            : "relative inline-flex shrink-0 items-center"
+      }
       style={
         isFixed
           ? { left: fixedPosition!.x, top: fixedPosition!.y }
           : undefined
       }
     >
-      {!isFixed && (
-        <button
-          type="button"
-          aria-expanded={open}
-          disabled={disabled}
-          onClick={() => {
-            if (disabled) return;
-            if (open) closeMenu();
-            else openMenu();
-          }}
-          className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-            open
-              ? "bg-accent/20 text-accent"
-              : "bg-elevated text-muted hover:text-text"
-          }`}
-        >
-          <PeopleGroupIcon className="size-4 shrink-0" />
-          Groups
-          <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
-        </button>
-      )}
+      {!isFixed &&
+        (iconOnly ? (
+          <IconHoverTarget label="Groups" placement="bottom" hidden={open}>
+            <button
+              ref={triggerRef}
+              type="button"
+              aria-label="Groups"
+              aria-expanded={open}
+              disabled={disabled}
+              onClick={() => {
+                if (disabled) return;
+                if (open) closeMenu();
+                else openMenu();
+              }}
+              className={`flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                open
+                  ? "bg-accent/20 text-accent"
+                  : "bg-elevated text-muted hover:text-text"
+              }`}
+            >
+              <PeopleGroupIcon className="size-5 shrink-0" />
+            </button>
+          </IconHoverTarget>
+        ) : labeled ? (
+          <button
+            ref={triggerRef}
+            type="button"
+            aria-label="Groups"
+            aria-expanded={open}
+            disabled={disabled}
+            onClick={() => {
+              if (disabled) return;
+              if (open) closeMenu();
+              else openMenu();
+            }}
+            className={`inline-flex h-8 w-full items-center justify-between gap-2 rounded-md px-3 text-[13px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              open
+                ? "bg-accent/20 text-accent"
+                : "bg-elevated text-muted hover:text-text"
+            }`}
+          >
+            <span>Groups</span>
+            <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
+          </button>
+        ) : (
+          <IconHoverTarget label="Groups" placement="bottom" hidden={open}>
+            <button
+              ref={triggerRef}
+              type="button"
+              aria-label="Groups"
+              aria-expanded={open}
+              disabled={disabled}
+              onClick={() => {
+                if (disabled) return;
+                if (open) closeMenu();
+                else openMenu();
+              }}
+              className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                open
+                  ? "bg-accent/20 text-accent"
+                  : "bg-elevated text-muted hover:text-text"
+              }`}
+            >
+              <PeopleGroupIcon className="size-4 shrink-0" />
+              <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
+            </button>
+          </IconHoverTarget>
+        ))}
 
       {open && mode === "list" && (
-        <div className={panelClass}>
+        <div className={panelClass} style={panelStyle}>
           <div className="border-b border-border/80 p-2">
             <div className="flex items-center gap-2 rounded-md border border-accent bg-elevated px-2 py-1.5">
               <SearchIcon className="size-5 shrink-0 text-muted" />
@@ -284,12 +389,23 @@ export function GroupsMenu({
               </span>
               <span>Create group</span>
             </button>
+            {onClearAll && (
+              <button
+                type="button"
+                disabled={disabled || !hasAnyMembership}
+                onClick={clearAll}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
+              >
+                <EraserIcon className="size-3.5 shrink-0 opacity-80" />
+                <span>Clear all</span>
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {open && mode === "create" && (
-        <div className={`${panelClass} p-3`}>
+        <div className={`${panelClass} p-3`} style={panelStyle}>
           <h3 className="text-[14px] font-semibold text-text">Create group</h3>
           <input
             ref={nameRef}

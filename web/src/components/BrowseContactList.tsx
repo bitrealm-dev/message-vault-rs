@@ -1,10 +1,15 @@
 "use client";
 
 import type { ContactListItem } from "@/lib/types";
-import type { MouseEvent, RefObject } from "react";
-import { ListHistoryMenu } from "./history";
+import type { MouseEvent, ReactNode, RefObject } from "react";
+import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
-import { MessageIcon } from "./icons";
+import {
+  MessageIcon,
+  PencilIcon,
+  TrashMessagesIcon,
+  XIcon,
+} from "./icons";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
 export function BrowseContactList({
@@ -18,6 +23,12 @@ export function BrowseContactList({
   onToggleSelectAll,
   onNewContact,
   vaultReadOnly = false,
+  groupsMenu,
+  onEdit,
+  editDisabled = false,
+  onTrashContact,
+  onTrashMessages,
+  deleteDisabled = false,
   sort,
   sortOrder,
   onSortChange,
@@ -38,6 +49,13 @@ export function BrowseContactList({
   onToggleSelectAll: () => void;
   onNewContact: () => void;
   vaultReadOnly?: boolean;
+  /** Icon-only GroupsMenu element rendered first in the toolbar cluster. */
+  groupsMenu?: ReactNode;
+  onEdit?: () => void;
+  editDisabled?: boolean;
+  onTrashContact?: () => void;
+  onTrashMessages?: () => void;
+  deleteDisabled?: boolean;
   sort: SortMode;
   sortOrder: SortOrder;
   onSortChange: (next: { sort: SortMode; order: SortOrder }) => void;
@@ -48,39 +66,76 @@ export function BrowseContactList({
   onNamePhoneClick: (id: number, e: MouseEvent | { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
   onContextMenu: (id: number, x: number, y: number) => void;
 }) {
+  const menuItems: ListHistoryMenuItem[] = [
+    {
+      key: "new-contact",
+      label: "New contact",
+      icon: <NewContactIcon className="size-5 shrink-0 opacity-80" />,
+      onClick: onNewContact,
+    },
+    ...(onTrashContact
+      ? [
+          {
+            key: "delete",
+            label: "Delete",
+            icon: <XIcon className="size-5 shrink-0 opacity-80" />,
+            disabled: deleteDisabled,
+            danger: true,
+            onClick: onTrashContact,
+          } satisfies ListHistoryMenuItem,
+        ]
+      : []),
+    ...(onTrashMessages
+      ? [
+          {
+            key: "delete-messages",
+            label: "Delete messages",
+            icon: <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />,
+            disabled: deleteDisabled,
+            danger: true,
+            onClick: onTrashMessages,
+          } satisfies ListHistoryMenuItem,
+        ]
+      : []),
+  ];
+
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
 
       <div className="flex h-[45px] shrink-0 items-center justify-between overflow-visible border-b border-border px-3">
         <label className="flex min-w-0 items-center gap-2">
-          <input
-            ref={selectAllRef}
-            type="checkbox"
-            checked={allGroupSelected}
-            disabled={visibleCount === 0}
-            aria-label={`Select all ${sectionLabel}`}
-            onChange={onToggleSelectAll}
-            className="checkbox-list"
-          />
+          <IconHoverTarget label="Select all" placement="bottom">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allGroupSelected}
+              disabled={visibleCount === 0}
+              aria-label={`Select all ${sectionLabel}`}
+              onChange={onToggleSelectAll}
+              className="checkbox-list"
+            />
+          </IconHoverTarget>
           <span className="truncate text-[13px] text-muted tabular-nums">
             {selectedIds.size > 0 ? selectedIds.size : ""}
           </span>
         </label>
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
-          {!vaultReadOnly && (
-            <IconHoverTarget label="New contact" placement="bottom">
+          {!vaultReadOnly && groupsMenu}
+          {!vaultReadOnly && onEdit && (
+            <IconHoverTarget label="Edit contact" placement="bottom">
               <button
                 type="button"
-                aria-label="New contact"
-                onClick={onNewContact}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+                aria-label="Edit contact"
+                disabled={editDisabled}
+                onClick={onEdit}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <NewContactIcon className="size-5" />
+                <PencilIcon className="size-4" />
               </button>
             </IconHoverTarget>
           )}
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
-          <ListHistoryMenu />
+          <ListHistoryMenu items={vaultReadOnly ? [] : menuItems} />
         </div>
       </div>
       <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
@@ -223,7 +278,7 @@ export function BrowseContactList({
   );
 }
 
-function NewContactIcon({ className }: { className?: string }) {
+export function NewContactIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}

@@ -356,6 +356,26 @@ export function PencilIcon({ className }: { className?: string }) {
   );
 }
 
+/** Tilted eraser block with a band and baseline (clear all). */
+export function EraserIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l4.3 4.3c1 1 1 2.5 0 3.4L10.4 21" />
+      <path d="M22 21H7" />
+      <path d="m5 11 9 9" />
+    </svg>
+  );
+}
+
 /** Text message bubble with an X inside (delete messages). */
 export function TrashMessagesIcon({ className }: { className?: string }) {
   return (

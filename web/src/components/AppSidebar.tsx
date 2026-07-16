@@ -162,6 +162,9 @@ function GroupsNav({ groups }: { groups: string[] }) {
   const { push: pushHistory } = useHistory();
   const [create, setCreate] = useState<{ x: number; y: number } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
+    null,
+  );
   const [rename, setRename] = useState<{
     name: string;
     x: number;
@@ -400,6 +403,11 @@ function GroupsNav({ groups }: { groups: string[] }) {
                     cancelCloseGroupMenu();
                     setCreate(null);
                     setRename(null);
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setMenuPos({
+                      top: rect.bottom + 2,
+                      right: window.innerWidth - rect.right,
+                    });
                     setMenuFor((v) => (v === name ? null : name));
                   }}
                   className={`mr-1.5 shrink-0 rounded p-0.5 text-muted hover:bg-white/10 hover:text-text ${
@@ -412,10 +420,11 @@ function GroupsNav({ groups }: { groups: string[] }) {
                 </button>
               </div>
 
-              {menuOpen && (
+              {menuOpen && menuPos && (
                 <div
                   ref={menuRef}
-                  className="absolute top-full right-1 z-50 mt-0.5 min-w-[120px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+                  className="fixed z-[100] min-w-[120px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+                  style={{ top: menuPos.top, right: menuPos.right }}
                 >
                   <button
                     type="button"

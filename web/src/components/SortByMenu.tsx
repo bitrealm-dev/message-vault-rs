@@ -25,11 +25,32 @@ export function SortMenu<T extends string>({
   ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
+    null,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const close = () => {
+    setOpen(false);
+    setMenuPos(null);
+  };
+
+  const toggle = () => {
+    if (open) {
+      close();
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setOpen(true);
+  };
 
   useDismissible({
     open,
-    onDismiss: () => setOpen(false),
+    onDismiss: close,
     refs: [rootRef],
   });
 
@@ -45,17 +66,21 @@ export function SortMenu<T extends string>({
         hidden={open}
       >
         <button
+          ref={buttonRef}
           type="button"
           aria-label={ariaLabel}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
+          onClick={toggle}
           className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
         >
           <SortIcon />
         </button>
       </IconHoverTarget>
-      {open && (
-        <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-2 shadow-xl">
+      {open && menuPos && (
+        <div
+          className="fixed z-[100] min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-2 shadow-xl"
+          style={{ top: menuPos.top, right: menuPos.right }}
+        >
           <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
             Sort By
           </div>
@@ -66,7 +91,7 @@ export function SortMenu<T extends string>({
               selected={sort === field.id}
               onSelect={() => {
                 onChange({ sort: field.id, order });
-                setOpen(false);
+                close();
               }}
             />
           ))}
@@ -79,7 +104,7 @@ export function SortMenu<T extends string>({
             selected={order === "asc"}
             onSelect={() => {
               onChange({ sort, order: "asc" });
-              setOpen(false);
+              close();
             }}
           />
           <SortOption
@@ -87,7 +112,7 @@ export function SortMenu<T extends string>({
             selected={order === "desc"}
             onSelect={() => {
               onChange({ sort, order: "desc" });
-              setOpen(false);
+              close();
             }}
           />
         </div>

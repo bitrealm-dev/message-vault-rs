@@ -507,6 +507,12 @@ export function UnassignedShell({
     );
   }, []);
 
+  const clearDraftGroups = useCallback(() => {
+    setCreateDraft((prev) =>
+      prev ? { ...prev, contactGroups: [], exclude: false } : prev,
+    );
+  }, []);
+
   const clampMenu = (x: number, y: number, w: number, h: number) => ({
     x: Math.max(8, Math.min(x, window.innerWidth - w - 8)),
     y: Math.max(8, Math.min(y, window.innerHeight - h - 8)),
@@ -1266,6 +1272,7 @@ export function UnassignedShell({
                   onToggle={toggleDraftGroup}
                   onToggleExcluded={toggleDraftExcluded}
                   onCreate={createAndAssignDraftGroup}
+                  onClearAll={clearDraftGroups}
                 />
                 <div
                   ref={moreMenuRef}
@@ -1565,6 +1572,7 @@ export function UnassignedShell({
             onToggle={toggleDraftGroup}
             onToggleExcluded={toggleDraftExcluded}
             onCreate={createAndAssignDraftGroup}
+            onClearAll={clearDraftGroups}
             onModeChange={(next) => {
               groupsCreatePinnedRef.current = next === "create";
               if (next === "create") cancelCloseGroupsPanel();

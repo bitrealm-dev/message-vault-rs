@@ -250,6 +250,8 @@ export function contactGroupChatThreadsForPhones(
       titleFull: t.titleFull,
       namedTitle: t.namedTitle,
       participantCount: t.participantCount,
+      participantNames: t.participantNames,
+      participantHandles: t.participantHandles,
       year: r.year,
       messageCount: r.message_count,
       dateStart: r.date_start,
@@ -284,6 +286,8 @@ export function contactGroupChatThreadsForPhones(
       existing.title = row.title;
       existing.titleFull = row.titleFull;
       existing.namedTitle = row.namedTitle;
+      existing.participantNames = row.participantNames;
+      existing.participantHandles = row.participantHandles;
     }
   }
 

@@ -20,6 +20,8 @@ export type ContactGroupConversation = {
   titleFull: string;
   namedTitle: string | null;
   participantCount: number;
+  participantNames: string[];
+  participantHandles: string[];
   messageCount: number;
   dateStart: string;
   dateEnd: string;
@@ -44,6 +46,8 @@ export function collapseContactGroupChats(
         titleFull: r.titleFull,
         namedTitle: r.namedTitle,
         participantCount: r.participantCount,
+        participantNames: [...(r.participantNames ?? [])],
+        participantHandles: [...(r.participantHandles ?? [])],
         messageCount: r.messageCount,
         dateStart: r.dateStart,
         dateEnd: r.dateEnd,
@@ -56,6 +60,14 @@ export function collapseContactGroupChats(
     if (r.dateStart < prev.dateStart) prev.dateStart = r.dateStart;
     if (r.dateEnd > prev.dateEnd) prev.dateEnd = r.dateEnd;
     if (!prev.namedTitle && r.namedTitle) prev.namedTitle = r.namedTitle;
+    for (const name of r.participantNames ?? []) {
+      if (!prev.participantNames.includes(name)) prev.participantNames.push(name);
+    }
+    for (const handle of r.participantHandles ?? []) {
+      if (!prev.participantHandles.includes(handle)) {
+        prev.participantHandles.push(handle);
+      }
+    }
     for (const id of ids) {
       if (!prev.conversationIds.includes(id)) prev.conversationIds.push(id);
     }
@@ -82,6 +94,9 @@ export function BrowseGroupChatsPane({
   sortBy,
   sortOrder,
   onSortChange,
+  searchQuery,
+  onSearchQueryChange,
+  searchDisabled = false,
   groupDateFormat,
   onSelect,
   emptyLabel = "No group chats",
@@ -97,6 +112,9 @@ export function BrowseGroupChatsPane({
     sortBy: BrowseGroupChatSortBy;
     order: SortOrder;
   }) => void;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+  searchDisabled?: boolean;
   groupDateFormat: GroupDateFormat;
   onSelect: (g: ContactGroupConversation) => void;
   emptyLabel?: string;
@@ -119,6 +137,16 @@ export function BrowseGroupChatsPane({
             onChange={onSortChange}
           />
         </div>
+      </div>
+      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
+        <input
+          type="search"
+          value={searchQuery}
+          disabled={searchDisabled}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          placeholder="Search groups for name or phone…"
+          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {items.length === 0 ? (

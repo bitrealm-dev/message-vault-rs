@@ -44,6 +44,8 @@ export type GroupChatThread = {
   titleFull: string;
   namedTitle: string | null;
   participantCount: number;
+  participantNames: string[];
+  participantHandles: string[];
   year: number;
   messageCount: number;
   dateStart: string;

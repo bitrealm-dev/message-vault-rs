@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import {
   ContactPhoneList,
   displayGroupNames,
@@ -11,6 +12,32 @@ import {
   PhoneIcon,
 } from "./icons";
 
+const ICON_COL = "flex w-5 shrink-0 justify-center pt-[3px]";
+
+function GroupNamesList({ names }: { names: string[] }) {
+  if (names.length === 0) {
+    return (
+      <span className="truncate text-[13px] leading-5 text-muted">None</span>
+    );
+  }
+  return (
+    <>
+      {names.map((name) => (
+        <span
+          key={name}
+          className={
+            name === "Inactive"
+              ? "truncate text-[13px] font-semibold leading-5 text-amber-400/90"
+              : "truncate text-[13px] leading-5 text-text"
+          }
+        >
+          {name}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function ContactDetailsCard({
   formOpen,
   draft,
@@ -18,6 +45,8 @@ export function ContactDetailsCard({
   groups,
   excluded,
   phonesView,
+  framed = true,
+  groupsEditor,
 }: {
   formOpen: boolean;
   draft: ContactEditDraft | null;
@@ -26,6 +55,10 @@ export function ContactDetailsCard({
   excluded: boolean;
   /** Phones shown in view mode (when form is closed). */
   phonesView: string[];
+  /** When false, skip outer card chrome and "Contact details" heading (for dialogs). */
+  framed?: boolean;
+  /** When set and form is open, replaces the static groups list (e.g. GroupsMenu). */
+  groupsEditor?: ReactNode;
 }) {
   const shownGroups = displayGroupNames(groups, excluded);
   const phoneCount =
@@ -33,109 +66,115 @@ export function ContactDetailsCard({
       ? draft.phones.filter((p) => p.trim()).length
       : phonesView.length;
   const phoneLabel = phoneCount === 1 ? "Phone" : "Phones";
+  const editing = Boolean(formOpen && draft && onDraftChange);
 
-  return (
-    <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-      <h2 className="text-[15px] font-semibold text-text">Contact details</h2>
-      <div className="mt-3">
-        {formOpen && draft && onDraftChange && (
-          <div className="mb-3 flex gap-3">
-            <div className="pt-0.5">
-              <PersonDetailIcon className="size-5 shrink-0 text-muted" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] tracking-wide text-muted">Name</div>
-              <div className="mt-0.5 grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={draft.firstName}
-                  onChange={(e) =>
-                    onDraftChange({ ...draft, firstName: e.target.value })
-                  }
-                  placeholder="First"
-                  className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
-                />
-                <input
-                  type="text"
-                  value={draft.lastName}
-                  onChange={(e) =>
-                    onDraftChange({ ...draft, lastName: e.target.value })
-                  }
-                  placeholder="Last"
-                  className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
-                />
-              </div>
-            </div>
+  const body = editing ? (
+    <div className={framed ? "mt-3" : undefined}>
+      <div className="flex gap-3">
+        <div className={ICON_COL}>
+          <PersonDetailIcon className="size-5 shrink-0 text-muted" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] leading-4 tracking-wide text-muted">
+            Name
           </div>
-        )}
-
-        <div className="grid grid-cols-2 items-start gap-4">
-          <div className="flex min-w-0 gap-3">
-            <div className="pt-0.5">
-              <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] leading-4 tracking-wide text-muted">
-                Groups
-              </div>
-              <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
-                {shownGroups.length === 0 ? (
-                  <span className="truncate text-[13px] leading-5 text-muted">
-                    None
-                  </span>
-                ) : (
-                  shownGroups.map((name) => (
-                    <span
-                      key={name}
-                      className={
-                        name === "Inactive"
-                          ? "truncate text-[13px] font-semibold leading-5 text-amber-400/90"
-                          : "truncate text-[13px] leading-5 text-text"
-                      }
-                    >
-                      {name}
-                    </span>
-                  ))
-                )}
+          <div className="mt-0.5 grid grid-cols-2 items-start gap-2">
+            <input
+              type="text"
+              value={draft!.firstName}
+              onChange={(e) =>
+                onDraftChange!({ ...draft!, firstName: e.target.value })
+              }
+              placeholder="First"
+              className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+            />
+            <input
+              type="text"
+              value={draft!.lastName}
+              onChange={(e) =>
+                onDraftChange!({ ...draft!, lastName: e.target.value })
+              }
+              placeholder="Last"
+              className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+            />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              {groupsEditor}
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <GroupNamesList names={shownGroups} />
               </div>
             </div>
-          </div>
-
-          <div className="flex min-w-0 gap-3">
-            <div className="pt-0.5">
-              <PhoneIcon className="size-5 shrink-0 text-muted" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] leading-4 tracking-wide text-muted">
-                {phoneLabel}
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="flex shrink-0 justify-center pt-[5px]">
+                <PhoneIcon className="size-5 shrink-0 text-muted" />
               </div>
-              <div className="mt-0.5 min-h-5 min-w-0">
-                {formOpen && draft && onDraftChange ? (
-                  <ContactPhoneList
-                    phones={draft.phones}
-                    onChange={(phones) => onDraftChange({ ...draft, phones })}
-                  />
-                ) : phonesView.length > 0 ? (
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    {phonesView.map((phone) => (
-                      <span
-                        key={phone}
-                        className="truncate text-[13px] leading-5 text-text"
-                      >
-                        {phone}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="truncate text-[13px] leading-5 text-muted">
-                    None
-                  </span>
-                )}
+              <div className="min-w-0 flex-1">
+                <ContactPhoneList
+                  phones={draft!.phones}
+                  onChange={(phones) =>
+                    onDraftChange!({ ...draft!, phones })
+                  }
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  ) : (
+    <div className={framed ? "mt-3" : undefined}>
+      <div className="grid grid-cols-2 items-start gap-4">
+        <div className="flex min-w-0 gap-3">
+          <div className={ICON_COL}>
+            <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] leading-4 tracking-wide text-muted">
+              Groups
+            </div>
+            <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
+              <GroupNamesList names={shownGroups} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 gap-3">
+          <div className={ICON_COL}>
+            <PhoneIcon className="size-5 shrink-0 text-muted" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] leading-4 tracking-wide text-muted">
+              {phoneLabel}
+            </div>
+            <div className="mt-0.5 min-h-5 min-w-0">
+              {phonesView.length > 0 ? (
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  {phonesView.map((phone) => (
+                    <span
+                      key={phone}
+                      className="truncate text-[13px] leading-5 text-text"
+                    >
+                      {phone}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="truncate text-[13px] leading-5 text-muted">
+                  None
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!framed) return body;
+
+  return (
+    <div className="rounded-xl border border-border bg-[#2c2c2e] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+      <h2 className="text-[15px] font-semibold text-text">Contact details</h2>
+      {body}
     </div>
   );
 }
