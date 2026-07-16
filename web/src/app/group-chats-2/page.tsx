@@ -1,7 +1,9 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
-import { GroupChatsShell } from "@/components/GroupChatsShell";
+import { GroupMessagesShell } from "@/components/GroupMessagesShell";
 import { listGroupYearRows, listGroups } from "@/lib/db";
+import { currentAccountId } from "@/lib/accountScope";
 import { withServerAccount } from "@/lib/serverAccount";
+import { loadVaultOwner } from "@/lib/vaultOwner";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +21,12 @@ export default async function GroupChats2Page({
   return withServerAccount(async () => {
     const groupChats = listGroupYearRows();
     const contactGroups = listGroups();
+    const owner = loadVaultOwner(currentAccountId());
 
     return (
       <BrowsePageLayout active="/group-chats-2" groups={contactGroups}>
-        <GroupChatsShell
+        <GroupMessagesShell
+          owner={owner}
           groupChats={groupChats}
           initialConversationId={conversationId}
           initialYear={year}

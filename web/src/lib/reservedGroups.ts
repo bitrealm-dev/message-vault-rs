@@ -55,7 +55,7 @@ export function reservedGroupError(name: string): string {
     key === "group messages 2" ||
     key === "group-messages-2"
   ) {
-    return "Group Messages 2 is a reserved name";
+    return "Group Messages is a reserved name";
   }
   return `"${name.trim()}" is a reserved group`;
 }

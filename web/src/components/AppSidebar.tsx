@@ -594,7 +594,7 @@ export function AppSidebar({
           </div>
           <NavLink
             href="/group-chats-2"
-            label="Group Messages 2"
+            label="Group messages"
             active={active === "/group-chats-2"}
             icon={groupMessagesIcon}
           />
