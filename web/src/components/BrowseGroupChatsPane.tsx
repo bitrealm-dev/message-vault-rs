@@ -5,7 +5,9 @@ import {
   formatGroupDateTable,
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
-import { MessageIcon, PeopleCountIcon } from "./icons";
+import type { MouseEvent, RefObject } from "react";
+import { IconHoverTarget } from "./IconHoverLabel";
+import { MessageIcon, PeopleCountIcon, TrashMessagesIcon } from "./icons";
 import {
   BrowseGroupChatSortMenu,
   type BrowseGroupChatSortBy,
@@ -127,6 +129,16 @@ function rowPeopleNames(g: ContactGroupConversation): string[] {
 export function BrowseGroupChatsPane({
   items,
   selectedConversationId,
+  selectedIds,
+  selectAllRef,
+  allSelected,
+  onToggleSelectAll,
+  onSelectColumnClick,
+  onRowClick,
+  onContextMenu,
+  onTrashMessages,
+  trashDisabled = false,
+  vaultReadOnly = false,
   years,
   filterYear,
   onFilterYearChange,
@@ -137,11 +149,23 @@ export function BrowseGroupChatsPane({
   onSearchQueryChange,
   searchDisabled = false,
   groupDateFormat,
-  onSelect,
   emptyLabel = "No group chats",
 }: {
   items: ContactGroupConversation[];
   selectedConversationId: number | null;
+  selectedIds: Set<number>;
+  selectAllRef: RefObject<HTMLInputElement | null>;
+  allSelected: boolean;
+  onToggleSelectAll: () => void;
+  onSelectColumnClick: (id: number, e: MouseEvent) => void;
+  onRowClick: (
+    id: number,
+    e: MouseEvent | { shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean },
+  ) => void;
+  onContextMenu: (id: number, x: number, y: number) => void;
+  onTrashMessages?: () => void;
+  trashDisabled?: boolean;
+  vaultReadOnly?: boolean;
   years: number[];
   filterYear: number | null;
   onFilterYearChange: (year: number | null) => void;
@@ -155,16 +179,46 @@ export function BrowseGroupChatsPane({
   onSearchQueryChange: (query: string) => void;
   searchDisabled?: boolean;
   groupDateFormat: GroupDateFormat;
-  onSelect: (g: ContactGroupConversation) => void;
   emptyLabel?: string;
 }) {
+  const selectionActive = selectedIds.size >= 1;
+
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border px-3">
-        <h2 className="truncate text-[13px] font-semibold text-text">
-          Group chats
-        </h2>
+        <label className="flex min-w-0 items-center gap-2">
+          <IconHoverTarget label="Select all" placement="bottom">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              disabled={items.length === 0}
+              aria-label="Select all group chats"
+              onChange={onToggleSelectAll}
+              className="checkbox-list"
+            />
+          </IconHoverTarget>
+          <span className="truncate text-[13px] text-muted tabular-nums">
+            {selectedIds.size > 0 ? selectedIds.size : ""}
+          </span>
+          <h2 className="truncate text-[13px] font-semibold text-text">
+            Group chats
+          </h2>
+        </label>
         <div className="flex shrink-0 items-center gap-1.5">
+          {!vaultReadOnly && onTrashMessages && (
+            <IconHoverTarget label="Delete messages" placement="bottom">
+              <button
+                type="button"
+                aria-label="Delete messages"
+                disabled={trashDisabled}
+                onClick={onTrashMessages}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <TrashMessagesIcon className="size-4" />
+              </button>
+            </IconHoverTarget>
+          )}
           <YearFilterMenu
             years={years}
             value={filterYear}
@@ -193,6 +247,7 @@ export function BrowseGroupChatsPane({
         ) : (
           items.map((g, i) => {
             const active = g.conversationId === selectedConversationId;
+            const checked = selectedIds.has(g.conversationId);
             const dateLabel = formatRange(
               g.dateStart,
               g.dateEnd,
@@ -203,61 +258,129 @@ export function BrowseGroupChatsPane({
             const namesTitle =
               allNames.length > 0 ? allNames.join(NAME_SEP) : g.titleFull;
             return (
-              <button
+              <div
                 key={g.conversationId}
-                type="button"
+                role={selectionActive ? "button" : undefined}
+                tabIndex={selectionActive ? 0 : undefined}
                 title={g.titleFull}
-                onClick={() => onSelect(g)}
-                className={`group relative flex w-full items-start gap-2 py-2.5 pr-3 pl-3 text-left select-none ${
-                  active
-                    ? "bg-elevated hover:bg-white/18"
-                    : "hover:bg-white/20"
+                onClick={
+                  selectionActive
+                    ? (e) => onRowClick(g.conversationId, e)
+                    : undefined
+                }
+                onKeyDown={
+                  selectionActive
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRowClick(g.conversationId, {
+                            shiftKey: e.shiftKey,
+                            metaKey: e.metaKey,
+                            ctrlKey: e.ctrlKey,
+                          });
+                        }
+                      }
+                    : undefined
+                }
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onContextMenu(g.conversationId, e.clientX, e.clientY);
+                }}
+                onMouseDown={(e) => {
+                  if (e.shiftKey) e.preventDefault();
+                }}
+                className={`group relative flex w-full items-start gap-1.5 py-2.5 pr-3 pl-0 text-left select-none ${
+                  selectionActive ? "cursor-pointer" : ""
+                } ${
+                  checked
+                    ? "bg-accent/40 hover:bg-accent/50"
+                    : active
+                      ? "bg-accent/20 hover:bg-accent/25"
+                      : "hover:bg-white/20"
                 } ${i < items.length - 1 ? "border-b border-border/40" : ""}`}
               >
-                {active && (
+                {active && !checked && (
                   <span
                     aria-hidden
-                    className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
+                    className="absolute top-1 bottom-1 left-0 w-1 rounded-full bg-accent/80"
                   />
                 )}
-                <span className="min-w-0 flex-1">
-                  {g.namedTitle ? (
-                    <span className="mb-0.5 block truncate text-[12px] font-medium text-text">
-                      {g.namedTitle}
+                {checked && (
+                  <span
+                    aria-hidden
+                    className="absolute top-1 bottom-1 left-0 w-1 rounded-full bg-accent"
+                  />
+                )}
+                <button
+                  type="button"
+                  aria-pressed={checked}
+                  aria-label={`Select ${g.namedTitle || g.title || "group chat"}`}
+                  onClick={(e) => onSelectColumnClick(g.conversationId, e)}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (e.shiftKey) e.preventDefault();
+                  }}
+                  className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2.5"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    readOnly
+                    tabIndex={-1}
+                    aria-hidden
+                    className="checkbox-list pointer-events-none"
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRowClick(g.conversationId, e);
+                  }}
+                  onMouseDown={(e) => {
+                    if (e.shiftKey) e.preventDefault();
+                  }}
+                  className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                >
+                  <span className="min-w-0 flex-1">
+                    {g.namedTitle ? (
+                      <span className="mb-0.5 block truncate text-[12px] font-medium text-text">
+                        {g.namedTitle}
+                      </span>
+                    ) : null}
+                    {names.length > 0 ? (
+                      <span
+                        className="line-clamp-3 text-[13px] font-medium leading-snug text-text"
+                        title={namesTitle}
+                      >
+                        {names.map((name, idx) => (
+                          <span key={`${g.conversationId}-name-${idx}`}>
+                            {idx > 0 ? <NameSep /> : null}
+                            <span className="whitespace-nowrap">{name}</span>
+                          </span>
+                        ))}
+                      </span>
+                    ) : !g.namedTitle ? (
+                      <span className="line-clamp-3 text-[13px] font-medium leading-snug text-text">
+                        {g.title}
+                      </span>
+                    ) : null}
+                    <span className="mt-0.5 block text-[11px] text-muted tabular-nums">
+                      {dateLabel}
                     </span>
-                  ) : null}
-                  {names.length > 0 ? (
-                    <span
-                      className="line-clamp-3 text-[13px] font-medium leading-snug text-text"
-                      title={namesTitle}
-                    >
-                      {names.map((name, idx) => (
-                        <span key={`${g.conversationId}-name-${idx}`}>
-                          {idx > 0 ? <NameSep /> : null}
-                          <span className="whitespace-nowrap">{name}</span>
-                        </span>
-                      ))}
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch py-0.5 text-[11px] text-muted">
+                    <span className="inline-flex items-center gap-0.5 tabular-nums">
+                      <MessageIcon className="size-3.5 shrink-0 opacity-80" />
+                      {g.messageCount.toLocaleString()}
                     </span>
-                  ) : !g.namedTitle ? (
-                    <span className="line-clamp-3 text-[13px] font-medium leading-snug text-text">
-                      {g.title}
+                    <span className="inline-flex items-center gap-0.5 tabular-nums">
+                      <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
+                      {g.participantCount.toLocaleString()}
                     </span>
-                  ) : null}
-                  <span className="mt-0.5 block text-[11px] text-muted tabular-nums">
-                    {dateLabel}
                   </span>
-                </span>
-                <span className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch py-0.5 text-[11px] text-muted">
-                  <span className="inline-flex items-center gap-0.5 tabular-nums">
-                    <MessageIcon className="size-3.5 shrink-0 opacity-80" />
-                    {g.messageCount.toLocaleString()}
-                  </span>
-                  <span className="inline-flex items-center gap-0.5 tabular-nums">
-                    <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
-                    {g.participantCount.toLocaleString()}
-                  </span>
-                </span>
-              </button>
+                </button>
+              </div>
             );
           })
         )}

@@ -58,6 +58,7 @@ pub struct ImportStats {
     pub participants_excluded: u64,
     pub messages_deduped: u64,
     pub messages_appended: u64,
+    pub unknown_contacts: u64,
     pub mode: String,
 }
 
@@ -252,6 +253,12 @@ pub fn import_export(
     }
 
     schema::clear_staging(&conn)?;
+
+    let unknown = contacts::ensure_unknown_contacts(&mut conn, account_id, contacts_csv)?;
+    stats.unknown_contacts = unknown;
+    if unknown > 0 {
+        println!("  sql:      created {unknown} contact(s) for previously unassigned handles");
+    }
 
     stats.assets_copied = asset_stats.copied;
     stats.assets_deduped = asset_stats.deduped;

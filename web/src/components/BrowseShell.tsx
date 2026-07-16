@@ -35,6 +35,7 @@ import {
   contactFormAnchorFromRect,
   type ContactFormAnchor,
 } from "./ContactFormOverlay";
+import { GroupParticipantChip } from "./GroupParticipantChip";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { useHistory } from "./history";
 import {
@@ -51,6 +52,7 @@ import {
 } from "./SortByMenu";
 import { useSourceFilter } from "./SourceFilter";
 import { useListSelection } from "./useListSelection";
+import { useTrashActions } from "./useTrashActions";
 import { useDismissible } from "./useDismissible";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
@@ -61,10 +63,11 @@ const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
 const GROUP_CHAT_SORT_KEY = "mv-browse-group-chat-sort";
 const GROUP_CHAT_SORT_ORDER_KEY = "mv-browse-group-chat-sort-order";
-const SORT_MODE_ALLOWED = ["first", "last", "messages"] as const;
+const SORT_MODE_ALLOWED = ["first", "last", "messages", "phone"] as const;
 const GROUP_CHAT_SORT_ALLOWED = ["date", "messages"] as const;
 const SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
+
 export function BrowseShell({
   paneStorageKey,
   sectionLabel,
@@ -128,6 +131,8 @@ export function BrowseShell({
   const [threadsLoadedFor, setThreadsLoadedFor] = useState<number | null>(null);
   const activeThreadRef = useRef<string | null>(null);
   activeThreadRef.current = activeThread;
+  /** False after URL/hydration restore so Panel 4 stays empty until a click. */
+  const allowAutoOpenThreadRef = useRef(initialContactId == null);
   const activeSourceRef = useRef<string | null>(null);
   activeSourceRef.current = source;
 
@@ -149,9 +154,7 @@ export function BrowseShell({
   const excludeOverridesRef = useRef(excludeOverrides);
   excludeOverridesRef.current = excludeOverrides;
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [trashConfirm, setTrashConfirm] = useState<{
-    mode: "contact_and_messages" | "messages_only";
     ids: number[];
   } | null>(null);
   const [threadsEpoch, setThreadsEpoch] = useState(0);
@@ -160,7 +163,19 @@ export function BrowseShell({
     x: number;
     y: number;
   } | null>(null);
+  const [groupCtxMenu, setGroupCtxMenu] = useState<{
+    id: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [mergeFromId, setMergeFromId] = useState<number | null>(null);
+  const [mergeQuery, setMergeQuery] = useState("");
+  const [mergePos, setMergePos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const groupCtxMenuRef = useRef<HTMLDivElement>(null);
+  const mergePanelRef = useRef<HTMLDivElement>(null);
   const groupsPanelWrapRef = useRef<HTMLDivElement>(null);
   const groupsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -282,6 +297,27 @@ export function BrowseShell({
               sensitivity: "base",
             });
         }
+      } else if (sort === "phone") {
+        const aHandle = a.preferredHandle ?? "";
+        const bHandle = b.preferredHandle ?? "";
+        const aDigits = aHandle.replace(/\D/g, "");
+        const bDigits = bHandle.replace(/\D/g, "");
+        if (aDigits && bDigits) {
+          cmp = aDigits.localeCompare(bDigits, undefined, { numeric: true });
+        } else {
+          cmp = aHandle.localeCompare(bHandle, undefined, {
+            sensitivity: "base",
+          });
+        }
+        if (cmp === 0) {
+          cmp =
+            a.sortLast.localeCompare(b.sortLast, undefined, {
+              sensitivity: "base",
+            }) ||
+            a.sortFirst.localeCompare(b.sortFirst, undefined, {
+              sensitivity: "base",
+            });
+        }
       } else if (sort === "first") {
         cmp =
           a.sortFirst.localeCompare(b.sortFirst, undefined, {
@@ -305,7 +341,7 @@ export function BrowseShell({
   }, [visibleContacts, sort, sortOrder, query]);
 
   const grouped = useMemo(() => {
-    if (sort === "messages") {
+    if (sort === "messages" || sort === "phone") {
       return [["", sorted]] as [string, ContactListItem[]][];
     }
     const map = new Map<string, ContactListItem[]>();
@@ -358,6 +394,7 @@ export function BrowseShell({
 
   const selectContact = useCallback(
     (id: number) => {
+      allowAutoOpenThreadRef.current = true;
       setSelectedGroupConversationId(null);
       setGroupChatFilterYear(null);
       setGroupChatQuery("");
@@ -376,6 +413,7 @@ export function BrowseShell({
       setActiveThread(null);
       const params = new URLSearchParams(searchParams.toString());
       params.set("c", String(id));
+      params.delete("h");
       params.delete("y");
       params.delete("conv");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
@@ -420,33 +458,56 @@ export function BrowseShell({
   useEffect(() => {
     if (!contactId) {
       loadedContactIdRef.current = null;
+      allowAutoOpenThreadRef.current = false;
       setThreadsLoadedFor(null);
       setDetail(null);
       setYearly([]);
       setGroupChats([]);
       setMessageSources([]);
       setSourceCounts({ all: 0, bySource: {} });
+      setMessages([]);
+      setActiveThread(null);
+      setSelectedGroupConversationId(null);
+      setLoadingMessages(false);
       return;
     }
     let cancelled = false;
     // Keep the existing cards mounted while the next contact loads (swap data in place).
     // Only show a blank "Loading…" state when there is nothing to display yet.
     const switchingContact = loadedContactIdRef.current !== contactId;
+    // URL/hydration restore: load contact metadata for Panel 2/3, but leave Panel 4
+    // empty until the user clicks the contact or a group.
+    const hydrateOnly =
+      !allowAutoOpenThreadRef.current && activeThreadRef.current == null;
     if (switchingContact && loadedContactIdRef.current == null) {
       setLoadingThreads(true);
     }
-    fetch(`/api/contacts/${contactId}/threads${sourceQuery ? `?${sourceQuery.slice(1)}` : ""}`)
+    fetch(
+      `/api/contacts/${contactId}/threads${
+        sourceQuery ? `?${sourceQuery.slice(1)}` : ""
+      }`,
+    )
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
+        if (data.error) {
+          if (switchingContact) {
+            setDetail(null);
+            setYearly([]);
+            setGroupChats([]);
+            setMessageSources([]);
+            setSourceCounts({ all: 0, bySource: {} });
+            setMessages([]);
+            setActiveThread(null);
+          }
+          return;
+        }
         // Contact fields don't depend on source — only replace detail when the person changes
         // so the top card shell/content don't flash on source filter updates.
         if (switchingContact) {
           const contact = data.contact as ContactDetail;
           const ov = groupOverridesRef.current.get(contact.id);
-          setDetail(
-            ov ? { ...contact, contactGroups: ov } : contact,
-          );
+          setDetail(ov ? { ...contact, contactGroups: ov } : contact);
         }
         const nextYearly: YearThread[] = data.yearly ?? [];
         const nextGroupChats: GroupChatThread[] = data.groupChats ?? [];
@@ -463,6 +524,13 @@ export function BrowseShell({
         const selected = activeSourceRef.current;
         if (selected && !available.includes(selected)) {
           setSource(null);
+        }
+
+        if (hydrateOnly) {
+          setMessages([]);
+          setActiveThread(null);
+          setSelectedGroupConversationId(null);
+          return;
         }
 
         setActiveThread((prev) => {
@@ -556,6 +624,7 @@ export function BrowseShell({
 
   const loadFullMessages = useCallback(
     (conversationIds: number[], key: string) => {
+      allowAutoOpenThreadRef.current = true;
       setActiveThread(key);
       setLoadingMessages(true);
       const ids = conversationIds.join(",");
@@ -565,21 +634,6 @@ export function BrowseShell({
         .finally(() => setLoadingMessages(false));
     },
     [sourceQuery],
-  );
-
-  const selectGroupConversation = useCallback(
-    (g: ContactGroupConversation) => {
-      if (hasSelection && selectedGroupConversationId === g.conversationId) {
-        setSelectedGroupConversationId(null);
-        setActiveThread(null);
-        setMessages([]);
-        return;
-      }
-      setSelectedGroupConversationId(g.conversationId);
-      const key = `gfull-${g.conversationIds.join("-")}`;
-      loadFullMessages(g.conversationIds, key);
-    },
-    [hasSelection, selectedGroupConversationId, loadFullMessages],
   );
 
   const selectedContacts = useMemo(() => {
@@ -707,6 +761,88 @@ export function BrowseShell({
     groupChatSortBy,
     groupChatSortOrder,
   ]);
+
+  const orderedGroupIds = useMemo(
+    () => collapsedGroupChats.map((g) => g.conversationId),
+    [collapsedGroupChats],
+  );
+  const collapsedById = useMemo(() => {
+    const map = new Map<number, ContactGroupConversation>();
+    for (const g of collapsedGroupChats) map.set(g.conversationId, g);
+    return map;
+  }, [collapsedGroupChats]);
+  const selectGroupRef = useRef<(id: number) => void>(() => {});
+
+  const {
+    selectedIds: selectedGroupIds,
+    setSelectedIds: setSelectedGroupIds,
+    hasSelection: hasGroupSelection,
+    allSelected: allGroupsSelected,
+    selectAllRef: groupSelectAllRef,
+    clearSelection: clearGroupSelection,
+    toggleSelectAll: toggleSelectAllGroups,
+    onSelectColumnClick: onGroupSelectColumnClick,
+    onRowClick: onGroupRowClick,
+  } = useListSelection<number>({
+    orderedIds: orderedGroupIds,
+    validIds: orderedGroupIds,
+    rangeMode: "selectionSpan",
+    multiThreshold: "any",
+    focusedId: selectedGroupConversationId,
+    rowClickMode: "openWhenEmptyElseToggle",
+    checkboxEvents: "preventAndStop",
+    escapeToClear: true,
+    escapeBlocked: () => groupCtxMenu != null,
+    selectAllSetsAnchor: false,
+    onOpen: (id) => selectGroupRef.current(id),
+  });
+
+  const selectGroupConversation = useCallback(
+    (g: ContactGroupConversation) => {
+      if (
+        !hasGroupSelection &&
+        hasSelection &&
+        selectedGroupConversationId === g.conversationId
+      ) {
+        setSelectedGroupConversationId(null);
+        setActiveThread(null);
+        setMessages([]);
+        return;
+      }
+      setSelectedGroupConversationId(g.conversationId);
+      const key = `gfull-${g.conversationIds.join("-")}`;
+      loadFullMessages(g.conversationIds, key);
+    },
+    [
+      hasGroupSelection,
+      hasSelection,
+      selectedGroupConversationId,
+      loadFullMessages,
+    ],
+  );
+
+  const openGroupById = useCallback(
+    (id: number) => {
+      const g = collapsedById.get(id);
+      if (!g) return;
+      selectGroupConversation(g);
+    },
+    [collapsedById, selectGroupConversation],
+  );
+  selectGroupRef.current = openGroupById;
+
+  useEffect(() => {
+    if (!hasGroupSelection) return;
+    setActiveThread(null);
+    setMessages([]);
+    setSelectedGroupConversationId(null);
+  }, [hasGroupSelection]);
+
+  useEffect(() => {
+    clearGroupSelection();
+    setSelectedGroupConversationId(null);
+    setGroupCtxMenu(null);
+  }, [selectionIdsKey, contactId, paneStorageKey, clearGroupSelection]);
 
   const canEditGroups =
     !contactEditing && !contactCreating && (hasSelection || !!detail);
@@ -845,6 +981,7 @@ export function BrowseShell({
     setExtraDraftGroups([]);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("c");
+    params.delete("h");
     params.delete("y");
     params.delete("conv");
     const qs = params.toString();
@@ -902,9 +1039,9 @@ export function BrowseShell({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (
-        deleteDialogOpen ||
         trashConfirm != null ||
         ctxMenu != null ||
+        groupCtxMenu != null ||
         groupsPanelPos != null
       ) {
         return;
@@ -917,9 +1054,9 @@ export function BrowseShell({
   }, [
     contactEditing,
     contactCreating,
-    deleteDialogOpen,
     trashConfirm,
     ctxMenu,
+    groupCtxMenu,
     groupsPanelPos,
     cancelContactEdit,
   ]);
@@ -1057,7 +1194,8 @@ export function BrowseShell({
     );
   }, []);
 
-  const canDelete = !contactCreating && (hasSelection || contactId != null);
+  const canDelete =
+    !contactCreating && (hasSelection || contactId != null);
 
   const deleteTargetIds = useCallback((): number[] => {
     if (hasSelection) return selectedContacts.map((c) => c.id);
@@ -1066,13 +1204,9 @@ export function BrowseShell({
   }, [hasSelection, selectedContacts, contactId]);
 
   const confirmTrashMode = useCallback(
-    async (
-      mode: "contact_and_messages" | "messages_only",
-      idsOverride?: number[],
-    ) => {
+    async (idsOverride?: number[]) => {
       const ids = idsOverride ?? deleteTargetIds();
       if (ids.length === 0) return;
-      setDeleteDialogOpen(false);
       setTrashConfirm(null);
       setCtxMenu(null);
       setSaving(true);
@@ -1080,7 +1214,7 @@ export function BrowseShell({
         const res = await fetch("/api/contacts/trash", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids, mode }),
+          body: JSON.stringify({ ids, mode: "contact_and_messages" }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "delete failed");
@@ -1088,22 +1222,15 @@ export function BrowseShell({
         pushHistory({
           type: "trashContacts",
           contactIds: ids,
-          mode,
-          handles:
-            mode === "messages_only" && Array.isArray(data.handles)
-              ? (data.handles as string[])
-              : undefined,
+          mode: "contact_and_messages",
           label:
-            mode === "contact_and_messages"
-              ? ids.length === 1
-                ? "Delete contact & messages"
-                : `Delete ${ids.length} contacts & messages`
-              : ids.length === 1
-                ? "Delete contact messages"
-                : `Delete messages for ${ids.length} contacts`,
+            ids.length === 1
+              ? "Delete contact & messages"
+              : `Delete ${ids.length} contacts & messages`,
         });
 
         setSelectedIds(new Set());
+        setSelectedGroupIds(new Set());
         setGroupOverrides(new Map());
         setExcludeOverrides(new Map());
         selectionDirtyRef.current = false;
@@ -1113,45 +1240,31 @@ export function BrowseShell({
         setEditDraft(null);
         setFormAnchor(null);
 
-        if (mode === "contact_and_messages") {
-          setDetail(null);
-          setYearly([]);
-          setGroupChats([]);
-          setMessageSources([]);
-          setSourceCounts({ all: 0, bySource: {} });
-          setMessages([]);
-          setActiveThread(null);
-          setContactId(null);
-          setGroupChatFilterYear(null);
-          setGroupChatQuery("");
-          setSelectedGroupConversationId(null);
-          loadedContactIdRef.current = null;
-          setThreadsLoadedFor(null);
-          queueStatusMessage(
-            ids.length === 1
-              ? "Moved contact & messages to Trash"
-              : `Moved ${ids.length} contacts to Trash`,
-          );
-          const params = new URLSearchParams(searchParams.toString());
-          params.delete("c");
-          params.delete("y");
-          params.delete("conv");
-          const qs = params.toString();
-          router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-          router.refresh();
-          return;
-        }
-
-        queueStatusMessage(
-          ids.length === 1
-            ? "Moved messages to Trash"
-            : `Moved messages for ${ids.length} contacts to Trash`,
-        );
+        setDetail(null);
+        setYearly([]);
+        setGroupChats([]);
+        setMessageSources([]);
+        setSourceCounts({ all: 0, bySource: {} });
         setMessages([]);
         setActiveThread(null);
+        setContactId(null);
+        setGroupChatFilterYear(null);
+        setGroupChatQuery("");
+        setSelectedGroupConversationId(null);
         loadedContactIdRef.current = null;
         setThreadsLoadedFor(null);
-        setThreadsEpoch((n) => n + 1);
+        queueStatusMessage(
+          ids.length === 1
+            ? "Moved contact & messages to Trash"
+            : `Moved ${ids.length} contacts to Trash`,
+        );
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("c");
+        params.delete("h");
+        params.delete("y");
+        params.delete("conv");
+        const qs = params.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
         router.refresh();
       } catch (err) {
         console.error(err);
@@ -1168,6 +1281,7 @@ export function BrowseShell({
       queueStatusMessage,
       router,
       setSelectedIds,
+      setSelectedGroupIds,
       pathname,
       searchParams,
       pushHistory,
@@ -1191,9 +1305,20 @@ export function BrowseShell({
         groupsCloseTimerRef.current = null;
       }
       groupsCreatePinnedRef.current = false;
+      setGroupCtxMenu(null);
       setGroupsPanelPos(null);
       setGroupTargetOverrideIds(null);
       setCtxMenu({ id, x, y });
+    },
+    [],
+  );
+
+  const openGroupCtxMenu = useCallback(
+    (id: number, x: number, y: number) => {
+      setCtxMenu(null);
+      setGroupsPanelPos(null);
+      setGroupTargetOverrideIds(null);
+      setGroupCtxMenu({ id, x, y });
     },
     [],
   );
@@ -1222,25 +1347,19 @@ export function BrowseShell({
   ]);
 
   const requestTrash = useCallback(
-    (
-      mode: "contact_and_messages" | "messages_only",
-      idsOverride?: number[],
-    ) => {
+    (idsOverride?: number[]) => {
       const ids = idsOverride ?? deleteTargetIds();
       if (ids.length === 0) return;
       setCtxMenu(null);
-      setTrashConfirm({ mode, ids });
+      setTrashConfirm({ ids });
     },
     [deleteTargetIds],
   );
 
-  const onCtxDelete = useCallback(
-    (mode: "contact_and_messages" | "messages_only") => {
-      if (!ctxMenu) return;
-      requestTrash(mode, trashIdsForContext(ctxMenu.id));
-    },
-    [ctxMenu, trashIdsForContext, requestTrash],
-  );
+  const onCtxDelete = useCallback(() => {
+    if (!ctxMenu) return;
+    requestTrash(trashIdsForContext(ctxMenu.id));
+  }, [ctxMenu, trashIdsForContext, requestTrash]);
 
   const closeGroupsPanel = useCallback(() => {
     if (groupsCloseTimerRef.current) {
@@ -1319,14 +1438,30 @@ export function BrowseShell({
   );
 
   useDismissible({
-    open: ctxMenu != null,
+    open: ctxMenu != null || groupCtxMenu != null || mergeFromId != null,
     onDismiss: () => {
       setCtxMenu(null);
+      setGroupCtxMenu(null);
+      setMergeFromId(null);
+      setMergeQuery("");
+      setMergePos(null);
       closeGroupsPanel();
       flushSelectionDirty();
     },
-    refs: [ctxMenuRef, groupsPanelWrapRef],
+    refs: [ctxMenuRef, groupCtxMenuRef, groupsPanelWrapRef, mergePanelRef],
     onEscape: (e) => {
+      if (mergeFromId != null) {
+        e.preventDefault();
+        setMergeFromId(null);
+        setMergeQuery("");
+        setMergePos(null);
+        return false;
+      }
+      if (groupCtxMenu != null) {
+        e.preventDefault();
+        setGroupCtxMenu(null);
+        return false;
+      }
       if (groupsPanelPos != null) {
         e.preventDefault();
         closeGroupsPanel();
@@ -1335,13 +1470,85 @@ export function BrowseShell({
     },
   });
 
+  const ctxMenuContact = useMemo(
+    () => (ctxMenu ? contacts.find((c) => c.id === ctxMenu.id) : null),
+    [contacts, ctxMenu],
+  );
+  const ctxMenuIsNameless = Boolean(
+    ctxMenuContact &&
+      !(ctxMenuContact.firstName ?? "").trim() &&
+      !(ctxMenuContact.lastName ?? "").trim(),
+  );
+
+  const mergeTargets = useMemo(() => {
+    if (mergeFromId == null) return [];
+    const q = mergeQuery.trim().toLowerCase();
+    return contacts
+      .filter((c) => {
+        if (c.id === mergeFromId) return false;
+        const hasName =
+          Boolean((c.firstName ?? "").trim()) ||
+          Boolean((c.lastName ?? "").trim());
+        if (!hasName) return false;
+        if (!q) return true;
+        return (
+          c.displayName.toLowerCase().includes(q) ||
+          (c.preferredHandle ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) =>
+        a.sortFirst.localeCompare(b.sortFirst, undefined, {
+          sensitivity: "base",
+        }),
+      )
+      .slice(0, 40);
+  }, [contacts, mergeFromId, mergeQuery]);
+
+  const runMergeInto = useCallback(
+    async (intoId: number) => {
+      if (mergeFromId == null || vaultReadOnly) return;
+      setSaving(true);
+      try {
+        const res = await fetch("/api/contacts/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fromId: mergeFromId, intoId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "merge failed");
+        setMergeFromId(null);
+        setMergeQuery("");
+        setMergePos(null);
+        setCtxMenu(null);
+        queueStatusMessage(
+          `Merged into ${data.contact?.displayName ?? "contact"}`,
+        );
+        selectContact(intoId);
+        router.refresh();
+      } catch (err) {
+        console.error(err);
+        queueStatusMessage(
+          err instanceof Error ? err.message : "merge failed",
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      mergeFromId,
+      vaultReadOnly,
+      queueStatusMessage,
+      selectContact,
+      router,
+    ],
+  );
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (
-        deleteDialogOpen ||
         trashConfirm != null ||
         ctxMenu != null ||
+        groupCtxMenu != null ||
         groupsPanelPos != null
       ) {
         return;
@@ -1363,14 +1570,14 @@ export function BrowseShell({
       const ids = deleteTargetIds();
       if (ids.length === 0) return;
       e.preventDefault();
-      setTrashConfirm({ mode: "contact_and_messages", ids });
+      setTrashConfirm({ ids });
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [
-    deleteDialogOpen,
     trashConfirm,
     ctxMenu,
+    groupCtxMenu,
     groupsPanelPos,
     contactCreating,
     contactEditing,
@@ -1749,53 +1956,68 @@ export function BrowseShell({
     router,
   ]);
 
-  const groupThread =
-    activeThread?.startsWith("gfull-")
-      ? (() => {
-          const g = collapsedGroupChats.find(
-            (t) => `gfull-${t.conversationIds.join("-")}` === activeThread,
-          );
-          if (!g) return null;
-          const participants: GroupParticipant[] = [
-            ...(g.participants ?? []),
-          ];
-          const extras = hasSelection
-            ? selectedContacts
-            : detail
-              ? [detail]
-              : [];
-          for (const c of extras) {
-            const handles = new Set(
-              [
-                c.preferredHandle,
-                ...("phones" in c && Array.isArray(c.phones) ? c.phones : []),
-              ]
-                .filter(Boolean)
-                .map((h) => String(h).trim()),
-            );
-            const already = participants.some(
-              (p) =>
-                p.contactId === c.id ||
-                (p.handle && handles.has(p.handle.trim())),
-            );
-            if (already) continue;
-            participants.push({
-              name: c.displayName || c.preferredHandle || "Contact",
-              handle: c.preferredHandle ?? "",
-              contactId: c.id,
-            });
-          }
-          participants.sort((a, b) =>
-            a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-          );
-          return {
-            participants,
-            dateStart: g.dateStart,
-            dateEnd: g.dateEnd,
-            messageCount: g.messageCount,
-          };
-        })()
-      : null;
+  const injectSelectedParticipants = useCallback(
+    (participants: GroupParticipant[]) => {
+      const next = [...participants];
+      const extras = hasSelection
+        ? selectedContacts
+        : detail
+          ? [detail]
+          : [];
+      for (const c of extras) {
+        const handles = new Set(
+          [
+            c.preferredHandle,
+            ...("phones" in c && Array.isArray(c.phones) ? c.phones : []),
+          ]
+            .filter(Boolean)
+            .map((h) => String(h).trim()),
+        );
+        const already = next.some(
+          (p) =>
+            p.contactId === c.id ||
+            (p.handle && handles.has(p.handle.trim())),
+        );
+        if (already) continue;
+        next.push({
+          name: c.displayName || c.preferredHandle || "Contact",
+          handle: c.preferredHandle ?? "",
+          contactId: c.id,
+        });
+      }
+      next.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      );
+      return next;
+    },
+    [hasSelection, selectedContacts, detail],
+  );
+
+  const groupThread = useMemo(() => {
+    if (hasGroupSelection) return null;
+    if (!activeThread?.startsWith("gfull-")) return null;
+    const g = collapsedGroupChats.find(
+      (t) => `gfull-${t.conversationIds.join("-")}` === activeThread,
+    );
+    if (!g) return null;
+    return {
+      participants: injectSelectedParticipants([...(g.participants ?? [])]),
+      dateStart: g.dateStart,
+      dateEnd: g.dateEnd,
+      messageCount: g.messageCount,
+    };
+  }, [
+    hasGroupSelection,
+    collapsedGroupChats,
+    activeThread,
+    injectSelectedParticipants,
+  ]);
+
+  const selectedGroupRows = useMemo(
+    () =>
+      collapsedGroupChats.filter((g) => selectedGroupIds.has(g.conversationId)),
+    [collapsedGroupChats, selectedGroupIds],
+  );
 
   const onGroupParticipantClick = useCallback(
     (participant: GroupParticipant, anchorRect: DOMRect) => {
@@ -1820,18 +2042,115 @@ export function BrowseShell({
   const trashConfirmCopy = useMemo(() => {
     if (!trashConfirm) return null;
     const n = trashConfirm.ids.length;
-    if (trashConfirm.mode === "contact_and_messages") {
-      return {
-        title:
-          n === 1
-            ? "Delete contact and messages?"
-            : `Delete ${n} contacts and messages?`,
-      };
-    }
     return {
-      title: n === 1 ? "Delete messages?" : `Delete messages for ${n} contacts?`,
+      title:
+        n === 1
+          ? "Delete contact and messages?"
+          : `Delete ${n} contacts and messages?`,
     };
   }, [trashConfirm]);
+
+  const groupTrashTargets = useCallback(
+    (forId?: number) => {
+      const primaryIds =
+        forId != null && !hasGroupSelection
+          ? [forId]
+          : hasGroupSelection
+            ? [...selectedGroupIds]
+            : selectedGroupConversationId != null
+              ? [selectedGroupConversationId]
+              : [];
+      const out: number[] = [];
+      for (const id of primaryIds) {
+        const g = collapsedById.get(id);
+        const ids = g?.conversationIds?.length ? g.conversationIds : [id];
+        for (const cid of ids) {
+          if (!out.includes(cid)) out.push(cid);
+        }
+      }
+      return out;
+    },
+    [
+      hasGroupSelection,
+      selectedGroupIds,
+      selectedGroupConversationId,
+      collapsedById,
+    ],
+  );
+
+  const canTrashGroups =
+    !vaultReadOnly &&
+    (hasGroupSelection || selectedGroupConversationId != null);
+
+  const {
+    saving: groupTrashSaving,
+    moveToTrash: moveGroupsToTrash,
+    confirmDialog: groupTrashConfirmDialog,
+  } = useTrashActions<number>({
+    endpoint: "/api/group-chats/trash",
+    idField: "conversationId",
+    getTargets: groupTrashTargets,
+    canTrash: canTrashGroups,
+    canRestoreOrDelete: false,
+    confirmTrash: (targets) => {
+      if (targets.length === 1) {
+        return "Move this group chat to Trash?";
+      }
+      return `Move ${targets.length} group chats to Trash?`;
+    },
+    status: {
+      trashedOne: "Moved group chat to Trash",
+      trashedMany: (n) => `Moved ${n} group chats to Trash`,
+      restoredOne: "",
+      restoredMany: () => "",
+      deletedOne: "",
+      deletedMany: () => "",
+    },
+    setStatus: (s) => {
+      if (s) queueStatusMessage(s);
+    },
+    onRemoved: (targets) => {
+      clearGroupSelection();
+      setGroupCtxMenu(null);
+      setSelectedGroupConversationId(null);
+      setMessages([]);
+      setActiveThread(null);
+      const removed = new Set(targets);
+      setGroupChats((prev) =>
+        prev.filter((g) => {
+          const ids =
+            g.conversationIds?.length > 0
+              ? g.conversationIds
+              : [g.conversationId];
+          return !ids.some((id) => removed.has(id));
+        }),
+      );
+      setSelectionGroupChats((prev) =>
+        prev.filter((g) => {
+          const ids =
+            g.conversationIds?.length > 0
+              ? g.conversationIds
+              : [g.conversationId];
+          return !ids.some((id) => removed.has(id));
+        }),
+      );
+    },
+    onDismissMenus: () => setGroupCtxMenu(null),
+    onTrashed: (ids) => {
+      pushHistory({
+        type: "trashGroupThread",
+        conversationIds: ids,
+        label:
+          ids.length === 1
+            ? "Delete group chat"
+            : `Delete ${ids.length} group chats`,
+      });
+    },
+    afterTrash: () => {
+      setThreadsEpoch((n) => n + 1);
+      router.refresh();
+    },
+  });
 
   return (
     <>
@@ -1875,9 +2194,8 @@ export function BrowseShell({
           }
           onEdit={beginContactEdit}
           editDisabled={!detail || hasSelection || formOpen}
-          onTrashContact={() => requestTrash("contact_and_messages")}
-          onTrashMessages={() => requestTrash("messages_only")}
-          deleteDisabled={!canDelete || saving}
+          onTrashContact={() => requestTrash()}
+          deleteDisabled={!canDelete || saving || groupTrashSaving}
           sort={sort}
           sortOrder={sortOrder}
           onSortChange={setSort}
@@ -1902,6 +2220,16 @@ export function BrowseShell({
         <BrowseGroupChatsPane
           items={collapsedGroupChats}
           selectedConversationId={selectedGroupConversationId}
+          selectedIds={selectedGroupIds}
+          selectAllRef={groupSelectAllRef}
+          allSelected={allGroupsSelected}
+          onToggleSelectAll={toggleSelectAllGroups}
+          onSelectColumnClick={onGroupSelectColumnClick}
+          onRowClick={onGroupRowClick}
+          onContextMenu={openGroupCtxMenu}
+          onTrashMessages={() => void moveGroupsToTrash()}
+          trashDisabled={!canTrashGroups || saving || groupTrashSaving}
+          vaultReadOnly={vaultReadOnly}
           years={groupChatYears}
           filterYear={groupChatFilterYear}
           onFilterYearChange={setGroupChatFilterYear}
@@ -1912,7 +2240,6 @@ export function BrowseShell({
           onSearchQueryChange={setGroupChatQuery}
           searchDisabled={!hasSelection && !contactId}
           groupDateFormat={groupDateFormat}
-          onSelect={selectGroupConversation}
           emptyLabel={
             hasSelection
               ? loadingSelectionGroups
@@ -1939,14 +2266,53 @@ export function BrowseShell({
           className="flex h-full min-h-0 min-w-0 flex-col"
         >
         <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-border px-5">
-          <span className="min-w-0 flex-1" aria-hidden />
+          <div className="flex min-w-0 flex-1 items-center justify-center">
+            {selectedIds.size === 1 && selectedContacts[0] ? (
+              <h1 className="truncate text-lg font-semibold tracking-tight text-text">
+                {selectedContacts[0].displayName}
+              </h1>
+            ) : !hasSelection && detail && !groupThread ? (
+              <h1 className="truncate text-lg font-semibold tracking-tight text-text">
+                {!vaultReadOnly ? (
+                  <GroupParticipantChip
+                    label={detail.displayName || "Contact"}
+                    onClick={onContactNameClick}
+                  />
+                ) : (
+                  detail.displayName || "Contact"
+                )}
+              </h1>
+            ) : null}
+          </div>
           {statusMsg && (
-            <span className="truncate text-[12px] text-muted">{statusMsg}</span>
+            <span className="shrink-0 truncate text-[12px] text-muted">
+              {statusMsg}
+            </span>
           )}
         </div>
 
-        {hasSelection && !(activeThread?.startsWith("gfull-")) ? (
-          <div className="min-h-0 flex-1 overflow-y-auto bg-bg px-5 pt-8 pb-5">
+        {(() => {
+          const showContactsCard =
+            hasSelection &&
+            (hasGroupSelection || !(activeThread?.startsWith("gfull-")));
+          const showGroupsCard = hasGroupSelection;
+          const showThreadPane =
+            !showGroupsCard &&
+            !(hasSelection && !(activeThread?.startsWith("gfull-")));
+
+          const groupRowLabel = (g: (typeof selectedGroupRows)[number]) => {
+            if (g.namedTitle?.trim()) return g.namedTitle.trim();
+            if (g.participantNames.length > 0) {
+              return g.participantNames.join(" · ");
+            }
+            return g.title || "Group chat";
+          };
+          const groupRowDate = (g: (typeof selectedGroupRows)[number]) =>
+            g.dateStart === g.dateEnd
+              ? g.dateStart
+              : `${g.dateStart} – ${g.dateEnd}`;
+
+          const contactsCard = (
             <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
                 <h2 className="text-[14px] font-semibold text-text">
@@ -1985,35 +2351,90 @@ export function BrowseShell({
                 ))}
               </ul>
             </div>
-          </div>
-        ) : (
-          <div className="min-h-0 flex-1">
-            <BrowseThreadPane
-              detail={detail}
-              sources={sources}
-              messageSources={messageSources}
-              sourceCounts={sourceCounts}
-              source={source}
-              onSourceChange={setSource}
-              yearly={yearly}
-              messages={messages}
-              loadingMessages={loadingMessages}
-              threadsReady={
-                hasSelection
-                  ? !loadingSelectionGroups
-                  : threadsLoadedFor === contactId
-              }
-              activeThread={activeThread}
-              groupThread={groupThread}
-              onContactNameClick={
-                vaultReadOnly ? undefined : onContactNameClick
-              }
-              onParticipantClick={
-                vaultReadOnly ? undefined : onGroupParticipantClick
-              }
-            />
-          </div>
-        )}
+          );
+
+          const groupsCard = (
+            <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+              <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+                <h2 className="text-[14px] font-semibold text-text">
+                  {selectedGroupIds.size} group message
+                  {selectedGroupIds.size === 1 ? "" : "s"} selected
+                </h2>
+                <button
+                  type="button"
+                  onClick={clearGroupSelection}
+                  className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <ul>
+                {selectedGroupRows.map((g, i) => (
+                  <li
+                    key={g.conversationId}
+                    className={`flex items-center justify-between gap-4 px-4 py-2.5 ${
+                      i < selectedGroupRows.length - 1
+                        ? "border-b border-border/60"
+                        : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearGroupSelection();
+                        selectGroupConversation(g);
+                      }}
+                      className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
+                      title={g.titleFull}
+                    >
+                      {groupRowLabel(g)}
+                    </button>
+                    <span className="shrink-0 text-[13px] text-muted tabular-nums">
+                      {groupRowDate(g)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+
+          if (showContactsCard || showGroupsCard) {
+            return (
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bg px-5 pt-8 pb-5">
+                {showGroupsCard ? groupsCard : null}
+                {showContactsCard ? contactsCard : null}
+              </div>
+            );
+          }
+
+          if (!showThreadPane) return null;
+
+          return (
+            <div className="min-h-0 flex-1">
+              <BrowseThreadPane
+                detail={detail}
+                sources={sources}
+                messageSources={messageSources}
+                sourceCounts={sourceCounts}
+                source={source}
+                onSourceChange={setSource}
+                yearly={yearly}
+                messages={messages}
+                loadingMessages={loadingMessages}
+                threadsReady={
+                  hasSelection
+                    ? !loadingSelectionGroups
+                    : threadsLoadedFor === contactId
+                }
+                activeThread={activeThread}
+                groupThread={groupThread}
+                onParticipantClick={
+                  vaultReadOnly ? undefined : onGroupParticipantClick
+                }
+              />
+            </div>
+          );
+        })()}
         </div>
       </Panel>
     </Group>
@@ -2050,6 +2471,24 @@ export function BrowseShell({
           <PencilIcon className="size-5 shrink-0 opacity-80" />
           Edit
         </button>
+        {!vaultReadOnly && ctxMenuIsNameless && !hasSelection && (
+          <button
+            type="button"
+            disabled={saving || contactCreating || contactEditing}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+            onMouseEnter={scheduleCloseGroupsPanel}
+            onClick={() => {
+              if (!ctxMenu) return;
+              setMergeFromId(ctxMenu.id);
+              setMergePos({ x: ctxMenu.x, y: ctxMenu.y });
+              setMergeQuery("");
+              setCtxMenu(null);
+            }}
+          >
+            <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
+            Merge into…
+          </button>
+        )}
         <button
           type="button"
           disabled={saving || contactCreating || contactEditing}
@@ -2067,24 +2506,79 @@ export function BrowseShell({
         <div className="my-1 border-t border-border/60" />
         <button
           type="button"
-          disabled={saving}
+          disabled={saving || groupTrashSaving}
           className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
           onMouseEnter={scheduleCloseGroupsPanel}
-          onClick={() => onCtxDelete("contact_and_messages")}
+          onClick={() => onCtxDelete()}
         >
           <XIcon className="size-5 shrink-0 opacity-80" />
           Delete
         </button>
-        <button
-          type="button"
-          disabled={saving}
-          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-          onMouseEnter={scheduleCloseGroupsPanel}
-          onClick={() => onCtxDelete("messages_only")}
-        >
-          <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />
-          Delete messages
-        </button>
+      </div>
+    )}
+    {groupCtxMenu && (
+      <div
+        ref={groupCtxMenuRef}
+        className="fixed z-[100] min-w-[180px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+        style={{ left: groupCtxMenu.x, top: groupCtxMenu.y }}
+      >
+        {!vaultReadOnly && (
+          <button
+            type="button"
+            disabled={saving || groupTrashSaving}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+            onClick={() => {
+              const id = groupCtxMenu.id;
+              setGroupCtxMenu(null);
+              void moveGroupsToTrash(id);
+            }}
+          >
+            <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />
+            Delete messages
+          </button>
+        )}
+      </div>
+    )}
+    {mergeFromId != null && mergePos && (
+      <div
+        ref={mergePanelRef}
+        className="fixed z-[100] w-72 rounded-lg border border-border bg-[#2c2c2e] shadow-xl"
+        style={{ left: mergePos.x, top: mergePos.y }}
+      >
+        <div className="border-b border-border px-3 py-2 text-[12px] font-semibold text-text">
+          Merge into contact
+        </div>
+        <input
+          autoFocus
+          value={mergeQuery}
+          onChange={(e) => setMergeQuery(e.target.value)}
+          placeholder="Search named contacts…"
+          className="w-full border-b border-border bg-transparent px-3 py-2 text-[13px] text-text outline-none placeholder:text-muted"
+        />
+        <div className="max-h-64 overflow-y-auto py-1">
+          {mergeTargets.length === 0 ? (
+            <p className="px-3 py-2 text-[12px] text-muted">No matches</p>
+          ) : (
+            mergeTargets.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                disabled={saving}
+                onClick={() => void runMergeInto(c.id)}
+                className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-white/15 disabled:opacity-40"
+              >
+                <span className="truncate text-[13px] text-text">
+                  {c.displayName}
+                </span>
+                {c.preferredHandle && (
+                  <span className="truncate text-[11px] text-muted">
+                    {c.preferredHandle}
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
       </div>
     )}
     {groupsPanelPos && (
@@ -2199,9 +2693,7 @@ export function BrowseShell({
             <button
               type="button"
               disabled={saving}
-              onClick={() =>
-                void confirmTrashMode(trashConfirm.mode, trashConfirm.ids)
-              }
+              onClick={() => void confirmTrashMode(trashConfirm.ids)}
               className="rounded-md bg-red-500/25 px-3 py-1.5 text-[13px] font-medium text-red-100 transition-colors hover:bg-red-500/35 disabled:opacity-50"
             >
               Delete
@@ -2210,54 +2702,7 @@ export function BrowseShell({
         </div>
       </div>
     )}
-    {deleteDialogOpen && (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4"
-        role="presentation"
-        onClick={() => !saving && setDeleteDialogOpen(false)}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mv-delete-contact-title"
-          className="w-full max-w-md rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <h2
-            id="mv-delete-contact-title"
-            className="text-[16px] font-semibold text-text"
-          >
-            Delete?
-          </h2>
-          <div className="mt-4 flex flex-col gap-2">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void confirmTrashMode("contact_and_messages")}
-              className="rounded-md bg-red-500/20 px-3 py-2 text-left text-[13px] font-medium text-red-100 transition-colors hover:bg-red-500/30 disabled:opacity-50"
-            >
-              Delete contact and messages
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void confirmTrashMode("messages_only")}
-              className="rounded-md bg-white/8 px-3 py-2 text-left text-[13px] font-medium text-text transition-colors hover:bg-white/14 disabled:opacity-50"
-            >
-              Delete messages
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => setDeleteDialogOpen(false)}
-              className="mt-1 rounded-md px-3 py-2 text-[13px] text-muted transition-colors hover:bg-white/8 hover:text-text disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    {groupTrashConfirmDialog}
     </>
   );
 }

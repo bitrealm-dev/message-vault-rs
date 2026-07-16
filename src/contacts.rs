@@ -344,6 +344,144 @@ fn ensure_group(conn: &Connection, account_id: &str, name: &str) -> Result<i64> 
     Ok(id)
 }
 
+/// Create nameless contacts for 1:1 handles that have messages but no contact_handles row.
+/// Phone handles are appended to `contacts.csv`; emails stay DB-only.
+pub fn ensure_unknown_contacts(
+    conn: &mut Connection,
+    account_id: &str,
+    contacts_csv: &Path,
+) -> Result<u64> {
+    crate::schema::ensure_contacts_schema(conn)?;
+
+    let has_trash: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'trashed_handles'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|n| n > 0)
+        .unwrap_or(false);
+
+    let trash_sql = if has_trash {
+        "AND NOT EXISTS (
+           SELECT 1 FROM trashed_handles th
+           WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
+         )"
+    } else {
+        ""
+    };
+
+    let sql = format!(
+        "SELECT DISTINCT c.chat_identifier
+         FROM conversations c
+         JOIN messages m ON m.conversation_id = c.id
+         WHERE c.account_id = ?1
+           AND c.conversation_type = 'individual'
+           AND NOT EXISTS (
+             SELECT 1 FROM contact_handles cp
+             WHERE cp.handle = c.chat_identifier AND cp.account_id = c.account_id
+           )
+           {trash_sql}
+         ORDER BY c.chat_identifier"
+    );
+
+    let handles: Vec<String> = {
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![account_id], |row| row.get(0))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        out
+    };
+
+    if handles.is_empty() {
+        return Ok(0);
+    }
+
+    let mut created = 0u64;
+    let tx = conn.transaction()?;
+    for handle in &handles {
+        let preferred = handle.clone();
+        tx.execute(
+            r#"
+            INSERT INTO contacts (
+                account_id, first_name, last_name, exclude, preferred_handle
+            ) VALUES (?1, NULL, NULL, 0, ?2)
+            "#,
+            params![account_id, preferred],
+        )?;
+        let contact_id = tx.last_insert_rowid();
+        tx.execute(
+            "INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?1, ?2, ?3)",
+            params![account_id, handle, contact_id],
+        )?;
+        created += 1;
+    }
+    tx.commit()?;
+
+    for handle in &handles {
+        if is_email_handle(handle) {
+            continue;
+        }
+        let csv_phone = crate::phone::to_e164(handle).unwrap_or_else(|| handle.clone());
+        if let Err(err) = append_contact_csv_row(contacts_csv, &csv_phone) {
+            eprintln!(
+                "warning: could not append {csv_phone} to {}: {err}",
+                contacts_csv.display()
+            );
+        }
+    }
+
+    Ok(created)
+}
+
+fn append_contact_csv_row(csv_path: &Path, phone: &str) -> Result<()> {
+    use std::io::Write;
+
+    if !csv_path.exists() {
+        bail!("contacts CSV not found at {}", csv_path.display());
+    }
+    let raw = std::fs::read_to_string(csv_path)
+        .with_context(|| format!("failed to read {}", csv_path.display()))?;
+    let header_line = raw.lines().next().unwrap_or("");
+    let header: Vec<&str> = header_line.split(',').collect();
+    let phones_i = header
+        .iter()
+        .position(|h| *h == "phones")
+        .ok_or_else(|| anyhow::anyhow!("contacts CSV missing phones column"))?;
+    let exclude_i = header
+        .iter()
+        .position(|h| *h == "exclude")
+        .ok_or_else(|| anyhow::anyhow!("contacts CSV missing exclude column"))?;
+
+    let mut cols: Vec<String> = header.iter().map(|_| String::new()).collect();
+    cols[phones_i] = phone.to_string();
+    cols[exclude_i] = "false".to_string();
+
+    let line = cols
+        .iter()
+        .map(|c| {
+            if c.contains(',') || c.contains('"') || c.contains('\n') {
+                format!("\"{}\"", c.replace('"', "\"\""))
+            } else {
+                c.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(csv_path)
+        .with_context(|| format!("failed to open {}", csv_path.display()))?;
+    if !raw.is_empty() && !raw.ends_with('\n') {
+        file.write_all(b"\n")?;
+    }
+    writeln!(file, "{line}")?;
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn lookup_by_phone(
     conn: &Connection,

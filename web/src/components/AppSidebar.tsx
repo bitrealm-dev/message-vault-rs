@@ -46,13 +46,15 @@ function NavLink({
     <Link
       href={href}
       className={`relative flex items-center gap-2 py-1 ${navItemPad} text-[14px] transition-colors ${
-        active ? "bg-elevated text-text" : "text-muted hover:bg-white/20 hover:text-text"
+        active
+          ? "bg-accent/35 text-text hover:bg-accent/40"
+          : "text-muted hover:bg-white/20 hover:text-text"
       }`}
     >
       {active && (
         <span
           aria-hidden
-          className="absolute top-1 bottom-1 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
+          className="absolute top-0.5 bottom-0.5 left-0 w-1 rounded-full bg-accent"
         />
       )}
       {icon}
@@ -375,14 +377,14 @@ function GroupsNav({ groups }: { groups: string[] }) {
               <div
                 className={`group relative flex items-center text-[14px] transition-colors ${
                   active
-                    ? "bg-elevated text-text hover:bg-white/18"
+                    ? "bg-accent/35 text-text hover:bg-accent/40"
                     : "text-muted hover:bg-white/20 hover:text-text"
                 }`}
               >
                 {active && (
                   <span
                     aria-hidden
-                    className="absolute top-1 bottom-1 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
+                    className="absolute top-0.5 bottom-0.5 left-0 w-1 rounded-full bg-accent"
                   />
                 )}
                 <Link

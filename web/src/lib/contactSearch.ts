@@ -24,9 +24,11 @@ export function searchContacts(
   return contacts.filter((c) => {
     const first = normalizeName(c.firstName);
     const last = normalizeName(c.lastName);
+    const display = normalizeName(c.displayName);
     const nameFields = [
       first,
       last,
+      display,
       `${first} ${last}`.trim(),
       `${last} ${first}`.trim(),
     ];

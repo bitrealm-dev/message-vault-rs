@@ -7,7 +7,7 @@ import { IconHoverTarget } from "./IconHoverLabel";
 import {
   MessageIcon,
   PencilIcon,
-  TrashMessagesIcon,
+  QuestionHandleIcon,
   XIcon,
 } from "./icons";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
@@ -27,7 +27,6 @@ export function BrowseContactList({
   onEdit,
   editDisabled = false,
   onTrashContact,
-  onTrashMessages,
   deleteDisabled = false,
   sort,
   sortOrder,
@@ -54,7 +53,6 @@ export function BrowseContactList({
   onEdit?: () => void;
   editDisabled?: boolean;
   onTrashContact?: () => void;
-  onTrashMessages?: () => void;
   deleteDisabled?: boolean;
   sort: SortMode;
   sortOrder: SortOrder;
@@ -82,18 +80,6 @@ export function BrowseContactList({
             disabled: deleteDisabled,
             danger: true,
             onClick: onTrashContact,
-          } satisfies ListHistoryMenuItem,
-        ]
-      : []),
-    ...(onTrashMessages
-      ? [
-          {
-            key: "delete-messages",
-            label: "Delete messages",
-            icon: <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />,
-            disabled: deleteDisabled,
-            danger: true,
-            onClick: onTrashMessages,
           } satisfies ListHistoryMenuItem,
         ]
       : []),
@@ -161,6 +147,8 @@ export function BrowseContactList({
             {items.map((c, i) => {
               const active = c.id === contactId;
               const checked = selectedIds.has(c.id);
+              const isNameless =
+                !(c.firstName ?? "").trim() && !(c.lastName ?? "").trim();
               const showInsetDivider = i < items.length - 1;
               const selectionActive = selectedIds.size >= 1;
               return (
@@ -198,22 +186,22 @@ export function BrowseContactList({
                     selectionActive ? "cursor-pointer" : ""
                   } ${
                     checked
-                      ? "bg-accent/20 hover:bg-accent/25"
+                      ? "bg-accent/40 hover:bg-accent/50"
                       : active
-                        ? "bg-elevated hover:bg-white/18"
+                        ? "bg-accent/20 hover:bg-accent/25"
                         : "hover:bg-white/20"
                   }`}
                 >
-                  {active && !selectionActive && (
+                  {active && !checked && (
                     <span
                       aria-hidden
-                      className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-[#c8c8c8]"
+                      className="absolute top-1 bottom-1 left-0 w-1 rounded-full bg-accent/80"
                     />
                   )}
                   {checked && (
                     <span
                       aria-hidden
-                      className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-accent"
+                      className="absolute top-1 bottom-1 left-0 w-1 rounded-full bg-accent"
                     />
                   )}
                   <button
@@ -257,9 +245,20 @@ export function BrowseContactList({
                         </span>
                       )}
                     </span>
-                    <span className="inline-flex shrink-0 items-center gap-0.5 pt-0.5 text-[11px] tabular-nums text-muted">
-                      <MessageIcon className="size-3.5 opacity-80" />
-                      {c.messageCount.toLocaleString()}
+                    <span className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5 text-[11px] tabular-nums text-muted">
+                      <span className="inline-flex items-center gap-0.5">
+                        <MessageIcon className="size-3.5 opacity-80" />
+                        {c.messageCount.toLocaleString()}
+                      </span>
+                      {isNameless && (
+                        <span
+                          title="No name"
+                          aria-label="No name"
+                          className="inline-flex"
+                        >
+                          <QuestionHandleIcon className="size-3.5 opacity-80" />
+                        </span>
+                      )}
                     </span>
                   </button>
                   {showInsetDivider && (

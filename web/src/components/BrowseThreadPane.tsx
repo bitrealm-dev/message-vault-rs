@@ -7,12 +7,14 @@ import type {
   YearThread,
 } from "@/lib/types";
 import { formatSourceLabel } from "@/lib/sourceLabels";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GroupParticipantChip,
 } from "./GroupParticipantChip";
 import { MessageBubble } from "./MessageBubble";
-import { MessageIcon, PaperclipIcon } from "./icons";
+import { ChevronDownIcon, MessageIcon, PaperclipIcon } from "./icons";
+
+const HEADER_EXPANDED_KEY = "mv-browse-thread-header-expanded";
 
 function yearFromTimestamp(ts: string): number | null {
   const y = Number(ts.slice(0, 4));
@@ -39,7 +41,6 @@ export function BrowseThreadPane({
   threadsReady = false,
   activeThread,
   groupThread,
-  onContactNameClick,
   onParticipantClick,
 }: {
   detail: ContactDetail | null;
@@ -56,15 +57,37 @@ export function BrowseThreadPane({
   activeThread: string | null;
   /** When viewing a group thread, show participants / date / counts under the contact name. */
   groupThread?: BrowseGroupThreadMeta | null;
-  onContactNameClick?: (anchor: DOMRect) => void;
   onParticipantClick?: (
     participant: GroupParticipant,
     anchor: DOMRect,
   ) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [headerExpanded, setHeaderExpanded] = useState(true);
+  const [activeYear, setActiveYear] = useState<number | null>(null);
 
-  const displayName = detail?.displayName ?? null;
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(HEADER_EXPANDED_KEY) === "0") {
+        setHeaderExpanded(false);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleHeaderExpanded = () => {
+    setHeaderExpanded((prev) => {
+      const next = !prev;
+      try {
+        sessionStorage.setItem(HEADER_EXPANDED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   const threadStats = useMemo(() => {
     if (groupThread) {
       return {
@@ -125,7 +148,57 @@ export function BrowseThreadPane({
     return sections;
   }, [messages]);
 
+  useEffect(() => {
+    const first = messagesByYear[0]?.year;
+    setActiveYear(first ?? null);
+  }, [messagesByYear]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || messagesByYear.length === 0) return;
+
+    const sectionEls = messagesByYear
+      .map((s) => root.querySelector(`#year-${s.year}`))
+      .filter((el): el is Element => el != null);
+    if (sectionEls.length === 0) return;
+
+    const visible = new Map<number, IntersectionObserverEntry>();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = entry.target.id;
+          const year = Number(id.replace(/^year-/, ""));
+          if (!Number.isFinite(year)) continue;
+          if (entry.isIntersecting) visible.set(year, entry);
+          else visible.delete(year);
+        }
+        if (visible.size === 0) return;
+        let bestYear: number | null = null;
+        let bestTop = Number.POSITIVE_INFINITY;
+        for (const [year, entry] of visible) {
+          const top = entry.boundingClientRect.top;
+          if (top < bestTop) {
+            bestTop = top;
+            bestYear = year;
+          }
+        }
+        if (bestYear != null) setActiveYear(bestYear);
+      },
+      {
+        root,
+        // Prefer the section occupying the upper portion of the scroll pane.
+        rootMargin: "0px 0px -70% 0px",
+        threshold: [0, 0.01, 0.1],
+      },
+    );
+
+    for (const el of sectionEls) observer.observe(el);
+    return () => observer.disconnect();
+  }, [messagesByYear]);
+
   const jumpToYear = (year: number) => {
+    setActiveYear(year);
     const el = scrollRef.current?.querySelector(`#year-${year}`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -166,11 +239,13 @@ export function BrowseThreadPane({
 
   const yearItems = yearsInThread.map((y) => ({
     key: `y-${y.year}`,
+    year: y.year,
     label: String(y.year),
     title:
       y.messageCount > 0
         ? `${y.year}: ${y.messageCount.toLocaleString()} messages`
         : `Jump to ${y.year}`,
+    active: activeYear === y.year,
     onClick: () => jumpToYear(y.year),
   }));
 
@@ -180,64 +255,97 @@ export function BrowseThreadPane({
       : `${groupThread.dateStart} — ${groupThread.dateEnd}`
     : null;
 
+  // DM name lives in Panel 4's top strip; only group threads keep in-pane identity.
+  const showGroupIdentity =
+    !!groupThread &&
+    (groupThread.participants.length > 0 || !!dateLabel);
+  const hasMessages = messages.length > 0;
+  const showYearJump = hasMessages && yearItems.length > 0;
+  const showHeader = showGroupIdentity || showYearJump;
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-bg">
-      {(detail || groupThread) && (
-        <div className="shrink-0 border-b border-border px-5 py-4 text-center">
-          {groupThread ? (
-            groupThread.participants.length > 0 ? (
-              <div className="flex flex-wrap items-center justify-center gap-y-0.5 text-[14px] font-medium text-text">
-                {groupThread.participants.map((p, idx) => (
-                  <span
-                    key={`${p.handle}-${idx}`}
-                    className="inline-flex items-center"
+      {showHeader && (
+        <div className="shrink-0 border-b border-border px-5 py-2 text-center">
+          {(headerExpanded || !showYearJump) && showGroupIdentity && (
+            <>
+              {groupThread && groupThread.participants.length > 0 ? (
+                <div className="flex flex-wrap items-center justify-center gap-y-0 text-[14px] font-medium leading-snug text-text">
+                  {groupThread.participants.map((p, idx) => (
+                    <span
+                      key={`${p.handle}-${idx}`}
+                      className="inline-flex items-center"
+                    >
+                      {onParticipantClick ? (
+                        <GroupParticipantChip
+                          label={p.name}
+                          onClick={(anchor) => onParticipantClick(p, anchor)}
+                        />
+                      ) : (
+                        <span className="whitespace-nowrap px-1.5 py-0.5">
+                          {p.name}
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {dateLabel && (
+                <div className="mt-1 text-[14px] text-muted tabular-nums">
+                  {dateLabel}
+                </div>
+              )}
+            </>
+          )}
+
+          {showYearJump && (
+            <div
+              className={`relative flex min-h-7 items-center justify-center ${
+                headerExpanded && showGroupIdentity ? "mt-1.5" : ""
+              }`}
+            >
+              <div
+                className={`flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 ${
+                  showGroupIdentity ? "pr-8" : ""
+                }`}
+              >
+                {yearItems.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    title={item.title}
+                    onClick={item.onClick}
+                    className={`text-[13px] font-medium tabular-nums ${
+                      item.active
+                        ? "text-accent"
+                        : "text-text hover:text-accent"
+                    }`}
                   >
-                    {onParticipantClick ? (
-                      <GroupParticipantChip
-                        label={p.name}
-                        onClick={(anchor) => onParticipantClick(p, anchor)}
-                      />
-                    ) : (
-                      <span className="whitespace-nowrap px-1.5 py-0.5">
-                        {p.name}
-                      </span>
-                    )}
-                  </span>
+                    {item.label}
+                  </button>
                 ))}
               </div>
-            ) : null
-          ) : (
-            <h1 className="text-2xl font-semibold tracking-tight text-text">
-              {onContactNameClick ? (
-                <GroupParticipantChip
-                  label={displayName || "Contact"}
-                  onClick={onContactNameClick}
-                />
-              ) : (
-                displayName || "Contact"
-              )}
-            </h1>
-          )}
-
-          {dateLabel && (
-            <div className="mt-1.5 text-[14px] text-muted tabular-nums">
-              {dateLabel}
-            </div>
-          )}
-
-          {yearItems.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
-              {yearItems.map((item) => (
+              {showGroupIdentity && (
                 <button
-                  key={item.key}
                   type="button"
-                  title={item.title}
-                  onClick={item.onClick}
-                  className="text-[13px] font-medium tabular-nums text-text hover:text-accent"
+                  aria-expanded={headerExpanded}
+                  aria-label={
+                    headerExpanded
+                      ? "Hide thread details"
+                      : "Show thread details"
+                  }
+                  title={headerExpanded ? "Hide details" : "Show details"}
+                  onClick={toggleHeaderExpanded}
+                  className="absolute top-1/2 right-0 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/12 hover:text-text"
                 >
-                  {item.label}
+                  <ChevronDownIcon
+                    className={`size-3.5 transition-transform ${
+                      headerExpanded ? "rotate-180" : ""
+                    }`}
+                  />
                 </button>
-              ))}
+              )}
             </div>
           )}
         </div>
@@ -245,10 +353,10 @@ export function BrowseThreadPane({
 
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-2.5 pb-4"
       >
         {stripItems.length > 0 && (
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-y-1.5">
+          <div className="mb-1.5 flex flex-wrap items-center justify-center gap-y-1">
             {stripItems.map((item, i) => (
               <span key={item.key} className="flex items-center">
                 {i > 0 && (
@@ -280,7 +388,7 @@ export function BrowseThreadPane({
         )}
 
         {threadStats && (
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px] text-muted">
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px] text-muted">
             <span className="inline-flex items-center gap-1 tabular-nums">
               <MessageIcon className="size-3.5 shrink-0 opacity-80" />
               {threadStats.messageCount.toLocaleString()}

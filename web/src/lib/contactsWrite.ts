@@ -560,6 +560,185 @@ export function restoreGroup(
   return created;
 }
 
+/**
+ * Create nameless contacts for 1:1 handles that still appear as Unassigned.
+ * Returns how many contacts were created. No-op when the vault is read-only.
+ */
+export function ensureUnknownContacts(): number {
+  try {
+    assertVaultWritable();
+  } catch {
+    return 0;
+  }
+  const accountId = currentAccountId();
+  // Dynamic import avoids circular deps with unassignedRead ↔ contactsRead.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { listUnassignedHandles } =
+    require("./unassignedRead") as typeof import("./unassignedRead");
+  const handles = listUnassignedHandles();
+  if (handles.length === 0) return 0;
+
+  const csvRows: string[][] = [];
+  let created = 0;
+  const writeDb = new Database(dbPath());
+  try {
+    const tx = writeDb.transaction(() => {
+      for (const row of handles) {
+        const handle = row.handle.trim();
+        if (!handle) continue;
+        const owner = phoneOwner(writeDb, handle, accountId);
+        if (owner != null) continue;
+
+        const result = writeDb
+          .prepare(
+            `INSERT INTO contacts (account_id, first_name, last_name, exclude, preferred_handle)
+             VALUES (?, NULL, NULL, 0, ?)`,
+          )
+          .run(accountId, handle);
+        const newId = Number(result.lastInsertRowid);
+        writeDb
+          .prepare(
+            `INSERT INTO contact_handles (account_id, handle, contact_id) VALUES (?, ?, ?)`,
+          )
+          .run(accountId, handle, newId);
+        clearTrashedHandles(writeDb, [handle], accountId);
+        created += 1;
+
+        if (!isEmailHandle(handle)) {
+          const csvPhones = phoneHandlesOnly([handle]);
+          if (csvPhones.length > 0) csvRows.push(csvPhones);
+        }
+      }
+    });
+    tx();
+  } finally {
+    writeDb.close();
+  }
+  resetDb();
+
+  for (const phones of csvRows) {
+    try {
+      appendContactsCsv({
+        phones,
+        firstName: null,
+        lastName: null,
+        exclude: false,
+        groups: [],
+      });
+    } catch (err) {
+      console.error("ensureUnknownContacts CSV append failed", err);
+    }
+  }
+  return created;
+}
+
+/**
+ * Move all handles from a nameless source contact onto a named target, then
+ * delete the source. Messages stay linked via handles.
+ */
+export function mergeContacts(fromId: number, intoId: number): ContactDetail {
+  assertVaultWritable();
+  if (fromId === intoId) throw new Error("cannot merge a contact into itself");
+
+  const source = getContact(fromId);
+  if (!source) throw new Error("source contact not found");
+  const target = getContact(intoId);
+  if (!target) throw new Error("target contact not found");
+
+  const sourceHasName = Boolean(
+    (source.firstName ?? "").trim() || (source.lastName ?? "").trim(),
+  );
+  if (sourceHasName) {
+    throw new Error("only nameless contacts can be merged into another contact");
+  }
+  const targetHasName = Boolean(
+    (target.firstName ?? "").trim() || (target.lastName ?? "").trim(),
+  );
+  if (!targetHasName) {
+    throw new Error("merge target must have a name");
+  }
+
+  const accountId = currentAccountId();
+  const sourceCsvPhones = phoneHandlesOnly(source.phones);
+  const mergedPhones = [
+    ...new Set([...target.phones, ...source.phones].map((p) => p.trim()).filter(Boolean)),
+  ];
+  const mergedCsvPhones = phoneHandlesOnly(mergedPhones);
+
+  const writeDb = new Database(dbPath());
+  try {
+    const tx = writeDb.transaction(() => {
+      for (const handle of source.phones) {
+        const owner = phoneOwner(writeDb, handle, accountId);
+        if (owner != null && owner !== fromId && owner !== intoId) {
+          throw new Error(`handle ${handle} already belongs to another contact`);
+        }
+        if (owner === intoId) {
+          writeDb
+            .prepare(
+              `DELETE FROM contact_handles WHERE account_id = ? AND handle = ? AND contact_id = ?`,
+            )
+            .run(accountId, handle, fromId);
+          continue;
+        }
+        writeDb
+          .prepare(
+            `UPDATE contact_handles SET contact_id = ?
+             WHERE account_id = ? AND handle = ? AND contact_id = ?`,
+          )
+          .run(intoId, accountId, handle, fromId);
+      }
+      writeDb
+        .prepare(`DELETE FROM contact_group_members WHERE contact_id = ?`)
+        .run(fromId);
+      writeDb
+        .prepare(`DELETE FROM contacts WHERE id = ? AND account_id = ?`)
+        .run(fromId, accountId);
+
+      const preferred =
+        target.preferredHandle && mergedPhones.includes(target.preferredHandle)
+          ? target.preferredHandle
+          : preferredPhoneHandle(mergedPhones) ?? target.preferredHandle;
+      writeDb
+        .prepare(
+          `UPDATE contacts SET preferred_handle = ? WHERE id = ? AND account_id = ?`,
+        )
+        .run(preferred, intoId, accountId);
+    });
+    tx();
+  } finally {
+    writeDb.close();
+  }
+
+  resetDb();
+  if (sourceCsvPhones.length > 0) {
+    removeContactsCsv([
+      {
+        phones: sourceCsvPhones,
+        firstName: source.firstName,
+        lastName: source.lastName,
+      },
+    ]);
+  }
+  if (mergedCsvPhones.length > 0) {
+    updateContactsCsv(
+      phoneHandlesOnly(target.phones),
+      { firstName: target.firstName, lastName: target.lastName },
+      {
+        firstName: target.firstName,
+        lastName: target.lastName,
+        exclude: target.exclude,
+        groups: target.contactGroups,
+        phones: mergedCsvPhones,
+      },
+    );
+  }
+
+  const updated = getContact(intoId);
+  if (!updated) throw new Error("target missing after merge");
+  return updated;
+}
+
 /** Delete contacts from SQLite and contacts.csv. */
 export function deleteContacts(ids: number[]): number {
   assertVaultWritable();

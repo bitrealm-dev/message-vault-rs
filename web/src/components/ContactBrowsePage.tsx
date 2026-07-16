@@ -1,6 +1,7 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { BrowseShell } from "@/components/BrowseShell";
 import { listContacts, listGroups, groupSlug } from "@/lib/db";
+import { ensureUnknownContacts } from "@/lib/contactsWrite";
 import { withServerAccount } from "@/lib/serverAccount";
 import type { ContactSection } from "@/lib/types";
 
@@ -16,6 +17,7 @@ export async function ContactBrowsePage({
   contactId: number | null;
 }) {
   return withServerAccount(async () => {
+    ensureUnknownContacts();
     const contacts = listContacts(section);
     const groups = listGroups();
     const paneKey =

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { IconHoverTarget } from "./IconHoverLabel";
 import { useDismissible } from "./useDismissible";
 
-export type SortMode = "first" | "last" | "messages";
+export type SortMode = "first" | "last" | "messages" | "phone";
 export type UnassignedSortBy = "phone" | "date" | "messages";
 export type SortOrder = "asc" | "desc";
 
@@ -124,6 +124,7 @@ export function SortMenu<T extends string>({
 const CONTACT_SORT_FIELDS: SortField<SortMode>[] = [
   { id: "first", label: "First Name" },
   { id: "last", label: "Last Name" },
+  { id: "phone", label: "Phone number" },
   { id: "messages", label: "Message Count" },
 ];
 

@@ -11,7 +11,8 @@ import {
   contactYearlyThreadsForPhones,
   type ContactSourceCounts,
 } from "./contactsRead";
-import type { UnassignedHandle, YearThread } from "./types";
+import { contactGroupChatThreadsForPhones } from "./groupChatsRead";
+import type { GroupChatThread, UnassignedHandle, YearThread } from "./types";
 
 export function countUnassignedHandles(): number {
   const accountId = currentAccountId();
@@ -138,6 +139,7 @@ export function unassignedThreadsBundle(
 ): {
   handle: string;
   yearly: YearThread[];
+  groupChats: GroupChatThread[];
   messageSources: string[];
   sourceCounts: ContactSourceCounts;
 } | null {
@@ -169,14 +171,25 @@ export function unassignedThreadsBundle(
     .get(conv.id) as { ok: number } | undefined;
   if (!hasMsgs) return null;
 
-  const ids = [conv.id];
-  const sourceCounts = contactMessageSourceCountsForConversations(ids);
+  const phones = [trimmed];
+  const groupChats = contactGroupChatThreadsForPhones(phones, source);
+  const individualIds = [conv.id];
+  const groupConvIds = groupChats.flatMap((g) =>
+    g.conversationIds?.length > 0 ? g.conversationIds : [g.conversationId],
+  );
+  const allConvIds = [...new Set([...individualIds, ...groupConvIds])];
+  const sourceCounts =
+    contactMessageSourceCountsForConversations(individualIds);
+  const anySourceCounts =
+    contactMessageSourceCountsForConversations(allConvIds);
+
   return {
     handle: trimmed,
-    yearly: contactYearlyThreadsForPhones([trimmed], source, {
+    yearly: contactYearlyThreadsForPhones(phones, source, {
       includeTrashed: opts?.includeTrashed,
     }),
-    messageSources: Object.keys(sourceCounts.bySource).sort(),
+    groupChats,
+    messageSources: Object.keys(anySourceCounts.bySource).sort(),
     sourceCounts,
   };
 }
