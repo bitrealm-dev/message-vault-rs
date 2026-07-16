@@ -333,7 +333,7 @@ export function GroupChatsShell({
     onDismiss: () => setCtxMenu(null),
     refs: [ctxMenuRef],
     eventTarget: typeof window !== "undefined" ? window : undefined,
-    dismissOnPointerLeave: 160,
+    dismissOnPointerLeave: 0,
   });
 
   const clearFocusAfterRemoval = useCallback(
@@ -392,22 +392,22 @@ export function GroupChatsShell({
         conversationSpansMultipleYears(targets[0]!);
       if (targets.length === 1) {
         return multiYear
-          ? "Move this group chat to Trash? It appears under multiple years and will be removed from all of them."
-          : "Move this group chat to Trash?";
+          ? "Move this group message to Trash? It appears under multiple years and will be removed from all of them."
+          : "Move this group message to Trash?";
       }
-      return `Move ${targets.length} group chats to Trash? Each chat will be removed from every year it appears under.`;
+      return `Move ${targets.length} group messages to Trash? Each chat will be removed from every year it appears under.`;
     },
     confirmPermanent: (targets) => {
       if (targets.length === 1) return "Delete forever?";
-      return `Delete ${targets.length} group chats forever?`;
+      return `Delete ${targets.length} group messages forever?`;
     },
     status: {
       trashedOne: "Moved to Trash",
       trashedMany: (n) => `Moved ${n} to Trash`,
-      restoredOne: "Undeleted — back in Group Chats",
-      restoredMany: (n) => `Undeleted ${n} group chats`,
+      restoredOne: "Undeleted — back in Group Messages",
+      restoredMany: (n) => `Undeleted ${n} group messages`,
       deletedOne: "Deleted forever",
-      deletedMany: (n) => `Deleted ${n} group chats forever`,
+      deletedMany: (n) => `Deleted ${n} group messages forever`,
     },
     setStatus,
     onRemoved: clearFocusAfterRemoval,
@@ -425,8 +425,8 @@ export function GroupChatsShell({
         conversationIds: ids,
         label:
           ids.length === 1
-            ? "Delete group chat"
-            : `Delete ${ids.length} group chats`,
+            ? "Delete group message"
+            : `Delete ${ids.length} group messages`,
       });
     },
     afterPermanent: () => {
@@ -806,8 +806,8 @@ export function GroupChatsShell({
                       }
                       emptyLabel={
                         mode === "trash"
-                          ? "No trashed group chats"
-                          : "No group chats"
+                          ? "No trashed group messages"
+                          : "No group messages"
                       }
                     />
                   </div>

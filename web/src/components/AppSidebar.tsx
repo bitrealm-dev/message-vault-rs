@@ -15,6 +15,7 @@ import {
 import {
   AddressBookIcon,
   EllipsisIcon,
+  GroupMessagesOutlineIcon,
   PeopleGroupIcon,
   PersonDetailIcon,
   PlusIcon,
@@ -223,7 +224,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
     open: menuFor != null,
     onDismiss: () => setMenuFor(null),
     refs: [menuRef],
-    dismissOnPointerLeave: 160,
+    dismissOnPointerLeave: 0,
   });
   useDismissible({
     open: rename != null,
@@ -543,6 +544,9 @@ export function AppSidebar({
   const groupIcon = (
     <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
   );
+  const groupMessagesIcon = (
+    <GroupMessagesOutlineIcon className="size-5 shrink-0 opacity-80" />
+  );
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
@@ -590,9 +594,9 @@ export function AppSidebar({
           </div>
           <NavLink
             href="/group-chats-2"
-            label="Group Chats 2"
+            label="Group Messages 2"
             active={active === "/group-chats-2"}
-            icon={groupIcon}
+            icon={groupMessagesIcon}
           />
           <NavLink
             href="/trash"

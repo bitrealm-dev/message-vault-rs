@@ -44,7 +44,7 @@ export function HomePageClient({
       <main className="h-full min-h-0 min-w-0 overflow-y-auto bg-bg px-8 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Message Vault</h1>
         <p className="mt-2 max-w-xl text-[14px] text-muted">
-          Browse your imported messages by contacts and group chats.
+          Browse your imported messages by contacts and group messages.
         </p>
 
         <section className="mt-8 max-w-3xl">
@@ -69,7 +69,7 @@ export function HomePageClient({
         <div className="mt-6 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-3">
           <StatCard
             href="/group-chats-2"
-            label="Group Chats"
+            label="Group Messages"
             value={stats.groupChats}
           />
         </div>

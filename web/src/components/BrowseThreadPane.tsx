@@ -12,7 +12,13 @@ import {
   GroupParticipantChip,
 } from "./GroupParticipantChip";
 import { MessageBubble } from "./MessageBubble";
-import { ChevronDownIcon, MessageIcon, PaperclipIcon } from "./icons";
+import {
+  ChatBubbleIcon,
+  ChevronDownIcon,
+  GroupMessagesOutlineIcon,
+  MessageIcon,
+  PaperclipIcon,
+} from "./icons";
 
 const HEADER_EXPANDED_KEY = "mv-browse-thread-header-expanded";
 
@@ -397,6 +403,11 @@ export function BrowseThreadPane({
             <span className="inline-flex items-center gap-1 tabular-nums">
               <PaperclipIcon className="size-3.5 shrink-0 opacity-80" />
               {threadStats.attachmentCount.toLocaleString()}
+            </span>
+            <span className="opacity-50">·</span>
+            <span className="inline-flex items-center gap-1.5 text-text">
+              <GroupMessagesOutlineIcon className="size-4 shrink-0 opacity-80" />
+              <ChatBubbleIcon className="size-4 shrink-0 opacity-80" />
             </span>
           </div>
         )}

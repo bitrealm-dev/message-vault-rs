@@ -206,19 +206,20 @@ export function GroupTrashSortMenu({
       onChange={({ sort, order: nextOrder }) =>
         onChange({ sortBy: sort, order: nextOrder })
       }
-      ariaLabel="Sort trashed groups"
+      ariaLabel="Sort trashed group messages"
     />
   );
 }
 
-export type BrowseGroupChatSortBy = "date" | "messages";
+export type BrowseGroupChatSortBy = "date" | "messages" | "people";
 
 const BROWSE_GROUP_CHAT_SORT_FIELDS: SortField<BrowseGroupChatSortBy>[] = [
   { id: "date", label: "Date" },
   { id: "messages", label: "Message Count" },
+  { id: "people", label: "People" },
 ];
 
-/** Date / message count for contact browse panel 3 group chats. */
+/** Date / message count / people for contact browse panel 3 group chats. */
 export function BrowseGroupChatSortMenu({
   sortBy,
   order,
@@ -236,7 +237,7 @@ export function BrowseGroupChatSortMenu({
       onChange={({ sort, order: nextOrder }) =>
         onChange({ sortBy: sort, order: nextOrder })
       }
-      ariaLabel="Sort group chats"
+      ariaLabel="Sort group messages"
     />
   );
 }

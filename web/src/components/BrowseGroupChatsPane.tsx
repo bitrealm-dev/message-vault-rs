@@ -117,7 +117,7 @@ function visibleParticipantLabels(labels: string[]): string[] {
 
 function rowPeopleNames(g: ContactGroupConversation): string[] {
   if (g.participantNames.length > 0) return g.participantNames;
-  if (g.title && g.title !== "Group chat") {
+  if (g.title && g.title !== "Group chat" && g.title !== "Group message") {
     return g.title
       .split(/\u00a0*\u00a0·\u00a0\u00a0| {2}· {2}/)
       .map((n) => n.replace(/\u00a0/g, " ").trim())
@@ -135,7 +135,6 @@ export function BrowseGroupChatsPane({
   onToggleSelectAll,
   onSelectColumnClick,
   onRowClick,
-  onContextMenu,
   onTrashMessages,
   trashDisabled = false,
   vaultReadOnly = false,
@@ -149,7 +148,7 @@ export function BrowseGroupChatsPane({
   onSearchQueryChange,
   searchDisabled = false,
   groupDateFormat,
-  emptyLabel = "No group chats",
+  emptyLabel = "No group messages",
 }: {
   items: ContactGroupConversation[];
   selectedConversationId: number | null;
@@ -162,7 +161,6 @@ export function BrowseGroupChatsPane({
     id: number,
     e: MouseEvent | { shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean },
   ) => void;
-  onContextMenu: (id: number, x: number, y: number) => void;
   onTrashMessages?: () => void;
   trashDisabled?: boolean;
   vaultReadOnly?: boolean;
@@ -185,6 +183,16 @@ export function BrowseGroupChatsPane({
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
+      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
+        <input
+          type="search"
+          value={searchQuery}
+          disabled={searchDisabled}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          placeholder="Search groups for name or phone…"
+          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+        />
+      </div>
       <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border px-3">
         <label className="flex min-w-0 items-center gap-2">
           <IconHoverTarget label="Select all" placement="bottom">
@@ -193,7 +201,7 @@ export function BrowseGroupChatsPane({
               type="checkbox"
               checked={allSelected}
               disabled={items.length === 0}
-              aria-label="Select all group chats"
+              aria-label="Select all group messages"
               onChange={onToggleSelectAll}
               className="checkbox-list"
             />
@@ -202,15 +210,15 @@ export function BrowseGroupChatsPane({
             {selectedIds.size > 0 ? selectedIds.size : ""}
           </span>
           <h2 className="truncate text-[13px] font-semibold text-text">
-            Group chats
+            Group messages
           </h2>
         </label>
         <div className="flex shrink-0 items-center gap-1.5">
           {!vaultReadOnly && onTrashMessages && (
-            <IconHoverTarget label="Delete messages" placement="bottom">
+            <IconHoverTarget label="Delete group messages" placement="bottom">
               <button
                 type="button"
-                aria-label="Delete messages"
+                aria-label="Delete group messages"
                 disabled={trashDisabled}
                 onClick={onTrashMessages}
                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
@@ -230,16 +238,6 @@ export function BrowseGroupChatsPane({
             onChange={onSortChange}
           />
         </div>
-      </div>
-      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <input
-          type="search"
-          value={searchQuery}
-          disabled={searchDisabled}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
-          placeholder="Search groups for name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
-        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {items.length === 0 ? (
@@ -282,10 +280,6 @@ export function BrowseGroupChatsPane({
                       }
                     : undefined
                 }
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  onContextMenu(g.conversationId, e.clientX, e.clientY);
-                }}
                 onMouseDown={(e) => {
                   if (e.shiftKey) e.preventDefault();
                 }}
@@ -314,7 +308,7 @@ export function BrowseGroupChatsPane({
                 <button
                   type="button"
                   aria-pressed={checked}
-                  aria-label={`Select ${g.namedTitle || g.title || "group chat"}`}
+                  aria-label={`Select ${g.namedTitle || g.title || "group message"}`}
                   onClick={(e) => onSelectColumnClick(g.conversationId, e)}
                   onMouseDown={(e) => {
                     e.stopPropagation();

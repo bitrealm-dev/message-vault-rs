@@ -109,7 +109,7 @@ export function TrashGroupChatList({
   onSelectColumnClick,
   onRowClick,
   onOpenCtxMenu,
-  emptyLabel = "No trashed group chats",
+  emptyLabel = "No trashed group messages",
 }: {
   items: TrashGroupConversation[];
   conversationId: number | null;

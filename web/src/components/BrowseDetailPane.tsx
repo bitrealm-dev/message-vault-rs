@@ -111,7 +111,7 @@ export function BrowseDetailPane({
 
               <div className="mt-5">
                 <h3 className="text-[15px] font-semibold text-text">
-                  Group chats
+                  Group messages
                 </h3>
                 {groupChatsByYear.length === 0 ? (
                   <p className="mt-2 text-[12px] text-muted">None</p>

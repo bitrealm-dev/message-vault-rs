@@ -49,7 +49,6 @@ import {
   ChevronRightIcon,
   PencilIcon,
   PeopleGroupIcon,
-  TrashMessagesIcon,
   XIcon,
 } from "./icons";
 import {
@@ -71,7 +70,7 @@ const SORT_ORDER_KEY = "mv-contact-sort-order";
 const GROUP_CHAT_SORT_KEY = "mv-browse-group-chat-sort";
 const GROUP_CHAT_SORT_ORDER_KEY = "mv-browse-group-chat-sort-order";
 const SORT_MODE_ALLOWED = ["first", "last", "messages", "phone"] as const;
-const GROUP_CHAT_SORT_ALLOWED = ["date", "messages"] as const;
+const GROUP_CHAT_SORT_ALLOWED = ["date", "messages", "people"] as const;
 const SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 
@@ -94,7 +93,7 @@ export function BrowseShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { push: pushHistory } = useHistory();
+  const { push: pushHistory, revision: historyRevision } = useHistory();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
   const [sortMode, setSortMode] = usePersistedEnum(
     SORT_MODE_KEY,
@@ -170,18 +169,12 @@ export function BrowseShell({
     x: number;
     y: number;
   } | null>(null);
-  const [groupCtxMenu, setGroupCtxMenu] = useState<{
-    id: number;
-    x: number;
-    y: number;
-  } | null>(null);
   const [mergeFromId, setMergeFromId] = useState<number | null>(null);
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergePos, setMergePos] = useState<{ x: number; y: number } | null>(
     null,
   );
   const ctxMenuRef = useRef<HTMLDivElement>(null);
-  const groupCtxMenuRef = useRef<HTMLDivElement>(null);
   const mergePanelRef = useRef<HTMLDivElement>(null);
   const groupsPanelWrapRef = useRef<HTMLDivElement>(null);
   const groupsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -759,7 +752,13 @@ export function BrowseShell({
     return () => {
       cancelled = true;
     };
-  }, [selectionIdsKey, source]);
+  }, [selectionIdsKey, source, threadsEpoch]);
+
+  // Undo/redo restores server state but Panel 3 uses client-fetched lists.
+  useEffect(() => {
+    if (historyRevision === 0) return;
+    setThreadsEpoch((n) => n + 1);
+  }, [historyRevision]);
 
   const panelGroupChats = hasSelection ? selectionGroupChats : groupChats;
 
@@ -804,10 +803,14 @@ export function BrowseShell({
       });
     }
     items.sort((a, b) => {
-      const cmp =
-        groupChatSortBy === "messages"
-          ? a.messageCount - b.messageCount
-          : a.dateEnd.localeCompare(b.dateEnd);
+      let cmp = 0;
+      if (groupChatSortBy === "messages") {
+        cmp = a.messageCount - b.messageCount;
+      } else if (groupChatSortBy === "people") {
+        cmp = a.participantCount - b.participantCount;
+      } else {
+        cmp = a.dateEnd.localeCompare(b.dateEnd);
+      }
       return groupChatSortOrder === "desc" ? -cmp : cmp;
     });
     return items;
@@ -849,7 +852,6 @@ export function BrowseShell({
     rowClickMode: "openWhenEmptyElseToggle",
     checkboxEvents: "preventAndStop",
     escapeToClear: true,
-    escapeBlocked: () => groupCtxMenu != null,
     selectAllSetsAnchor: false,
     onOpen: (id) => selectGroupRef.current(id),
   });
@@ -898,7 +900,6 @@ export function BrowseShell({
   useEffect(() => {
     clearGroupSelection();
     setSelectedGroupConversationId(null);
-    setGroupCtxMenu(null);
   }, [selectionIdsKey, contactId, paneStorageKey, clearGroupSelection]);
 
   const canEditGroups =
@@ -1098,7 +1099,6 @@ export function BrowseShell({
       if (
         trashConfirm != null ||
         ctxMenu != null ||
-        groupCtxMenu != null ||
         groupsPanelPos != null
       ) {
         return;
@@ -1113,7 +1113,6 @@ export function BrowseShell({
     contactCreating,
     trashConfirm,
     ctxMenu,
-    groupCtxMenu,
     groupsPanelPos,
     cancelContactEdit,
   ]);
@@ -1362,20 +1361,9 @@ export function BrowseShell({
         groupsCloseTimerRef.current = null;
       }
       groupsCreatePinnedRef.current = false;
-      setGroupCtxMenu(null);
       setGroupsPanelPos(null);
       setGroupTargetOverrideIds(null);
       setCtxMenu({ id, x, y });
-    },
-    [],
-  );
-
-  const openGroupCtxMenu = useCallback(
-    (id: number, x: number, y: number) => {
-      setCtxMenu(null);
-      setGroupsPanelPos(null);
-      setGroupTargetOverrideIds(null);
-      setGroupCtxMenu({ id, x, y });
     },
     [],
   );
@@ -1495,29 +1483,23 @@ export function BrowseShell({
   );
 
   useDismissible({
-    open: ctxMenu != null || groupCtxMenu != null || mergeFromId != null,
+    open: ctxMenu != null || mergeFromId != null,
     onDismiss: () => {
       setCtxMenu(null);
-      setGroupCtxMenu(null);
       setMergeFromId(null);
       setMergeQuery("");
       setMergePos(null);
       closeGroupsPanel();
       flushSelectionDirty();
     },
-    refs: [ctxMenuRef, groupCtxMenuRef, groupsPanelWrapRef, mergePanelRef],
-    dismissOnPointerLeave: 160,
+    refs: [ctxMenuRef, groupsPanelWrapRef, mergePanelRef],
+    dismissOnPointerLeave: 0,
     onEscape: (e) => {
       if (mergeFromId != null) {
         e.preventDefault();
         setMergeFromId(null);
         setMergeQuery("");
         setMergePos(null);
-        return false;
-      }
-      if (groupCtxMenu != null) {
-        e.preventDefault();
-        setGroupCtxMenu(null);
         return false;
       }
       if (groupsPanelPos != null) {
@@ -1606,7 +1588,6 @@ export function BrowseShell({
       if (
         trashConfirm != null ||
         ctxMenu != null ||
-        groupCtxMenu != null ||
         groupsPanelPos != null
       ) {
         return;
@@ -1635,7 +1616,6 @@ export function BrowseShell({
   }, [
     trashConfirm,
     ctxMenu,
-    groupCtxMenu,
     groupsPanelPos,
     contactCreating,
     contactEditing,
@@ -2152,13 +2132,13 @@ export function BrowseShell({
     canRestoreOrDelete: false,
     confirmTrash: (targets) => {
       if (targets.length === 1) {
-        return "Move this group chat to Trash?";
+        return "Move this group message to Trash?";
       }
-      return `Move ${targets.length} group chats to Trash?`;
+      return `Move ${targets.length} group messages to Trash?`;
     },
     status: {
-      trashedOne: "Moved group chat to Trash",
-      trashedMany: (n) => `Moved ${n} group chats to Trash`,
+      trashedOne: "Moved group message to Trash",
+      trashedMany: (n) => `Moved ${n} group messages to Trash`,
       restoredOne: "",
       restoredMany: () => "",
       deletedOne: "",
@@ -2169,7 +2149,6 @@ export function BrowseShell({
     },
     onRemoved: (targets) => {
       clearGroupSelection();
-      setGroupCtxMenu(null);
       setSelectedGroupConversationId(null);
       setMessages([]);
       setActiveThread(null);
@@ -2193,15 +2172,14 @@ export function BrowseShell({
         }),
       );
     },
-    onDismissMenus: () => setGroupCtxMenu(null),
     onTrashed: (ids) => {
       pushHistory({
         type: "trashGroupThread",
         conversationIds: ids,
         label:
           ids.length === 1
-            ? "Delete group chat"
-            : `Delete ${ids.length} group chats`,
+            ? "Delete group message"
+            : `Delete ${ids.length} group messages`,
       });
     },
     afterTrash: () => {
@@ -2284,7 +2262,6 @@ export function BrowseShell({
           onToggleSelectAll={toggleSelectAllGroups}
           onSelectColumnClick={onGroupSelectColumnClick}
           onRowClick={onGroupRowClick}
-          onContextMenu={openGroupCtxMenu}
           onTrashMessages={() => void moveGroupsToTrash()}
           trashDisabled={!canTrashGroups || saving || groupTrashSaving}
           vaultReadOnly={vaultReadOnly}
@@ -2304,14 +2281,14 @@ export function BrowseShell({
                 ? "Loading…"
                 : groupChatQuery.trim()
                   ? "No matches"
-                  : "No shared group chats"
+                  : "No shared group messages"
               : !contactId
                 ? "Choose a contact"
                 : loadingThreads
                   ? "Loading…"
                   : groupChatQuery.trim()
                     ? "No matches"
-                    : "No group chats"
+                    : "No group messages"
           }
         />
       </Panel>
@@ -2373,7 +2350,7 @@ export function BrowseShell({
             if (g.participantNames.length > 0) {
               return g.participantNames.join(" · ");
             }
-            return g.title || "Group chat";
+            return g.title || "Group message";
           };
           const groupRowDate = (g: (typeof selectedGroupRows)[number]) =>
             g.dateStart === g.dateEnd
@@ -2613,31 +2590,8 @@ export function BrowseShell({
           onClick={() => onCtxDelete()}
         >
           <XIcon className="size-5 shrink-0 opacity-80" />
-          Delete
+          Delete contact
         </button>
-      </div>
-    )}
-    {groupCtxMenu && (
-      <div
-        ref={groupCtxMenuRef}
-        className="fixed z-[100] min-w-[180px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
-        style={{ left: groupCtxMenu.x, top: groupCtxMenu.y }}
-      >
-        {!vaultReadOnly && (
-          <button
-            type="button"
-            disabled={saving || groupTrashSaving}
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-            onClick={() => {
-              const id = groupCtxMenu.id;
-              setGroupCtxMenu(null);
-              void moveGroupsToTrash(id);
-            }}
-          >
-            <TrashMessagesIcon className="size-5 shrink-0 opacity-80" />
-            Delete messages
-          </button>
-        )}
       </div>
     )}
     {mergeFromId != null && mergePos && (

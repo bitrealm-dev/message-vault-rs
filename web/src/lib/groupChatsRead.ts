@@ -74,7 +74,7 @@ function formatPeopleTitle(
   const sep = "\u00a0\u00a0·\u00a0\u00a0";
   const full = names.join(sep);
   if (names.length === 0) {
-    return { short: "Group chat", full: "Group chat", count: 0 };
+    return { short: "Group message", full: "Group message", count: 0 };
   }
   if (names.length <= MAX_VISIBLE_NAMES) {
     return { short: full, full, count: names.length };
@@ -277,8 +277,8 @@ export function contactGroupChatThreadsForPhoneSets(
 
   const mapped = rows.map((r) => {
     const t = titles.get(r.conversation_id) ?? {
-      title: "Group chat",
-      titleFull: "Group chat",
+      title: "Group message",
+      titleFull: "Group message",
       namedTitle: null,
       participantCount: 0,
       participantNames: [] as string[],
@@ -515,8 +515,8 @@ function listGroupYearRowsSection(
   }
 
   const emptyTitle = {
-    title: "Group chat",
-    titleFull: "Group chat",
+    title: "Group message",
+    titleFull: "Group message",
     namedTitle: null as string | null,
     participantCount: 0,
     participantNames: [] as string[],

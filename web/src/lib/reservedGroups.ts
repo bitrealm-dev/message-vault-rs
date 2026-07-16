@@ -17,6 +17,10 @@ export const RESERVED_GROUP_NAMES = new Set(
     "group chats",
     "group-chats-2",
     "group chats 2",
+    "group-messages",
+    "group messages",
+    "group-messages-2",
+    "group messages 2",
     "no-group",
     "no group",
   ].map((s) => s.toLowerCase()),
@@ -36,11 +40,22 @@ export function reservedGroupError(name: string): string {
   if (key === "no messages" || key === "no-messages") {
     return "No messages is a reserved group";
   }
-  if (key === "group chats" || key === "group-chats" || key === "groups") {
-    return "Group chats is a reserved name";
+  if (
+    key === "group chats" ||
+    key === "group-chats" ||
+    key === "group messages" ||
+    key === "group-messages" ||
+    key === "groups"
+  ) {
+    return "Group messages is a reserved name";
   }
-  if (key === "group chats 2" || key === "group-chats-2") {
-    return "Group Chats 2 is a reserved name";
+  if (
+    key === "group chats 2" ||
+    key === "group-chats-2" ||
+    key === "group messages 2" ||
+    key === "group-messages-2"
+  ) {
+    return "Group Messages 2 is a reserved name";
   }
   return `"${name.trim()}" is a reserved group`;
 }

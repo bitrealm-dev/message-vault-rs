@@ -26,6 +26,8 @@ type HistoryContextValue = {
   toast: HistoryToast | null;
   undoLabel: string | null;
   redoLabel: string | null;
+  /** Increments after a successful undo/redo so clients can refetch local state. */
+  revision: number;
   push: (cmd: HistoryCommand) => void;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
@@ -44,6 +46,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   const [future, setFuture] = useState<HistoryCommand[]>([]);
   const [toast, setToast] = useState<HistoryToast | null>(null);
   const [busy, setBusy] = useState(false);
+  const [revision, setRevision] = useState(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(false);
   const pastRef = useRef(past);
@@ -100,6 +103,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       await undoCommand(cmd);
       setPast((prev) => prev.slice(0, -1));
       setFuture((prev) => [...prev, cmd]);
+      setRevision((n) => n + 1);
       showToast(`Undid: ${cmd.label}`);
       router.refresh();
     } catch (err) {
@@ -129,6 +133,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         }
         return next;
       });
+      setRevision((n) => n + 1);
       showToast(`Redid: ${cmd.label}`);
       router.refresh();
     } catch (err) {
@@ -150,12 +155,13 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       toast,
       undoLabel: past[past.length - 1]?.label ?? null,
       redoLabel: future[future.length - 1]?.label ?? null,
+      revision,
       push,
       undo,
       redo,
       clear,
     }),
-    [past, future, busy, toast, push, undo, redo, clear],
+    [past, future, busy, toast, revision, push, undo, redo, clear],
   );
 
   return (

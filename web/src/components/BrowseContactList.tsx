@@ -75,7 +75,7 @@ export function BrowseContactList({
       ? [
           {
             key: "delete",
-            label: "Delete",
+            label: "Delete contact",
             icon: <XIcon className="size-5 shrink-0 opacity-80" />,
             disabled: deleteDisabled,
             danger: true,
@@ -88,6 +88,15 @@ export function BrowseContactList({
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
 
+      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Search by name or phone…"
+          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
+        />
+      </div>
       <div className="flex h-[45px] shrink-0 items-center justify-between overflow-visible border-b border-border px-3">
         <label className="flex min-w-0 items-center gap-2">
           <IconHoverTarget label="Select all" placement="bottom">
@@ -123,15 +132,6 @@ export function BrowseContactList({
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
           <ListHistoryMenu items={vaultReadOnly ? [] : menuItems} />
         </div>
-      </div>
-      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search by name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
-        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         {sortedCount === 0 && (

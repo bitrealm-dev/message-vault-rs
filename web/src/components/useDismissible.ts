@@ -17,8 +17,9 @@ export type UseDismissibleOptions = {
   eventTarget?: Document | Window;
   /**
    * Dismiss when the pointer leaves all `refs` (e.g. context menus).
-   * `true` uses a 120ms grace period so the cursor can move into a
-   * related flyout that is also listed in `refs`.
+   * `true` dismisses immediately; a number is a grace period (ms) so
+   * the cursor can move into a related flyout also listed in `refs`.
+   * Moving into another listed ref never dismisses (no timer).
    */
   dismissOnPointerLeave?: boolean | number;
 };
@@ -82,7 +83,7 @@ export function useDismissible({
   useEffect(() => {
     if (!open || !dismissOnPointerLeave) return;
     const delayMs =
-      dismissOnPointerLeave === true ? 120 : dismissOnPointerLeave;
+      dismissOnPointerLeave === true ? 0 : dismissOnPointerLeave;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
     const clearTimer = () => {
