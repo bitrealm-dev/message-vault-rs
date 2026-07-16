@@ -1015,37 +1015,6 @@ export function BrowseShell({
     return { contactGroups: [] as string[], exclude: false };
   }, [contactSection]);
 
-  const beginCreateContact = useCallback(() => {
-    if (vaultReadOnly) return;
-    setSelectedIds(new Set());
-    setContactId(null);
-    setDetail(null);
-    setYearly([]);
-    setGroupChats([]);
-    setGroupChatFilterYear(null);
-    setGroupChatQuery("");
-    setSelectedGroupConversationId(null);
-    setMessageSources([]);
-    setSourceCounts({ all: 0, bySource: {} });
-    setMessages([]);
-    setActiveThread(null);
-    loadedContactIdRef.current = null;
-    setThreadsLoadedFor(null);
-    setContactEditing(false);
-    setContactCreating(true);
-    setEditContactId(null);
-    setFormAnchor(null);
-    setEditDraft(emptyContactEditDraft(createDefaults));
-    setExtraDraftGroups([]);
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("c");
-    params.delete("h");
-    params.delete("y");
-    params.delete("conv");
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams, createDefaults, vaultReadOnly]);
-
   const openEditContactInPlace = useCallback(
     async (id: number, anchor: ContactFormAnchor) => {
       setFormAnchor(anchor);
@@ -2209,7 +2178,12 @@ export function BrowseShell({
           query={query}
           onQueryChange={setQuery}
           onToggleSelectAll={toggleSelectAllInGroup}
-          onNewContact={beginCreateContact}
+          onNewContact={(el) =>
+            openCreateContactInPlace(
+              "",
+              contactFormAnchorFromRect(el.getBoundingClientRect()),
+            )
+          }
           vaultReadOnly={vaultReadOnly}
           groupsMenu={
             <GroupsMenu
@@ -2224,7 +2198,11 @@ export function BrowseShell({
               onOpenChange={onSelectionMenuOpenChange}
             />
           }
-          onEdit={beginContactEdit}
+          onEdit={(el) =>
+            beginContactEdit(
+              contactFormAnchorFromRect(el.getBoundingClientRect()),
+            )
+          }
           editDisabled={!detail || hasSelection || formOpen}
           onTrashContact={() => requestTrash()}
           deleteDisabled={!canDelete || saving || groupTrashSaving}

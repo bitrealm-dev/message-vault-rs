@@ -13,7 +13,8 @@ export type ListHistoryMenuItem = {
   disabled?: boolean;
   /** Red hover styling for destructive actions. */
   danger?: boolean;
-  onClick: () => void;
+  /** `triggerEl` is the ⋯ button that opened the menu. */
+  onClick: (triggerEl: HTMLElement | null) => void;
 };
 
 /** Fastmail-style ⋯ menu with Undo / Redo for list headers. */
@@ -87,7 +88,7 @@ export function ListHistoryMenu({
               }`}
               onClick={() => {
                 close();
-                item.onClick();
+                item.onClick(buttonRef.current);
               }}
             >
               {item.icon}

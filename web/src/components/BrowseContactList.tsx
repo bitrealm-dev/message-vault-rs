@@ -5,8 +5,8 @@ import type { MouseEvent, ReactNode, RefObject } from "react";
 import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
 import {
-  ChatBubbleIcon,
   GroupMessagesOutlineIcon,
+  MessageIcon,
   PencilIcon,
   XIcon,
 } from "./icons";
@@ -47,11 +47,11 @@ export function BrowseContactList({
   query: string;
   onQueryChange: (q: string) => void;
   onToggleSelectAll: () => void;
-  onNewContact: () => void;
+  onNewContact: (anchorEl: HTMLElement) => void;
   vaultReadOnly?: boolean;
   /** Icon-only GroupsMenu element rendered first in the toolbar cluster. */
   groupsMenu?: ReactNode;
-  onEdit?: () => void;
+  onEdit?: (anchorEl: HTMLElement) => void;
   editDisabled?: boolean;
   onTrashContact?: () => void;
   deleteDisabled?: boolean;
@@ -72,7 +72,9 @@ export function BrowseContactList({
       key: "new-contact",
       label: "New contact",
       icon: <NewContactIcon className="size-5 shrink-0 opacity-80" />,
-      onClick: onNewContact,
+      onClick: (triggerEl) => {
+        if (triggerEl) onNewContact(triggerEl);
+      },
     },
     ...(onTrashContact
       ? [
@@ -82,7 +84,7 @@ export function BrowseContactList({
             icon: <XIcon className="size-5 shrink-0 opacity-80" />,
             disabled: deleteDisabled,
             danger: true,
-            onClick: onTrashContact,
+            onClick: () => onTrashContact(),
           } satisfies ListHistoryMenuItem,
         ]
       : []),
@@ -125,7 +127,7 @@ export function BrowseContactList({
                 type="button"
                 aria-label="Edit contact"
                 disabled={editDisabled}
-                onClick={onEdit}
+                onClick={(e) => onEdit(e.currentTarget)}
                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <PencilIcon className="size-4" />
@@ -143,8 +145,17 @@ export function BrowseContactList({
         {grouped.map(([letter, items]) => (
           <div key={letter || "all"}>
             {!query.trim() && letter && (
-              <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
-                {letter}
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
+                <span>{letter}</span>
+                <span
+                  className="inline-flex items-center gap-1 font-normal"
+                  title="Group chats | 1:1 messages"
+                  aria-label="Group chats | 1:1 messages"
+                >
+                  <GroupMessagesOutlineIcon className="size-3.5 opacity-80" />
+                  <span className="opacity-50">|</span>
+                  <MessageIcon className="size-3.5 opacity-80" />
+                </span>
               </div>
             )}
             {items.map((c, i) => {
@@ -255,24 +266,20 @@ export function BrowseContactList({
                           />
                         )}
                     </span>
-                    <span className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5 text-[12px] tabular-nums text-muted">
-                      {(c.messageCount > 0 || c.groupMessageCount > 0) && (
-                        <span className="inline-flex min-h-4 items-center gap-0.5">
-                          {c.messageCount > 0 ? (
-                            <>
-                              {c.messageCount.toLocaleString()}
-                              <ChatBubbleIcon className="size-4 opacity-80" />
-                            </>
-                          ) : null}
-                        </span>
-                      )}
-                      {c.groupMessageCount > 0 && (
-                        <span className="inline-flex items-center gap-0.5">
-                          {c.groupMessageCount.toLocaleString()}
-                          <GroupMessagesOutlineIcon className="size-4 opacity-80" />
-                        </span>
-                      )}
-                    </span>
+                    {(c.groupMessageCount > 0 || c.messageCount > 0) && (
+                      <span
+                        className="shrink-0 pt-0.5 text-[12px] text-muted"
+                        title={
+                          c.groupMessageCount > 0
+                            ? "Group chats | 1:1 messages"
+                            : "1:1 messages"
+                        }
+                      >
+                        {c.groupMessageCount > 0
+                          ? `${c.groupMessageCount.toLocaleString()} | ${c.messageCount.toLocaleString()}`
+                          : c.messageCount.toLocaleString()}
+                      </span>
+                    )}
                   </button>
                   {showInsetDivider && (
                     <span
