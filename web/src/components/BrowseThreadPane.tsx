@@ -71,6 +71,11 @@ export function BrowseThreadPane({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [headerExpanded, setHeaderExpanded] = useState(true);
   const [activeYear, setActiveYear] = useState<number | null>(null);
+  const [attachmentsOnly, setAttachmentsOnly] = useState(false);
+
+  useEffect(() => {
+    setAttachmentsOnly(false);
+  }, [activeThread]);
 
   useEffect(() => {
     try {
@@ -137,8 +142,16 @@ export function BrowseThreadPane({
       }));
   }, [yearly, messages, activeThread]);
 
+  const visibleMessages = useMemo(
+    () =>
+      attachmentsOnly
+        ? messages.filter((m) => m.attachments.length > 0)
+        : messages,
+    [messages, attachmentsOnly],
+  );
+
   const messagesByYear = useMemo(() => {
-    const chronological = [...messages].sort((a, b) =>
+    const chronological = [...visibleMessages].sort((a, b) =>
       a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0,
     );
     const sections: Array<{ year: number; messages: MessageRow[] }> = [];
@@ -152,7 +165,7 @@ export function BrowseThreadPane({
       }
     }
     return sections;
-  }, [messages]);
+  }, [visibleMessages]);
 
   useEffect(() => {
     const first = messagesByYear[0]?.year;
@@ -393,15 +406,42 @@ export function BrowseThreadPane({
 
         {threadStats && (
           <div className="mb-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px] text-muted">
-            <span className="inline-flex items-center gap-1 tabular-nums">
+            <button
+              type="button"
+              title="Show all messages"
+              aria-pressed={!attachmentsOnly}
+              onClick={() => setAttachmentsOnly(false)}
+              className={`inline-flex items-center gap-1 tabular-nums outline-none focus:outline-none focus-visible:outline-none ${
+                !attachmentsOnly
+                  ? "font-medium text-text"
+                  : "hover:text-text"
+              }`}
+            >
               <MessageIcon className="size-3.5 shrink-0 opacity-80" />
               {threadStats.messageCount.toLocaleString()}
-            </span>
+            </button>
             <span className="opacity-50">·</span>
-            <span className="inline-flex items-center gap-1 tabular-nums">
+            <button
+              type="button"
+              title={
+                attachmentsOnly
+                  ? "Show all messages"
+                  : "Show only messages with attachments"
+              }
+              aria-pressed={attachmentsOnly}
+              disabled={threadStats.attachmentCount === 0}
+              onClick={() => setAttachmentsOnly((v) => !v)}
+              className={`inline-flex items-center gap-1 tabular-nums outline-none focus:outline-none focus-visible:outline-none ${
+                threadStats.attachmentCount === 0
+                  ? "cursor-default opacity-40"
+                  : attachmentsOnly
+                    ? "font-medium text-accent"
+                    : "hover:text-accent"
+              }`}
+            >
               <PaperclipIcon className="size-3.5 shrink-0 opacity-80" />
               {threadStats.attachmentCount.toLocaleString()}
-            </span>
+            </button>
           </div>
         )}
 
@@ -415,7 +455,14 @@ export function BrowseThreadPane({
             Loading messages…
           </p>
         )}
-        {messages.length > 0 && (
+        {messages.length > 0 &&
+          attachmentsOnly &&
+          visibleMessages.length === 0 && (
+            <p className="pt-8 text-center text-[13px] text-muted">
+              No messages with attachments
+            </p>
+          )}
+        {visibleMessages.length > 0 && (
           <div
             className={`mx-auto flex max-w-2xl flex-col gap-2 ${
               loadingMessages ? "opacity-60" : ""
