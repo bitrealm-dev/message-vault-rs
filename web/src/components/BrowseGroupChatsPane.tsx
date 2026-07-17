@@ -6,6 +6,7 @@ import type { MouseEvent, RefObject } from "react";
 import { GroupConversationRowBody } from "./GroupConversationRow";
 import { IconHoverTarget } from "./IconHoverLabel";
 import { TrashMessagesIcon } from "./icons";
+import { PaneSearchField } from "./PaneSearchField";
 import {
   BrowseGroupChatSortMenu,
   type BrowseGroupChatSortBy,
@@ -71,13 +72,11 @@ export function BrowseGroupChatsPane({
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <input
-          type="search"
+        <PaneSearchField
           value={searchQuery}
+          onChange={onSearchQueryChange}
+          placeholder="Search group messages"
           disabled={searchDisabled}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
-          placeholder="Search groups for name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:opacity-40"
         />
       </div>
       <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border px-3">
@@ -105,7 +104,7 @@ export function BrowseGroupChatsPane({
                 aria-label="Delete group messages"
                 disabled={trashDisabled}
                 onClick={onTrashMessages}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted transition-colors hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40 disabled:hover:border-red-500/40 disabled:hover:bg-red-500/15 disabled:hover:text-red-300"
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted transition-colors hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"
               >
                 <TrashMessagesIcon className="size-4" />
               </button>
@@ -120,6 +119,7 @@ export function BrowseGroupChatsPane({
             sortBy={sortBy}
             order={sortOrder}
             onChange={onSortChange}
+            disabled={items.length === 0}
           />
         </div>
       </div>

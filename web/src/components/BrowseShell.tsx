@@ -1905,14 +1905,14 @@ export function BrowseShell({
                 ? "Loading…"
                 : groupChatQuery.trim()
                   ? "No matches"
-                  : "No shared group messages"
-              : !contactId
-                ? "Choose a contact"
-                : loadingThreads
-                  ? "Loading…"
-                  : groupChatQuery.trim()
-                    ? "No matches"
+                  : selectedIds.size > 1
+                    ? "No shared group messages"
                     : "No group messages"
+              : contactId && loadingThreads
+                ? "Loading…"
+                : groupChatQuery.trim()
+                  ? "No matches"
+                  : "No group messages"
           }
         />
       </Panel>

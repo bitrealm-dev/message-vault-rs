@@ -5,8 +5,9 @@ import {
   formatGroupDateTable,
   type GroupDateFormat,
 } from "@/lib/groupDateFormat";
+import { formatTrashedAt } from "@/lib/trashList";
 import { CountBadge } from "./CountBadge";
-import { PeopleCountIcon } from "./icons";
+import { PeopleCountIcon, TrashIcon } from "./icons";
 
 export const GROUP_NAME_SEP = "  ·  ";
 export const MAX_VISIBLE_GROUP_NAMES = 8;
@@ -70,10 +71,13 @@ export function GroupConversationRowBody({
   conversation: g,
   groupDateFormat,
   variant = "browse",
+  trashedAt,
 }: {
   conversation: CollapsedGroupConversation;
   groupDateFormat: GroupDateFormat;
   variant?: "browse" | "trash";
+  /** Soft-trash timestamp (trash variant 4th line). */
+  trashedAt?: string;
 }) {
   const allNames = collapsedParticipantLabels(g);
   const names = visibleParticipantLabels(allNames);
@@ -115,6 +119,12 @@ export function GroupConversationRowBody({
           <div className="mt-1.5 truncate font-mono text-[12px] text-muted">
             {dateLabel}
           </div>
+          {trashedAt ? (
+            <div className="mt-1 flex items-center gap-1 text-[11px] text-muted tabular-nums">
+              <TrashIcon className="size-3 shrink-0 opacity-70" />
+              <span>{formatTrashedAt(trashedAt)}</span>
+            </div>
+          ) : null}
         </div>
         <div className="flex w-[4.5rem] shrink-0 flex-col items-end justify-between pt-0.5">
           <CountBadge count={g.messageCount} title="Messages" />

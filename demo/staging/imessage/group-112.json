@@ -1,0 +1,3 @@
+{"record":"conversation","schema":"imessage","schema_version":4,"chat_identifier":"+447700910112","service":"iMessage","conversation_type":"group","participants":[{"handle":"+15559200360"},{"handle":"+15559200361"},{"handle":"+15559200362"},{"handle":"+15559200363"},{"handle":"+15559200364"}],"exported_at":"2026-07-14T12:00:00-04:00"}
+{"guid":"grp-phone-112-0","is_from_me":true,"record":"message","service":"iMessage","text":"Call me when you're free.","timestamp":"2016-01-01T09:00:00-04:00","timestamp_utc":"2016-01-01T13:00:00+00:00"}
+{"guid":"grp-phone-112-1","is_from_me":false,"record":"message","sender":"+15559200361","service":"iMessage","text":"Did you see the game last night?","timestamp":"2026-02-02T10:01:00-04:00","timestamp_utc":"2026-02-02T14:01:00+00:00"}

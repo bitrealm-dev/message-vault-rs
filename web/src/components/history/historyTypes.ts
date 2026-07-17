@@ -58,9 +58,9 @@ export function toastTextForCommand(cmd: HistoryCommand): string {
     case "createContact":
       return `Created new contact ${cmd.name.trim() || "contact"}`;
     case "createGroup":
-      return `Created group ${cmd.name.trim() || "group"}`;
+      return `Created label ${cmd.name.trim() || "label"}`;
     case "deleteGroup":
-      return `Deleted group ${cmd.name.trim() || "group"}`;
+      return `Deleted label ${cmd.name.trim() || "label"}`;
     case "trashContacts": {
       const names = joinSubjects(cmd.names, "contact");
       return cmd.contactIds.length === 1
@@ -68,10 +68,12 @@ export function toastTextForCommand(cmd: HistoryCommand): string {
         : `Deleted contacts ${names}`;
     }
     case "trashGroupThread": {
-      const titles = joinSubjects(cmd.titles, "group message");
-      return cmd.conversationIds.length === 1
-        ? `Deleted group message ${titles}`
-        : `Deleted group messages ${titles}`;
+      const n = cmd.conversationIds.length;
+      if (n === 1) {
+        const title = joinSubjects(cmd.titles, "group message");
+        return `Deleted group message ${title}`;
+      }
+      return `Deleted ${n} group messages`;
     }
   }
 }
@@ -95,8 +97,9 @@ export function trashContactsLabel(names: string[]): string {
 }
 
 export function trashGroupThreadLabel(titles: string[]): string {
-  const joined = joinSubjects(titles, "group message");
-  return titles.length <= 1
-    ? `Delete group message ${joined}`
-    : `Delete group messages ${joined}`;
+  if (titles.length <= 1) {
+    const joined = joinSubjects(titles, "group message");
+    return `Delete group message ${joined}`;
+  }
+  return `Delete ${titles.length} group messages`;
 }

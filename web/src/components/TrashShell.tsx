@@ -8,12 +8,19 @@ import type {
   UnassignedHandle,
   YearThread,
 } from "@/lib/types";
-import { newestYearForConversation } from "@/lib/groupChatList";
+import {
+  GROUP_DATE_ALLOWED,
+  newestYearForConversation,
+} from "@/lib/groupChatList";
+import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import {
   buildTrashListItems,
+  countTrashTabs,
   filterTrashListItems,
-  groupTrashListByCategory,
+  itemsForTrashTab,
+  parseTrashTab,
   type TrashListItem,
+  type TrashTab,
 } from "@/lib/trashList";
 import {
   useCallback,
@@ -34,12 +41,13 @@ import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
+import { usePersistedEnum } from "./usePersistedEnum";
 import { useSourceFilter } from "./SourceFilter";
 import { useThreadMessages } from "./useThreadMessages";
 import { TrashUnifiedList } from "./TrashUnifiedList";
 
 function syntheticContactDetail(
-  item: Extract<TrashListItem, { category: "messages" }>,
+  item: Extract<TrashListItem, { category: "contacts" }>,
 ): ContactDetail {
   return {
     id: item.contactId ?? -1,
@@ -82,10 +90,24 @@ export function TrashShell({
   const searchParams = useSearchParams();
   const { clear: clearHistory } = useHistory();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
+  const [groupDateFormat] = usePersistedEnum(
+    GROUP_DATE_FORMAT_KEY,
+    GROUP_DATE_ALLOWED,
+    "md",
+  );
 
   useEffect(() => {
     clearHistory();
   }, [clearHistory]);
+
+  const tab = useMemo((): TrashTab => {
+    const raw = searchParams.get("tab");
+    if (raw === "group-messages" || raw === "contacts") {
+      return parseTrashTab(raw);
+    }
+    if (searchParams.get("g")) return "group-messages";
+    return "contacts";
+  }, [searchParams]);
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -112,19 +134,17 @@ export function TrashShell({
     setItems(allItems);
   }, [allItems]);
 
-  const filteredItems = useMemo(
-    () => filterTrashListItems(items, query),
-    [items, query],
+  const tabCounts = useMemo(() => countTrashTabs(items), [items]);
+  const tabItems = useMemo(
+    () => filterTrashListItems(itemsForTrashTab(items, tab), query),
+    [items, tab, query],
   );
-  const sections = useMemo(
-    () => groupTrashListByCategory(filteredItems),
-    [filteredItems],
+
+  const orderedKeys = useMemo(() => tabItems.map((i) => i.key), [tabItems]);
+  const validKeys = useMemo(
+    () => itemsForTrashTab(items, tab).map((i) => i.key),
+    [items, tab],
   );
-  const orderedKeys = useMemo(
-    () => filteredItems.map((i) => i.key),
-    [filteredItems],
-  );
-  const validKeys = useMemo(() => items.map((i) => i.key), [items]);
   const byKey = useMemo(() => {
     const map = new Map<string, TrashListItem>();
     for (const i of items) map.set(i.key, i);
@@ -138,7 +158,7 @@ export function TrashShell({
     }
     if (initialHandle) {
       const match = allItems.find(
-        (i) => i.category === "messages" && i.handle === initialHandle,
+        (i) => i.category === "contacts" && i.handle === initialHandle,
       );
       if (match) return match.key;
     }
@@ -147,6 +167,19 @@ export function TrashShell({
 
   const [focusedKey, setFocusedKey] = useState<string | null>(initialFocusKey);
   const focusedItem = focusedKey ? (byKey.get(focusedKey) ?? null) : null;
+
+  // Keep focus on the active tab's items only.
+  useEffect(() => {
+    if (!focusedKey) return;
+    const item = byKey.get(focusedKey);
+    if (!item) {
+      setFocusedKey(null);
+      return;
+    }
+    const onContacts = item.category === "contacts";
+    if (tab === "contacts" && !onContacts) setFocusedKey(null);
+    if (tab === "group-messages" && onContacts) setFocusedKey(null);
+  }, [tab, focusedKey, byKey]);
 
   const selectItemRef = useRef<(key: string) => void>(() => {});
 
@@ -188,6 +221,30 @@ export function TrashShell({
     number[] | null
   >(null);
 
+  const switchTab = useCallback(
+    (next: TrashTab) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "contacts") params.delete("tab");
+      else params.set("tab", "group-messages");
+      if (next === "contacts") {
+        params.delete("g");
+        params.delete("y");
+      } else {
+        params.delete("h");
+      }
+      setFocusedKey(null);
+      clearSelection();
+      setYearly([]);
+      setActiveThread(null);
+      setThreadConversationIds(null);
+      setThreadsLoadedFor(null);
+      setQuery("");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [clearSelection, pathname, router, searchParams],
+  );
+
   const selectItem = useCallback(
     (key: string) => {
       const item = byKey.get(key);
@@ -202,8 +259,8 @@ export function TrashShell({
       setThreadsLoadedFor(null);
 
       const params = new URLSearchParams(searchParams.toString());
-      params.delete("tab");
       if (item.category === "groupMessages") {
+        params.set("tab", "group-messages");
         params.delete("h");
         params.set("g", String(item.conversationId));
         const y = newestYearForConversation(
@@ -213,6 +270,7 @@ export function TrashShell({
         if (y != null) params.set("y", String(y));
         else params.delete("y");
       } else {
+        params.delete("tab");
         params.set("h", item.handle);
         params.delete("g");
         params.delete("y");
@@ -234,7 +292,11 @@ export function TrashShell({
   const focusIsGroup = focusedItem?.category === "groupMessages";
 
   useEffect(() => {
-    if (multiSelected || !focusedItem || focusedItem.category === "groupMessages") {
+    if (
+      multiSelected ||
+      !focusedItem ||
+      focusedItem.category === "groupMessages"
+    ) {
       if (!focusIsGroup) {
         setYearly([]);
         setMessageSources([]);
@@ -349,7 +411,7 @@ export function TrashShell({
   });
 
   const detail =
-    focusedItem?.category === "messages" && !multiSelected
+    focusedItem?.category === "contacts" && !multiSelected
       ? syntheticContactDetail(focusedItem)
       : null;
 
@@ -381,7 +443,6 @@ export function TrashShell({
     params.delete("h");
     params.delete("g");
     params.delete("y");
-    params.delete("tab");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
@@ -521,7 +582,7 @@ export function TrashShell({
 
   const storage = usePanelLayoutStorage();
   const mainLayout = useDefaultLayout({
-    id: "mv-trash-main-v2",
+    id: "mv-trash-main-v4",
     panelIds: ["list", "thread"],
     storage,
   });
@@ -529,7 +590,7 @@ export function TrashShell({
   return (
     <>
       <Group
-        id="mv-trash-main-v2"
+        id="mv-trash-main-v4"
         orientation="horizontal"
         className="h-full w-full"
         defaultLayout={mainLayout.defaultLayout}
@@ -543,12 +604,15 @@ export function TrashShell({
           className="min-h-0"
         >
           <TrashUnifiedList
+            tab={tab}
+            contactCount={tabCounts.contacts}
+            groupCount={tabCounts.groupMessages}
+            onTabChange={switchTab}
             selectAllRef={selectAllRef}
             allSelected={allSelected}
             query={query}
             onQueryChange={setQuery}
-            sections={sections}
-            itemCount={filteredItems.length}
+            items={tabItems}
             focusedKey={focusedKey}
             selectedKeys={selectedKeys}
             saving={saving}
@@ -556,10 +620,14 @@ export function TrashShell({
             onToggleSelectAll={toggleSelectAll}
             onSelectColumnClick={onSelectColumnClick}
             onRowClick={onRowClick}
+            onRestoreHeader={() =>
+              void runRestoreOrDelete(actionKeys, false)
+            }
             onDeleteForeverHeader={() =>
               void runRestoreOrDelete(actionKeys, true)
             }
             onOpenCtxMenu={openCtxMenuAt}
+            groupDateFormat={groupDateFormat}
           />
         </Panel>
 

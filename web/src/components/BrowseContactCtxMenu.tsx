@@ -104,7 +104,7 @@ export function BrowseContactCtxMenu({
         onMouseLeave={onGroupsLeave}
       >
         <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
-        <span className="min-w-0 flex-1">Groups</span>
+        <span className="min-w-0 flex-1">Labels</span>
         <ChevronRightIcon className="size-3.5 shrink-0 opacity-70" />
       </button>
       <div className="my-1 border-t border-border/60" />

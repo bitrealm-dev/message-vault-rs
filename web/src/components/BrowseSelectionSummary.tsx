@@ -2,6 +2,10 @@
 
 import type { CollapsedGroupConversation } from "@/lib/groupChatList";
 import type { ContactDetail, ContactListItem } from "@/lib/types";
+import {
+  collapsedParticipantLabels,
+  GroupNameSep,
+} from "./GroupConversationRow";
 
 export function browseSelectionSummaryFlags(options: {
   hasSelection: boolean;
@@ -42,7 +46,10 @@ export function browseSelectionSummaryFlags(options: {
       : null;
   const showFocusContactCard =
     hasGroupSelection && !hasSelection && focusedContact != null;
+  const nothingFocused =
+    !hasSelection && !hasGroupSelection && contactId == null;
   const showThreadPane =
+    !nothingFocused &&
     !showGroupsCard &&
     !(hasSelection && !(activeThread?.startsWith("gfull-")));
 
@@ -88,21 +95,14 @@ export function BrowseSelectionSummary({
   onSelectContact: (id: number) => void;
   onSelectGroup: (g: CollapsedGroupConversation) => void;
 }) {
-  const groupRowLabel = (g: CollapsedGroupConversation) => {
-    if (g.namedTitle?.trim()) return g.namedTitle.trim();
-    if (g.participantNames.length > 0) {
-      return g.participantNames.join(" · ");
-    }
-    return g.title || "Group message";
-  };
   const groupRowDate = (g: CollapsedGroupConversation) =>
     g.dateStart === g.dateEnd
       ? g.dateStart
       : `${g.dateStart} – ${g.dateEnd}`;
 
   const contactsCard = (
-    <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+    <div className="overflow-hidden rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
         <h2 className="text-[14px] font-semibold text-text">
           {selectedContactCount} contact
           {selectedContactCount === 1 ? "" : "s"} selected
@@ -115,15 +115,11 @@ export function BrowseSelectionSummary({
           Clear selection
         </button>
       </div>
-      <ul>
+      <ul className="bg-[#3a3a3c]">
         {selectedContacts.map((c, i) => (
           <li
             key={c.id}
-            className={`flex items-center justify-between gap-4 px-4 py-2.5 ${
-              i < selectedContacts.length - 1
-                ? "border-b border-border/60"
-                : ""
-            }`}
+            className="relative flex items-center justify-between gap-4 px-4 py-2.5"
           >
             <button
               type="button"
@@ -135,6 +131,12 @@ export function BrowseSelectionSummary({
             <span className="shrink-0 text-[13px] text-muted tabular-nums">
               {c.preferredHandle ?? ""}
             </span>
+            {i < selectedContacts.length - 1 && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute right-4 bottom-0 left-4 h-px bg-white/20"
+              />
+            )}
           </li>
         ))}
       </ul>
@@ -143,8 +145,8 @@ export function BrowseSelectionSummary({
 
   const focusContactCard =
     focusedContact != null ? (
-      <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+      <div className="overflow-hidden rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
           <h2 className="text-[14px] font-semibold text-text">
             1 contact selected
           </h2>
@@ -156,7 +158,7 @@ export function BrowseSelectionSummary({
             Clear selection
           </button>
         </div>
-        <ul>
+        <ul className="bg-[#3a3a3c]">
           <li className="flex items-center justify-between gap-4 px-4 py-2.5">
             <button
               type="button"
@@ -174,8 +176,8 @@ export function BrowseSelectionSummary({
     ) : null;
 
   const groupsCard = (
-    <div className="rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+    <div className="overflow-hidden rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
         <h2 className="text-[14px] font-semibold text-text">
           {selectedGroupCount} group message
           {selectedGroupCount === 1 ? "" : "s"} selected
@@ -188,29 +190,52 @@ export function BrowseSelectionSummary({
           Clear selection
         </button>
       </div>
-      <ul>
-        {selectedGroupRows.map((g, i) => (
-          <li
-            key={g.conversationId}
-            className={`flex items-center justify-between gap-4 px-4 py-2.5 ${
-              i < selectedGroupRows.length - 1
-                ? "border-b border-border/60"
-                : ""
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => onSelectGroup(g)}
-              className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
-              title={g.titleFull}
+      <ul className="bg-[#3a3a3c]">
+        {selectedGroupRows.map((g, i) => {
+          const namedTitle = g.namedTitle?.trim() || null;
+          const names = !namedTitle ? collapsedParticipantLabels(g) : [];
+          return (
+            <li
+              key={g.conversationId}
+              className="relative flex items-start justify-between gap-4 px-4 py-2.5"
             >
-              {groupRowLabel(g)}
-            </button>
-            <span className="shrink-0 text-[13px] text-muted tabular-nums">
-              {groupRowDate(g)}
-            </span>
-          </li>
-        ))}
+              <button
+                type="button"
+                onClick={() => onSelectGroup(g)}
+                className="min-w-0 flex-1 text-left text-[13px] hover:text-accent"
+                title={g.titleFull}
+              >
+                {namedTitle ? (
+                  <span className="block truncate font-medium text-text">
+                    {namedTitle}
+                  </span>
+                ) : names.length > 0 ? (
+                  <span className="block leading-snug font-medium text-text">
+                    {names.map((name, idx) => (
+                      <span key={`${g.conversationId}-name-${idx}`}>
+                        {idx > 0 ? <GroupNameSep /> : null}
+                        <span className="whitespace-nowrap">{name}</span>
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="block truncate font-medium text-text">
+                    {g.title || "Group message"}
+                  </span>
+                )}
+              </button>
+              <span className="shrink-0 pt-px text-[13px] leading-snug text-muted tabular-nums">
+                {groupRowDate(g)}
+              </span>
+              {i < selectedGroupRows.length - 1 && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute right-4 bottom-0 left-4 h-px bg-white/20"
+                />
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

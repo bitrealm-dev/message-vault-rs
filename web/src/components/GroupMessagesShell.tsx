@@ -438,9 +438,6 @@ export function GroupMessagesShell({
         >
           <MyContactPane
             owner={ownerState}
-            groupMessageCount={
-              new Set(groupChats.map((g) => g.id)).size
-            }
             vaultReadOnly={vaultReadOnly}
             onEdit={(el) => {
               setOwnerEditAnchor(

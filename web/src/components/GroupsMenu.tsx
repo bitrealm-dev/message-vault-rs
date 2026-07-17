@@ -3,7 +3,7 @@
 import { isReservedGroupName } from "@/lib/reservedGroups";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconHoverTarget } from "./IconHoverLabel";
-import { EraserIcon, PeopleGroupIcon } from "./icons";
+import { EraserIcon, PeopleGroupIcon, SearchIcon } from "./icons";
 import { useDismissible } from "./useDismissible";
 
 export type GroupCheckState = "on" | "off" | "mixed";
@@ -21,7 +21,7 @@ export function GroupsMenu({
   disabled = false,
   /** Render the trigger as a compact icon-only button with a hover tooltip. */
   iconOnly = false,
-  /** Show "Groups" text + chevron (for contact edit dialog). */
+  /** Show "Labels" text + chevron (for contact edit dialog). */
   labeled = false,
   /** When set, render only the panel at this fixed position (no toolbar trigger). */
   fixedPosition = null,
@@ -248,11 +248,11 @@ export function GroupsMenu({
     >
       {!isFixed &&
         (iconOnly ? (
-          <IconHoverTarget label="Groups" placement="bottom" hidden={open}>
+          <IconHoverTarget label="Labels" placement="bottom" hidden={open}>
             <button
               ref={triggerRef}
               type="button"
-              aria-label="Groups"
+              aria-label="Labels"
               aria-expanded={open}
               disabled={disabled}
               onClick={() => {
@@ -273,7 +273,7 @@ export function GroupsMenu({
           <button
             ref={triggerRef}
             type="button"
-            aria-label="Groups"
+            aria-label="Labels"
             aria-expanded={open}
             disabled={disabled}
             onClick={() => {
@@ -287,15 +287,15 @@ export function GroupsMenu({
                 : "bg-elevated text-muted hover:text-text"
             }`}
           >
-            <span>Groups</span>
+            <span>Labels</span>
             <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
           </button>
         ) : (
-          <IconHoverTarget label="Groups" placement="bottom" hidden={open}>
+          <IconHoverTarget label="Labels" placement="bottom" hidden={open}>
             <button
               ref={triggerRef}
               type="button"
-              aria-label="Groups"
+              aria-label="Labels"
               aria-expanded={open}
               disabled={disabled}
               onClick={() => {
@@ -325,7 +325,7 @@ export function GroupsMenu({
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search groups…"
+                placeholder="Search labels…"
                 className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-muted"
               />
             </div>
@@ -350,7 +350,7 @@ export function GroupsMenu({
             </label>
             <div className="mx-3 my-1 border-t border-border/60" />
             {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-[12px] text-muted">No groups</p>
+              <p className="px-3 py-2 text-[12px] text-muted">No labels</p>
             ) : (
               filtered.map((name) => {
                 const state = checks[name] ?? "off";
@@ -387,7 +387,7 @@ export function GroupsMenu({
               <span className="flex size-3.5 items-center justify-center text-[15px] leading-none text-muted">
                 +
               </span>
-              <span>Create group</span>
+              <span>Create label</span>
             </button>
             {onClearAll && (
               <button
@@ -406,7 +406,7 @@ export function GroupsMenu({
 
       {open && mode === "create" && (
         <div className={`${panelClass} p-3`} style={panelStyle}>
-          <h3 className="text-[14px] font-semibold text-text">Create group</h3>
+          <h3 className="text-[14px] font-semibold text-text">Create label</h3>
           <input
             ref={nameRef}
             type="text"
@@ -463,19 +463,3 @@ function ChevronIcon({ className }: { className?: string }) {
   );
 }
 
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="m16.5 16.5 4 4" />
-    </svg>
-  );
-}

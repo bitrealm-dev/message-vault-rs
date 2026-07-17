@@ -5,7 +5,8 @@ import type { MouseEvent, ReactNode, RefObject } from "react";
 import { CountBadge } from "./CountBadge";
 import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
-import { PencilIcon, XIcon } from "./icons";
+import { GroupMessagesOutlineIcon, PencilIcon, XIcon } from "./icons";
+import { PaneSearchField } from "./PaneSearchField";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
 export function BrowseContactList({
@@ -90,12 +91,10 @@ export function BrowseContactList({
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
 
       <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <input
-          type="search"
+        <PaneSearchField
           value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search by name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent"
+          onChange={onQueryChange}
+          placeholder={`Search ${sectionLabel}`}
         />
       </div>
       <div className="flex h-[45px] shrink-0 items-center justify-between overflow-visible border-b border-border px-3">
@@ -233,9 +232,9 @@ export function BrowseContactList({
                     onMouseDown={(e) => {
                       if (e.shiftKey) e.preventDefault();
                     }}
-                    className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
+                    className="flex min-w-0 flex-1 items-stretch justify-between gap-2 self-stretch text-left"
                   >
-                    <span className="min-w-0">
+                    <span className="min-w-0 self-start">
                       <span className="block truncate text-[13px] font-semibold text-text">
                         {c.displayName}
                       </span>
@@ -253,12 +252,23 @@ export function BrowseContactList({
                           />
                         )}
                     </span>
-                    {c.messageCount > 0 && (
-                      <span className="shrink-0 pt-0.5">
-                        <CountBadge
-                          count={c.messageCount}
-                          title="1:1 messages"
-                        />
+                    {(c.messageCount > 0 || c.groupMessageCount > 0) && (
+                      <span className="flex shrink-0 flex-col items-end self-stretch pt-0.5">
+                        {c.messageCount > 0 && (
+                          <CountBadge
+                            count={c.messageCount}
+                            title="1:1 messages"
+                          />
+                        )}
+                        {c.groupMessageCount > 0 && (
+                          <span
+                            title="Group messages"
+                            className="mt-auto inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted"
+                          >
+                            <GroupMessagesOutlineIcon className="size-3.5 shrink-0 opacity-80" />
+                            {c.groupMessageCount.toLocaleString()}
+                          </span>
+                        )}
                       </span>
                     )}
                   </button>

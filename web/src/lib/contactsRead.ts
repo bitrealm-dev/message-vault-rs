@@ -22,7 +22,7 @@ import type {
   YearThread,
 } from "./types";
 
-/** Contact groups (GUI "Groups"). Stored in SQLite `contact_groups` / `contact_group_members`. */
+/** Contact labels (GUI "Labels"). Stored in SQLite `contact_groups` / `contact_group_members`. */
 export function listGroups(): string[] {
   const accountId = currentAccountId();
   const db = getDb();

@@ -83,18 +83,18 @@ export async function undoCommand(cmd: HistoryCommand): Promise<void> {
       const res = await fetch(
         `/api/contact-groups/members?name=${encodeURIComponent(cmd.name)}`,
       );
-      if (!res.ok) throw new Error(await readError(res, "group lookup failed"));
+      if (!res.ok) throw new Error(await readError(res, "label lookup failed"));
       const data = (await res.json()) as { memberContactIds?: number[] };
       const members = data.memberContactIds ?? [];
       if (members.length > 0) {
         throw new Error(
-          "Group has members; undo create is unavailable",
+          "Label has members; undo create is unavailable",
         );
       }
       await jsonFetch(
         "/api/contact-groups",
         { method: "DELETE", body: JSON.stringify({ name: cmd.name }) },
-        "delete group failed",
+        "delete label failed",
       );
       return;
     }
@@ -108,7 +108,7 @@ export async function undoCommand(cmd: HistoryCommand): Promise<void> {
             memberContactIds: cmd.memberContactIds,
           }),
         },
-        "restore group failed",
+        "restore label failed",
       );
       return;
     default: {
@@ -161,14 +161,14 @@ export async function redoCommand(cmd: HistoryCommand): Promise<void> {
       await jsonFetch(
         "/api/contact-groups",
         { method: "POST", body: JSON.stringify({ name: cmd.name }) },
-        "create group failed",
+        "create label failed",
       );
       return;
     case "deleteGroup":
       await jsonFetch(
         "/api/contact-groups",
         { method: "DELETE", body: JSON.stringify({ name: cmd.name }) },
-        "delete group failed",
+        "delete label failed",
       );
       return;
     default: {

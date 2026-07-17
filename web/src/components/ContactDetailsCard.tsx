@@ -145,7 +145,7 @@ export function ContactDetailsCard({
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] leading-4 tracking-wide text-muted">
-                Groups
+                Labels
               </div>
               <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
                 <GroupNamesList names={shownGroups} />

@@ -16,12 +16,14 @@ export function SortMenu<T extends string>({
   order,
   onChange,
   ariaLabel = "Sort by",
+  disabled = false,
 }: {
   fields: SortField<T>[];
   sort: T;
   order: SortOrder;
   onChange: (next: { sort: T; order: SortOrder }) => void;
   ariaLabel?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
@@ -36,6 +38,7 @@ export function SortMenu<T extends string>({
   };
 
   const toggle = () => {
+    if (disabled) return;
     if (open) {
       close();
       return;
@@ -69,8 +72,9 @@ export function SortMenu<T extends string>({
           type="button"
           aria-label={ariaLabel}
           aria-expanded={open}
+          disabled={disabled}
           onClick={toggle}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:pointer-events-none disabled:opacity-40"
         >
           <SortIcon />
         </button>
@@ -224,10 +228,12 @@ export function BrowseGroupChatSortMenu({
   sortBy,
   order,
   onChange,
+  disabled = false,
 }: {
   sortBy: BrowseGroupChatSortBy;
   order: SortOrder;
   onChange: (next: { sortBy: BrowseGroupChatSortBy; order: SortOrder }) => void;
+  disabled?: boolean;
 }) {
   return (
     <SortMenu
@@ -238,6 +244,7 @@ export function BrowseGroupChatSortMenu({
         onChange({ sortBy: sort, order: nextOrder })
       }
       ariaLabel="Sort group messages"
+      disabled={disabled}
     />
   );
 }

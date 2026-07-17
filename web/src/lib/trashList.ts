@@ -10,12 +10,14 @@ import type {
   UnassignedHandle,
 } from "./types";
 
-export type TrashCategory = "messages" | "groupMessages";
+export type TrashTab = "contacts" | "group-messages";
+
+export type TrashCategory = "contacts" | "groupMessages";
 
 export type TrashListItem =
   | {
       key: string;
-      category: "messages";
+      category: "contacts";
       trashKind: "contact" | "messages_only" | "unassigned";
       contactId?: number;
       handle: string;
@@ -34,13 +36,8 @@ export type TrashListItem =
       group: CollapsedGroupConversation;
     };
 
-export const TRASH_CATEGORY_ORDER: TrashCategory[] = [
-  "messages",
-  "groupMessages",
-];
-
 export const TRASH_CATEGORY_LABEL: Record<TrashCategory, string> = {
-  messages: "Messages",
+  contacts: "Contacts",
   groupMessages: "Group Messages",
 };
 
@@ -53,6 +50,10 @@ export function formatTrashedAt(trashedAt: string): string {
 
 function byTrashedAtDesc(a: string, b: string): number {
   return b.localeCompare(a);
+}
+
+export function parseTrashTab(raw: string | null | undefined): TrashTab {
+  return raw === "group-messages" ? "group-messages" : "contacts";
 }
 
 export function buildTrashListItems(input: {
@@ -68,7 +69,7 @@ export function buildTrashListItems(input: {
     if (!handle) continue;
     items.push({
       key: `c:${c.contactId}`,
-      category: "messages",
+      category: "contacts",
       trashKind: "contact",
       contactId: c.contactId,
       handle,
@@ -81,7 +82,7 @@ export function buildTrashListItems(input: {
   for (const m of input.messagesOnly) {
     items.push({
       key: `m:${m.handle}`,
-      category: "messages",
+      category: "contacts",
       trashKind: "messages_only",
       contactId: m.contactId,
       handle: m.handle,
@@ -94,7 +95,7 @@ export function buildTrashListItems(input: {
   for (const h of input.handles) {
     items.push({
       key: `u:${h.handle}`,
-      category: "messages",
+      category: "contacts",
       trashKind: "unassigned",
       handle: h.handle,
       displayName: h.displayName,
@@ -128,28 +129,34 @@ export function buildTrashListItems(input: {
   return items;
 }
 
-export function groupTrashListByCategory(
+export function itemsForTrashTab(
   items: TrashListItem[],
-): Array<[TrashCategory, TrashListItem[]]> {
-  const buckets: Record<TrashCategory, TrashListItem[]> = {
-    messages: [],
-    groupMessages: [],
-  };
-  for (const item of items) {
-    buckets[item.category].push(item);
-  }
-  for (const cat of TRASH_CATEGORY_ORDER) {
-    buckets[cat].sort((a, b) => {
+  tab: TrashTab,
+): TrashListItem[] {
+  const category: TrashCategory =
+    tab === "group-messages" ? "groupMessages" : "contacts";
+  return items
+    .filter((i) => i.category === category)
+    .sort((a, b) => {
       const byDate = byTrashedAtDesc(a.trashedAt, b.trashedAt);
       if (byDate !== 0) return byDate;
       return a.displayName.localeCompare(b.displayName, undefined, {
         sensitivity: "base",
       });
     });
+}
+
+export function countTrashTabs(items: TrashListItem[]): {
+  contacts: number;
+  groupMessages: number;
+} {
+  let contacts = 0;
+  let groupMessages = 0;
+  for (const i of items) {
+    if (i.category === "contacts") contacts += 1;
+    else groupMessages += 1;
   }
-  return TRASH_CATEGORY_ORDER.filter((cat) => buckets[cat].length > 0).map(
-    (cat) => [cat, buckets[cat]] as [TrashCategory, TrashListItem[]],
-  );
+  return { contacts, groupMessages };
 }
 
 export function filterTrashListItems(
@@ -160,7 +167,7 @@ export function filterTrashListItems(
   if (!q) return items;
   return items.filter((item) => {
     const hay = [item.displayName, item.key];
-    if (item.category === "messages") {
+    if (item.category === "contacts") {
       hay.push(item.handle);
     }
     return hay.join("\0").toLowerCase().includes(q);

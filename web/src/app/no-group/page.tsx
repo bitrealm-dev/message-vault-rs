@@ -11,7 +11,7 @@ export default async function NoGroupPage({
   return (
     <ContactBrowsePage
       section="no-group"
-      label="No group"
+      label="No label"
       nav="/no-group"
       contactId={parseContactId(sp.c)}
     />

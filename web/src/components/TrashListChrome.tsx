@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
-import { XIcon } from "./icons";
+import { RestoreIcon, XIcon } from "./icons";
 import {
   GroupTrashSortMenu,
   TrashSortMenu,
@@ -21,6 +21,7 @@ export type TrashChromeController = {
   saving: boolean;
   canDeleteForever: boolean;
   onToggleSelectAll: () => void;
+  onRestore?: () => void;
   onDeleteForever: () => void;
   selectAllLabel?: string;
   sort?: {
@@ -43,6 +44,7 @@ export function TrashListChrome({
   saving,
   canDeleteForever,
   onToggleSelectAll,
+  onRestore,
   onDeleteForever,
   selectAllLabel = "Select all trash",
   sort,
@@ -94,10 +96,22 @@ export function TrashListChrome({
           {tabBar}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
+          {onRestore && (
+            <button
+              type="button"
+              aria-label="Restore"
+              title="Restore"
+              disabled={saving || !canDeleteForever}
+              onClick={onRestore}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted transition-colors hover:border-accent/40 hover:bg-accent/15 hover:text-accent disabled:pointer-events-none disabled:opacity-40"
+            >
+              <RestoreIcon className="size-3.5 shrink-0 opacity-80" />
+            </button>
+          )}
           <button
             type="button"
-            aria-label="Delete"
-            title="Delete"
+            aria-label="Delete forever"
+            title="Delete forever"
             disabled={saving || !canDeleteForever}
             onClick={onDeleteForever}
             className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted transition-colors hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-300 disabled:pointer-events-none disabled:opacity-40"

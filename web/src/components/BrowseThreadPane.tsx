@@ -359,7 +359,7 @@ export function BrowseThreadPane({
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto px-4 pt-2.5 pb-4"
       >
-        {stripItems.length > 0 && (
+        {stripItems.length > 0 && sourceCounts.all > 0 && (
           <div className="mb-1.5 flex flex-wrap items-center justify-center gap-y-1">
             {stripItems.map((item, i) => (
               <span key={item.key} className="flex items-center">
@@ -405,13 +405,9 @@ export function BrowseThreadPane({
           </div>
         )}
 
-        {!activeThread && !loadingMessages && (
+        {!activeThread && !loadingMessages && detail && (
           <p className="pt-8 text-center text-[13px] text-muted">
-            {!detail
-              ? "Choose a contact to read messages."
-              : threadsReady
-                ? "No messages"
-                : "Loading messages…"}
+            {threadsReady ? "No messages" : "Loading messages…"}
           </p>
         )}
         {loadingMessages && messages.length === 0 && (

@@ -141,7 +141,7 @@ function ensureGroupId(
   const row = db
     .prepare(`SELECT id FROM contact_groups WHERE account_id = ? AND name = ?`)
     .get(accountId, name) as { id: number } | undefined;
-  if (!row) throw new Error(`failed to ensure group ${name}`);
+  if (!row) throw new Error(`failed to ensure label ${name}`);
   return row.id;
 }
 
@@ -172,7 +172,7 @@ export function createGroup(name: string): string {
       )
       .get(accountId, trimmed) as { name: string } | undefined;
     if (existing) {
-      throw new Error("group already exists");
+      throw new Error("label already exists");
     }
     writeDb
       .prepare(`INSERT INTO contact_groups (account_id, name) VALUES (?, ?)`)
@@ -200,7 +200,7 @@ export function renameGroup(from: string, to: string): string {
   const writeDb = new Database(dbPath());
   try {
     const id = findGroupId(writeDb, oldName, accountId);
-    if (id == null) throw new Error("group not found");
+    if (id == null) throw new Error("label not found");
 
     const clash = writeDb
       .prepare(
@@ -208,7 +208,7 @@ export function renameGroup(from: string, to: string): string {
          WHERE account_id = ? AND name = ? COLLATE NOCASE AND id != ?`,
       )
       .get(accountId, newName, id) as { id: number } | undefined;
-    if (clash) throw new Error("group already exists");
+    if (clash) throw new Error("label already exists");
 
     writeDb
       .prepare(`UPDATE contact_groups SET name = ? WHERE id = ? AND account_id = ?`)
@@ -233,7 +233,7 @@ export function deleteGroup(name: string): void {
   const writeDb = new Database(dbPath());
   try {
     const id = findGroupId(writeDb, trimmed, accountId);
-    if (id == null) throw new Error("group not found");
+    if (id == null) throw new Error("label not found");
     writeDb
       .prepare(`DELETE FROM contact_group_members WHERE group_id = ?`)
       .run(id);

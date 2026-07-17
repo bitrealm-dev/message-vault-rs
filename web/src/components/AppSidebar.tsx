@@ -259,7 +259,7 @@ function GroupsNav({
       pushHistory({
         type: "createGroup",
         name: data.name,
-        label: `Create group ${data.name}`,
+        label: `Create label ${data.name}`,
       });
       router.refresh();
       router.push(`/group/${groupSlug(data.name)}`);
@@ -320,7 +320,7 @@ function GroupsNav({
         type: "deleteGroup",
         name,
         memberContactIds,
-        label: `Delete group ${name}`,
+        label: `Delete label ${name}`,
       });
       setMenuFor(null);
       router.refresh();
@@ -344,10 +344,10 @@ function GroupsNav({
     <div id="nav-groups">
       <div className="relative mt-3" ref={headerRef}>
         {compact ? (
-          <IconHoverTarget label="Groups" placement="right" className="block w-full">
+          <IconHoverTarget label="Labels" placement="right" className="block w-full">
             <button
               type="button"
-              aria-label="Groups"
+              aria-label="Labels"
               onClick={onExpandGroups}
               className={`relative flex h-8 w-full items-center gap-2 ${navItemPad} text-[14px] transition-colors ${
                 pathnameGroupActive
@@ -369,11 +369,11 @@ function GroupsNav({
             className={`flex h-8 items-center justify-between ${navHeadingClass}`}
           >
             <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
-              Groups
+              Labels
             </span>
             <button
               type="button"
-              aria-label="Create group"
+              aria-label="Create label"
               disabled={busy}
               onClick={(e) => {
                 setMenuFor(null);
@@ -425,7 +425,7 @@ function GroupsNav({
                 </Link>
                 <button
                   type="button"
-                  aria-label={`Group options for ${name}`}
+                  aria-label={`Label options for ${name}`}
                   aria-expanded={menuOpen}
                   disabled={busy}
                   onClick={(e) => {
@@ -493,7 +493,7 @@ function GroupsNav({
       {!hideItems && (
         <NavLink
           href="/no-group"
-          label="No group"
+          label="No label"
           active={pathname === "/no-group"}
           icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
         />
@@ -501,7 +501,7 @@ function GroupsNav({
 
       {!hideItems && create && (
         <GroupNamePopover
-          title="Create group"
+          title="Create label"
           anchor={{ x: create.x, y: create.y }}
           panelRef={createPanelRef}
           onSave={createGroup}
@@ -665,7 +665,7 @@ export function AppSidebar({
   onHideNav?: () => void;
   onShowNav?: () => void;
   onExpandGroups?: () => void;
-  /** Increment to scroll the Groups section into view after expand. */
+  /** Increment to scroll the Labels section into view after expand. */
   focusGroupsToken?: number;
 }) {
   const [demoResetAvailable, setDemoResetAvailable] = useState(false);
@@ -706,7 +706,7 @@ export function AppSidebar({
 
   const resetDemo = useCallback(async () => {
     const ok = await confirm(
-      "Restore all messages, contacts, groups, and trash to the committed demo dataset. Your edits will be lost.",
+      "Restore all messages, contacts, labels, and trash to the committed demo dataset. Your edits will be lost.",
       "Reset demo",
     );
     if (!ok) return;
@@ -768,8 +768,14 @@ export function AppSidebar({
         )}
       </div>
 
-      {/* Aligns nav with contact-list body (search + toolbar are both 45px). */}
-      <div className="h-[45px] shrink-0 border-b border-border" aria-hidden />
+      {/* Aligns with panel 2 search row; "View" heading when expanded. */}
+      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
+        {!collapsed && (
+          <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
+            View
+          </span>
+        )}
+      </div>
 
       {!collapsed && resetError && (
         <p className="shrink-0 px-3 py-1.5 text-[11px] text-red-400" role="alert">

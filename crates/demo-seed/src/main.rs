@@ -89,8 +89,10 @@ cd web && npm run process-assets
 
 - **Contacts / All / Excluded / No Messages** — CSV `exclude` and zero-message rows
 - **Unassigned** — handles with messages but no CSV row (phone + email-only)
-- **Group Chats** — named titles, generic `chat…` ids, 3–9 participants, announcements
-- **Year threads** — 1:1 messages from 2020 through present
+- **Frequent / lapsed** — ~15 contacts busy in the past 3 years; ~10 mostly older history
+- **High volume** — a couple 1:1 threads with 1000+ messages
+- **Group Chats** — ~200 threads, many untitled, some phone-number-only participants, sizes up to 20
+- **Year threads** — message history from 2016 through present (10 years)
 - **Replies, tapbacks, attachments** — including one intentionally missing file
 - **orphaned.json** — messages without a conversation header
 - **exclude.csv** — short-code spam absent after import

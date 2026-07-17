@@ -14,9 +14,13 @@ use serde_json;
 
 use crate::assets::{JPG_PHOTOS, OTHER_ATTACHMENTS};
 use crate::personas::{
-    Contact, EMPTY_GROUP_HANDLE, EMPTY_THREAD_HANDLE, GROUP_CHAT_IDS, ORPHAN_SENDER, Roster,
-    Unassigned,
+    phone_only_handles, Activity, Contact, EMPTY_GROUP_HANDLE, EMPTY_THREAD_HANDLE, ORPHAN_SENDER,
+    Roster, Unassigned,
 };
+
+const GROUP_COUNT: usize = 200;
+/// Roughly 1 in 7 groups are phone-number-only (no named contacts).
+const PHONE_ONLY_GROUP_EVERY: usize = 7;
 
 #[derive(Debug, Default)]
 pub struct GenStats {
@@ -72,6 +76,14 @@ const GROUP_TITLES: &[&str] = &[
     "Family Chat",
     "College Reunion 2024",
     "Neighborhood Watch",
+    "Hiking Crew",
+    "Potluck Planning",
+    "Fantasy Draft",
+    "Office Lunch",
+    "Road Trip West",
+    "Baby Shower",
+    "Game Night",
+    "Volunteer Squad",
 ];
 
 pub fn write_all(
@@ -101,15 +113,8 @@ pub fn write_all(
         .filter(|c| !c.phones.is_empty() && c.has_one_to_one())
     {
         let phone = contact.primary_phone();
-        let count = individual_message_count(contact.exclude, rng);
-        write_individual(
-            staging,
-            phone,
-            contact,
-            count,
-            rng,
-            &mut stats,
-        )?;
+        let count = individual_message_count(contact, rng);
+        write_individual(staging, phone, contact, count, rng, &mut stats)?;
     }
 
     // Unassigned 1:1 — mostly short threads
@@ -124,9 +129,15 @@ pub fn write_all(
         .iter()
         .filter(|c| c.message_scope == crate::personas::MessageScope::Group)
         .collect();
-    for i in 0..16 {
-        let anchor = group_only.get(i % group_only.len().max(1)).copied();
-        write_group(staging, roster, i, anchor, rng, &mut stats)?;
+    let mut phone_only_offset = 0usize;
+    for i in 0..GROUP_COUNT {
+        if i > 0 && i % PHONE_ONLY_GROUP_EVERY == 0 {
+            write_phone_only_group(staging, i, phone_only_offset, rng, &mut stats)?;
+            phone_only_offset += 24;
+        } else {
+            let anchor = group_only.get(i % group_only.len().max(1)).copied();
+            write_group(staging, roster, i, anchor, rng, &mut stats)?;
+        }
     }
 
     // Exclude.csv spam (3) — still written to staging but skipped on import
@@ -169,7 +180,7 @@ fn write_individual(
     let mut messages = Vec::new();
     let mut origin_guid: Option<String> = None;
     for i in 0..msg_count {
-        let year = year_for_index(i, msg_count, rng);
+        let year = year_for_activity(i, msg_count, contact.activity, rng);
         let from_me = i % 3 != 0;
         let guid = format!("1to1-{chat_id}-{i}");
         let mut msg = text_message(&guid, year, i, from_me, chat_id, rng);
@@ -250,6 +261,42 @@ fn write_unassigned(
     Ok(())
 }
 
+fn group_participant_size(rng: &mut impl Rng, pool_len: usize) -> usize {
+    let roll: f64 = rng.random();
+    let ideal = if roll < 0.70 {
+        rng.random_range(3..9)
+    } else if roll < 0.95 {
+        rng.random_range(9..15)
+    } else {
+        rng.random_range(15..21)
+    };
+    ideal.min(pool_len.max(3)).max(3.min(pool_len.max(1)))
+}
+
+fn group_chat_id(index: usize) -> String {
+    match index % 5 {
+        0 => format!("chat{:010}", 1_000_000_000u64 + index as u64),
+        1 => format!("+1800555{:04}", 1000 + (index % 9000)),
+        2 => format!("+4477009{:05}", 10000 + (index % 80000)),
+        3 => format!("+1212555{:04}", 2000 + (index % 7000)),
+        _ => format!("chat{:010}", 2_000_000_000u64 + index as u64),
+    }
+}
+
+/// ~45% untitled so many groups show participant names only.
+fn group_title(index: usize, rng: &mut impl Rng) -> Option<String> {
+    if rng.random_bool(0.45) {
+        None
+    } else {
+        let base = GROUP_TITLES[index % GROUP_TITLES.len()];
+        if index >= GROUP_TITLES.len() && rng.random_bool(0.35) {
+            Some(format!("{base} {}", (index / GROUP_TITLES.len()) + 1))
+        } else {
+            Some(base.to_string())
+        }
+    }
+}
+
 fn write_group(
     staging: &Path,
     roster: &Roster,
@@ -258,12 +305,12 @@ fn write_group(
     rng: &mut impl Rng,
     stats: &mut GenStats,
 ) -> Result<()> {
-    let size = rng.random_range(3..10);
     let mut members: Vec<&Contact> = roster
         .contacts
         .iter()
         .filter(|c| c.has_group())
         .collect();
+    let size = group_participant_size(rng, members.len());
     members.shuffle(rng);
     if let Some(a) = anchor {
         members.retain(|c| c.primary_phone() != a.primary_phone());
@@ -271,13 +318,8 @@ fn write_group(
     }
     members.truncate(size);
 
-    let chat_id = GROUP_CHAT_IDS[index % GROUP_CHAT_IDS.len()].to_string();
-
-    let title = if index % 4 == 0 {
-        None
-    } else {
-        Some(GROUP_TITLES[index % GROUP_TITLES.len()].to_string())
-    };
+    let chat_id = group_chat_id(index);
+    let title = group_title(index, rng);
 
     let participants: Vec<ParticipantRecord> = members
         .iter()
@@ -287,7 +329,7 @@ fn write_group(
         })
         .collect();
 
-    let path = staging.join(format!("group-{index:02}.json"));
+    let path = staging.join(format!("group-{index:03}.json"));
     let mut file = open_ndjson(&path)?;
     write_conversation_header(&mut file, &chat_id, "group", title.clone(), participants)?;
 
@@ -296,8 +338,8 @@ fn write_group(
             &mut file,
             MessageRecord {
                 guid: Some(format!("ann-{index}")),
-                timestamp: ts_local(2021, 6, 1, 10, 0),
-                timestamp_utc: Some(ts_utc(2021, 6, 1, 14, 0)),
+                timestamp: ts_local(2018, 6, 1, 10, 0),
+                timestamp_utc: Some(ts_utc(2018, 6, 1, 14, 0)),
                 is_from_me: false,
                 sender: Some(members[0].primary_phone().into()),
                 is_announcement: true,
@@ -313,7 +355,7 @@ fn write_group(
 
     let msg_count = group_message_count(rng);
     for i in 0..msg_count {
-        let year = year_for_index(i, msg_count, rng);
+        let year = year_span(i, msg_count, 2016, 2026);
         let from_me = i % 7 == 0;
         let sender = if from_me {
             None
@@ -321,6 +363,12 @@ fn write_group(
             Some(members[i % members.len()].primary_phone().into())
         };
         let guid = format!("grp-{index}-{i}");
+        let name = members[i % members.len()].first_name.as_str();
+        let label = if name.is_empty() {
+            members[i % members.len()].last_name.as_str()
+        } else {
+            name
+        };
         let mut msg = MessageRecord {
             guid: Some(guid),
             timestamp: ts_local(
@@ -341,7 +389,7 @@ fn write_group(
             sender,
             text: Some(format!(
                 "{} {}",
-                members[i % members.len()].first_name,
+                label,
                 CHAT_SNIPPETS.choose(rng).unwrap()
             )),
             service: if i % 11 == 0 {
@@ -356,7 +404,7 @@ fn write_group(
             if i > 0 && i % 12 == 0 {
                 msg.text = Some(format!(
                     "{} {}",
-                    members[i % members.len()].first_name,
+                    label,
                     PHOTO_CAPTIONS.choose(rng).unwrap()
                 ));
             }
@@ -376,6 +424,74 @@ fn write_group(
                 is_from_me: false,
                 sender: Some(reactor.into()),
             });
+        }
+        write_message(&mut file, msg)?;
+        stats.messages += 1;
+    }
+    stats.conversation_files += 1;
+    Ok(())
+}
+
+/// Group chat whose participants are phone numbers only (no contact names / CSV rows).
+fn write_phone_only_group(
+    staging: &Path,
+    index: usize,
+    handle_offset: usize,
+    rng: &mut impl Rng,
+    stats: &mut GenStats,
+) -> Result<()> {
+    let size = group_participant_size(rng, 20);
+    let handles = phone_only_handles(handle_offset, size);
+    let chat_id = group_chat_id(index);
+    // Untitled so the UI shows phone handles as the identity.
+    let title = None;
+
+    let participants: Vec<ParticipantRecord> = handles
+        .iter()
+        .map(|h| ParticipantRecord {
+            handle: h.clone(),
+            name_hint: None,
+        })
+        .collect();
+
+    let path = staging.join(format!("group-{index:03}.json"));
+    let mut file = open_ndjson(&path)?;
+    write_conversation_header(&mut file, &chat_id, "group", title, participants)?;
+
+    let msg_count = group_message_count(rng);
+    for i in 0..msg_count {
+        let year = year_span(i, msg_count, 2016, 2026);
+        let from_me = i % 7 == 0;
+        let sender = if from_me {
+            None
+        } else {
+            Some(handles[i % handles.len()].clone())
+        };
+        let guid = format!("grp-phone-{index}-{i}");
+        let mut msg = MessageRecord {
+            guid: Some(guid),
+            timestamp: ts_local(
+                year,
+                ((i % 12) + 1) as u32,
+                ((i % 28) + 1) as u32,
+                (9 + (i % 10)) as u32,
+                i % 60,
+            ),
+            timestamp_utc: Some(ts_utc(
+                year,
+                ((i % 12) + 1) as u32,
+                ((i % 28) + 1) as u32,
+                (13 + (i % 10)) as u32,
+                i % 60,
+            )),
+            is_from_me: from_me,
+            sender,
+            text: Some(CHAT_SNIPPETS.choose(rng).unwrap().to_string()),
+            service: Some("iMessage".into()),
+            ..default_message()
+        };
+        if should_attach_jpg(i, msg_count) {
+            add_jpg_attachment(&mut msg, i + index, stats);
         }
         write_message(&mut file, msg)?;
         stats.messages += 1;
@@ -532,30 +648,48 @@ fn default_message() -> MessageRecord {
     }
 }
 
-fn individual_message_count(excluded: bool, rng: &mut impl Rng) -> usize {
-    if excluded {
+fn individual_message_count(contact: &Contact, rng: &mut impl Rng) -> usize {
+    if contact.exclude {
         return rng.random_range(3..10);
     }
-    let roll: f64 = rng.random();
-    if roll < 0.38 {
-        rng.random_range(3..12)
-    } else if roll < 0.72 {
-        rng.random_range(18..45)
-    } else if roll < 0.90 {
-        rng.random_range(50..110)
-    } else {
-        rng.random_range(120..200)
+    if contact.high_volume {
+        // Two whales: thousands of messages each.
+        return rng.random_range(1000..1301);
+    }
+    match contact.activity {
+        Activity::Frequent => {
+            let roll: f64 = rng.random();
+            if roll < 0.55 {
+                rng.random_range(28..55)
+            } else if roll < 0.90 {
+                rng.random_range(55..95)
+            } else {
+                rng.random_range(95..140)
+            }
+        }
+        Activity::Lapsed => rng.random_range(20..48),
+        Activity::Normal => {
+            let roll: f64 = rng.random();
+            if roll < 0.55 {
+                rng.random_range(5..16)
+            } else if roll < 0.90 {
+                rng.random_range(16..36)
+            } else {
+                rng.random_range(36..60)
+            }
+        }
     }
 }
 
 fn group_message_count(rng: &mut impl Rng) -> usize {
+    // Keep group threads short so ~200 groups + whales still land near ~5k total.
     let roll: f64 = rng.random();
-    if roll < 0.35 {
-        rng.random_range(6..18)
-    } else if roll < 0.78 {
-        rng.random_range(18..38)
+    if roll < 0.65 {
+        rng.random_range(2..7)
+    } else if roll < 0.92 {
+        rng.random_range(7..12)
     } else {
-        rng.random_range(38..58)
+        rng.random_range(12..20)
     }
 }
 
@@ -570,7 +704,7 @@ fn unassigned_message_count(rng: &mut impl Rng) -> usize {
     }
 }
 
-/// Scale attachment density to thread length.
+/// Scale attachment density to thread length (sparse for whale threads).
 fn should_attach_jpg(i: usize, total: usize) -> bool {
     if total < 3 {
         return false;
@@ -582,17 +716,25 @@ fn should_attach_jpg(i: usize, total: usize) -> bool {
         9
     } else if total < 50 {
         7
+    } else if total < 200 {
+        12
     } else {
-        6
+        80
     };
     i > 0 && i % stride == 0
 }
 
 fn should_attach_photo_only(i: usize, total: usize) -> bool {
+    if total >= 200 {
+        return total >= 12 && i % 120 == 5;
+    }
     total >= 12 && i % 13 == 5
 }
 
 fn should_attach_other(i: usize, total: usize) -> bool {
+    if total >= 200 {
+        return total >= 20 && i % 150 == 0;
+    }
     total >= 20 && i % 19 == 0
 }
 
@@ -642,9 +784,41 @@ fn tapback_loved(sender: &str, from_me: bool) -> TapbackRecord {
     }
 }
 
-fn year_for_index(i: usize, total: usize, rng: &mut impl Rng) -> i32 {
-    let base = 2020 + (i * 7 / total.max(1)) as i32;
-    base.min(2026).max(2020) + if rng.random_bool(0.1) { 0 } else { 0 }
+/// Even spread across [start, end] inclusive.
+fn year_span(i: usize, total: usize, start: i32, end: i32) -> i32 {
+    let span = (end - start).max(0) as usize;
+    if total <= 1 || span == 0 {
+        return end;
+    }
+    start + ((i * span) / (total - 1)) as i32
+}
+
+/// 10-year window (2016–2026) with activity-biased density.
+fn year_for_activity(
+    i: usize,
+    total: usize,
+    activity: Activity,
+    rng: &mut impl Rng,
+) -> i32 {
+    match activity {
+        Activity::Frequent => {
+            // ~80% in past 3 years; remainder older history.
+            if rng.random_bool(0.80) {
+                year_span(i, total, 2023, 2026)
+            } else {
+                year_span(i, total, 2016, 2022)
+            }
+        }
+        Activity::Lapsed => {
+            // Almost all older; rare recent blip.
+            if rng.random_bool(0.92) {
+                year_span(i, total, 2016, 2022)
+            } else {
+                year_span(i, total, 2023, 2024)
+            }
+        }
+        Activity::Normal => year_span(i, total, 2016, 2026),
+    }
 }
 
 fn ts_local(year: i32, month: u32, day: u32, hour: u32, minute: usize) -> String {

@@ -68,6 +68,6 @@ export function formatGroupDateTable(
       return `${day} ${mon} ${year}`;
     case "md":
     default:
-      return `${m[2]}-${m[3]}-${year}`;
+      return `${year}-${m[2]}-${m[3]}`;
   }
 }

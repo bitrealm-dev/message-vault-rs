@@ -2,6 +2,17 @@
 
 pub const OWNER_PHONE: &str = "+14155559000";
 
+/// How a contact's 1:1 traffic is timed across the 10-year window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Activity {
+    /// Spread across 2016–2026.
+    Normal,
+    /// Heavy traffic in the past 3 years (2023–2026).
+    Frequent,
+    /// Mostly older history; little recent traffic.
+    Lapsed,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageScope {
     /// Individual thread only (no group chat membership).
@@ -22,6 +33,9 @@ pub struct Contact {
     /// When false, no messages of any kind.
     pub has_messages: bool,
     pub message_scope: MessageScope,
+    pub activity: Activity,
+    /// Very large 1:1 thread (thousands of messages).
+    pub high_volume: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +51,60 @@ pub struct Roster {
     pub unassigned: Vec<Unassigned>,
     pub exclude_handles: Vec<(String, String)>,
 }
+
+/// Extra first/last pairs covering A–Z (display name first letter).
+const EXTRA_NAMES: &[(&str, &str)] = &[
+    ("Ada", "Vaughn"),
+    ("Ben", "Adler"),
+    ("Cora", "Bennett"),
+    ("Diego", "Cruz"),
+    ("Elena", "Diaz"),
+    ("Felix", "Edwards"),
+    ("Grace", "Finn"),
+    ("Hugo", "Garcia"),
+    ("Iris", "Holt"),
+    ("Jules", "Ibarra"),
+    ("Kai", "Jones"),
+    ("Lila", "Kwan"),
+    ("Nora", "Lane"),
+    ("Omar", "Moss"),
+    ("Priya", "Nash"),
+    ("Ruth", "Ortiz"),
+    ("Seth", "Park"),
+    ("Uma", "Quincy"),
+    ("Vera", "Ross"),
+    ("Wade", "Santos"),
+    ("Xander", "Torres"),
+    ("Yara", "Underwood"),
+    ("Zane", "Vargas"),
+    ("Amir", "Walsh"),
+    ("Beth", "Xu"),
+    ("Caleb", "Young"),
+    ("Dana", "Zhao"),
+    ("Eve", "Abbott"),
+    ("Finn", "Brooks"),
+    ("Gina", "Carter"),
+    ("Hank", "Doyle"),
+    ("Ivy", "Ellis"),
+    ("Jade", "Frost"),
+    ("Kyle", "Grant"),
+    ("Leah", "Howard"),
+    ("Mia", "Ingram"),
+    ("Nate", "Jenkins"),
+    ("Olive", "Keller"),
+    ("Paul", "Lambert"),
+    ("Rosa", "Mills"),
+    ("Sean", "Nolan"),
+    ("Tess", "Owens"),
+    ("Uri", "Perez"),
+    ("Vince", "Quinn"),
+    ("Wendy", "Ramirez"),
+    ("Xiomara", "Steele"),
+    ("Yusuf", "Tran"),
+    ("Zoe", "Upton"),
+    ("Aaron", "Vega"),
+    ("Bella", "West"),
+];
 
 pub fn build_roster() -> Roster {
     let mut contacts = vec![
@@ -308,6 +376,8 @@ pub fn build_roster() -> Roster {
         groups: vec![],
         has_messages: true,
         message_scope: MessageScope::OneToOne,
+        activity: Activity::Normal,
+        high_volume: false,
     });
     contacts.push(Contact {
         phones: vec!["+33612345678".into()],
@@ -317,7 +387,12 @@ pub fn build_roster() -> Roster {
         groups: vec!["Family".into()],
         has_messages: true,
         message_scope: MessageScope::Group,
+        activity: Activity::Normal,
+        high_volume: false,
     });
+
+    contacts.extend(extra_contacts());
+    assign_activity_patterns(&mut contacts);
 
     let unassigned = vec![
         Unassigned {
@@ -365,6 +440,80 @@ pub fn build_roster() -> Roster {
     }
 }
 
+/// ~50 generated contacts for alphabet coverage and volume.
+fn extra_contacts() -> Vec<Contact> {
+    let labels = [&[][..], &["Family"][..], &["Work"][..], &["College"][..]];
+    let scopes = [
+        MessageScope::OneToOne,
+        MessageScope::Both,
+        MessageScope::Group,
+        MessageScope::Both,
+        MessageScope::OneToOne,
+    ];
+
+    EXTRA_NAMES
+        .iter()
+        .enumerate()
+        .map(|(i, (first, last))| {
+            let phone = format!("+15551{:06}", 100_000 + i);
+            let has_messages = i % 17 != 0; // a few empty
+            let scope = if !has_messages {
+                MessageScope::Both
+            } else {
+                scopes[i % scopes.len()]
+            };
+            Contact {
+                phones: vec![phone],
+                first_name: (*first).into(),
+                last_name: (*last).into(),
+                exclude: false,
+                groups: labels[i % labels.len()]
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
+                has_messages,
+                message_scope: scope,
+                activity: Activity::Normal,
+                high_volume: false,
+            }
+        })
+        .collect()
+}
+
+/// 15 frequent (incl. 2 high-volume), 10 lapsed — among 1:1-capable contacts.
+fn assign_activity_patterns(contacts: &mut [Contact]) {
+    let mut one_to_one_idxs: Vec<usize> = contacts
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| {
+            c.has_messages
+                && !c.exclude
+                && matches!(
+                    c.message_scope,
+                    MessageScope::OneToOne | MessageScope::Both
+                )
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    // Prefer stable ordering by phone so seed output stays predictable.
+    one_to_one_idxs.sort_by_key(|&i| contacts[i].primary_phone().to_string());
+
+    // 2 high-volume whales (also frequent).
+    for &i in one_to_one_idxs.iter().take(2) {
+        contacts[i].high_volume = true;
+        contacts[i].activity = Activity::Frequent;
+    }
+    // 13 more frequent → 15 total.
+    for &i in one_to_one_idxs.iter().skip(2).take(13) {
+        contacts[i].activity = Activity::Frequent;
+    }
+    // 10 lapsed.
+    for &i in one_to_one_idxs.iter().skip(15).take(10) {
+        contacts[i].activity = Activity::Lapsed;
+    }
+}
+
 fn contact(
     phones: &[&str],
     first: &str,
@@ -382,6 +531,8 @@ fn contact(
         groups: groups.iter().map(|g| (*g).to_string()).collect(),
         has_messages,
         message_scope,
+        activity: Activity::Normal,
+        high_volume: false,
     }
 }
 
@@ -413,26 +564,6 @@ impl Contact {
     }
 }
 
-/// Varied group chat identifiers (generic ids, toll-free, international).
-pub const GROUP_CHAT_IDS: &[&str] = &[
-    "chat1847293051",
-    "+18005554321",
-    "+447700900555",
-    "chat2093847561",
-    "+18885556789",
-    "+33612349876",
-    "+12125558888",
-    "chat3159264078",
-    "+61491570999",
-    "+17135554444",
-    "chat4281736509",
-    "+13035557777",
-    "+16175556666",
-    "chat5392847610",
-    "+19175552222",
-    "+15805553333",
-];
-
 /// Empty group thread placeholder (header only, no messages).
 pub const EMPTY_GROUP_HANDLE: &str = "chat0000000001";
 
@@ -441,3 +572,10 @@ pub const EMPTY_THREAD_HANDLE: &str = "+18007438200";
 
 /// Orphaned-message sender stub (not in contacts).
 pub const ORPHAN_SENDER: &str = "+447700900999";
+
+/// Synthetic phone-only group participants (not in contacts.csv).
+pub fn phone_only_handles(start: usize, count: usize) -> Vec<String> {
+    (0..count)
+        .map(|i| format!("+15559{:06}", 200_000 + start + i))
+        .collect()
+}

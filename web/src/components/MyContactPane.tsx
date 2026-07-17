@@ -1,7 +1,6 @@
 "use client";
 
 import type { VaultOwner } from "@/lib/vaultOwner";
-import { CountBadge } from "./CountBadge";
 import { IconHoverTarget } from "./IconHoverLabel";
 import { ListHistoryMenu } from "./history";
 import {
@@ -9,17 +8,15 @@ import {
   PencilIcon,
   PeopleGroupIcon,
 } from "./icons";
+import { PaneSearchField } from "./PaneSearchField";
 
 /** Contact-list chrome for vault owner — matches Panel 2; most controls inert. */
 export function MyContactPane({
   owner,
-  groupMessageCount = 0,
   vaultReadOnly = false,
   onEdit,
 }: {
   owner: VaultOwner;
-  /** Distinct group chats (shown like contacts list counts). */
-  groupMessageCount?: number;
   vaultReadOnly?: boolean;
   onEdit?: (anchorEl: HTMLElement) => void;
 }) {
@@ -36,12 +33,10 @@ export function MyContactPane({
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        <input
-          type="search"
+        <PaneSearchField
           value=""
+          placeholder="Search Group Messages"
           disabled
-          placeholder="Search by name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:opacity-40"
         />
       </div>
       <div className="flex h-[45px] shrink-0 items-center justify-between overflow-visible border-b border-border px-3">
@@ -57,7 +52,7 @@ export function MyContactPane({
           </IconHoverTarget>
         </label>
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
-          <IconHoverTarget label="Groups (unavailable)" placement="bottom">
+          <IconHoverTarget label="Labels (unavailable)" placement="bottom">
             <span className={groupsToolbarBtn} aria-hidden>
               <PeopleGroupIcon className="size-4 shrink-0" />
               <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
@@ -112,7 +107,7 @@ export function MyContactPane({
                 className="checkbox-list opacity-40"
               />
             </span>
-            <span className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left">
+            <span className="flex min-w-0 flex-1 items-start gap-2 text-left">
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-semibold text-text">
                   {displayName}
@@ -125,11 +120,6 @@ export function MyContactPane({
                   <span className="block h-[1.5rem] text-[12px]" aria-hidden />
                 )}
               </span>
-              {groupMessageCount > 0 && (
-                <span className="shrink-0 pt-0.5">
-                  <CountBadge count={groupMessageCount} title="Group chats" />
-                </span>
-              )}
             </span>
           </div>
         </div>
