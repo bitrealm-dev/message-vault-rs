@@ -97,7 +97,7 @@ export function BrowseSelectionSummary({
       : `${g.dateStart} – ${g.dateEnd}`;
 
   const contactsCard = (
-    <div className="overflow-hidden rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+    <div className="overflow-hidden rounded-xl border border-border bg-popover shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
       <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
         <h2 className="text-[14px] font-semibold text-text">
           {selectedContactCount} contact
@@ -106,12 +106,12 @@ export function BrowseSelectionSummary({
         <button
           type="button"
           onClick={onClearContactSelection}
-          className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
+          className="inline-flex items-center rounded-md bg-hover px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-hover-strong"
         >
           Clear selection
         </button>
       </div>
-      <ul className="bg-[#3a3a3c]">
+      <ul className="bg-received">
         {selectedContacts.map((c, i) => (
           <li
             key={c.id}
@@ -126,7 +126,7 @@ export function BrowseSelectionSummary({
             {i < selectedContacts.length - 1 && (
               <span
                 aria-hidden
-                className="pointer-events-none absolute right-4 bottom-0 left-4 h-px bg-white/20"
+                className="pointer-events-none absolute right-4 bottom-0 left-4 h-px bg-hover-strong"
               />
             )}
           </li>
@@ -137,7 +137,7 @@ export function BrowseSelectionSummary({
 
   const focusContactCard =
     focusedContact != null ? (
-      <div className="overflow-hidden rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+      <div className="overflow-hidden rounded-xl border border-border bg-popover shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
           <h2 className="text-[14px] font-semibold text-text">
             1 contact selected
@@ -145,12 +145,12 @@ export function BrowseSelectionSummary({
           <button
             type="button"
             onClick={onClearContactFocus}
-            className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
+            className="inline-flex items-center rounded-md bg-hover px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-hover-strong"
           >
             Clear selection
           </button>
         </div>
-        <ul className="bg-[#3a3a3c]">
+        <ul className="bg-received">
           <li className="flex items-center justify-between gap-4 px-4 py-2.5">
             <span className="min-w-0 truncate text-[13px] text-text">
               {focusedContact.displayName}
@@ -164,7 +164,7 @@ export function BrowseSelectionSummary({
     ) : null;
 
   const groupsCard = (
-    <div className="overflow-hidden rounded-xl border border-border bg-[#2c2c2e] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+    <div className="overflow-hidden rounded-xl border border-border bg-popover shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
       <div className="flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
         <h2 className="text-[14px] font-semibold text-text">
           {selectedGroupCount} group message
@@ -173,12 +173,12 @@ export function BrowseSelectionSummary({
         <button
           type="button"
           onClick={onClearGroupSelection}
-          className="inline-flex items-center rounded-md bg-white/12 px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-white/18"
+          className="inline-flex items-center rounded-md bg-hover px-2.5 py-1 text-[12px] text-text transition-colors hover:bg-hover-strong"
         >
           Clear selection
         </button>
       </div>
-      <ul className="bg-[#3a3a3c]">
+      <ul className="bg-received">
         {selectedGroupRows.map((g, i) => {
           const namedTitle = g.namedTitle?.trim() || null;
           const names = !namedTitle ? collapsedParticipantLabels(g) : [];
@@ -213,7 +213,7 @@ export function BrowseSelectionSummary({
               {i < selectedGroupRows.length - 1 && (
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute right-4 bottom-0 left-4 h-px bg-white/20"
+                  className="pointer-events-none absolute right-4 bottom-0 left-4 h-px bg-hover-strong"
                 />
               )}
             </li>

@@ -113,7 +113,7 @@ export function VaultOwnerEditOverlay({
             type="button"
             disabled={saving}
             onClick={onDismiss}
-            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
           >
             Cancel
           </button>
@@ -139,7 +139,7 @@ export function VaultOwnerEditOverlay({
         phonesView={owner.phones}
       />
       {error && (
-        <p className="mt-3 text-[12px] text-red-400" role="alert">
+        <p className="mt-3 text-[12px] text-danger" role="alert">
           {error}
         </p>
       )}

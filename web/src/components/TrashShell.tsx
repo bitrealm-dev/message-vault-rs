@@ -683,13 +683,13 @@ export function TrashShell({
         <div
           ref={ctxMenuRef}
           role="menu"
-          className="fixed z-[100] min-w-[10rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          className="fixed z-[100] min-w-[10rem] rounded-lg border border-border bg-popover py-1 shadow-xl"
           style={{ top: ctxMenu.y, left: ctxMenu.x }}
         >
           <button
             type="button"
             role="menuitem"
-            className="flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+            className="flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong"
             onClick={() => void runRestoreOrDelete(actionKeys, false)}
           >
             Undelete
@@ -697,7 +697,7 @@ export function TrashShell({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full px-3 py-1.5 text-left text-[13px] text-red-300 hover:bg-white/20"
+            className="flex w-full px-3 py-1.5 text-left text-[13px] text-red-300 hover:bg-hover-strong"
             onClick={() => void runRestoreOrDelete(actionKeys, true)}
           >
             Delete forever

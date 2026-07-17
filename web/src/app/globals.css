@@ -1,18 +1,59 @@
 @import "tailwindcss";
 
+/*
+  Four-seed themes: JS sets --header + --accent (and data-theme).
+  Surfaces derive via color-mix. See web/STYLE_GUIDE.md.
+*/
+
 :root {
-  --bg: #121416;
-  --panel: #1a1c1e;
-  --sidebar: #222426;
-  --elevated: #2a2d30;
-  --border: #33373b;
-  --text: #e2e8f0;
-  --muted: #9aa3ad;
+  /* Fallback seeds (dark graphite blue) until boot script runs */
+  --header: #222426;
   --accent: #5ea1ff;
-  --sent: #0b84fe;
+
+  --sidebar: var(--header);
+  --sent: var(--accent);
+  --popover: var(--elevated);
+  --received-text: var(--text);
+  --scrollbar-track: var(--panel);
+  --scrollbar-thumb: var(--muted);
+  --scrollbar-thumb-hover: var(--text);
+  --checkbox-border: var(--muted);
+}
+
+/* Dark: header is chrome; deepen for canvas, lift for elevated */
+[data-theme="dark"] {
+  --bg: color-mix(in srgb, var(--header) 55%, black);
+  --panel: color-mix(in srgb, var(--header) 78%, black);
+  --elevated: color-mix(in srgb, var(--header) 82%, white);
+  --border: color-mix(in srgb, var(--header) 65%, white);
+  --text: color-mix(in srgb, white 92%, var(--header));
+  --muted: color-mix(in srgb, white 55%, var(--header));
+  --received: color-mix(in srgb, var(--header) 70%, white);
   --sent-text: #ffffff;
-  --received: #3a3a3c;
-  --received-text: #f5f5f7;
+  --hover: rgb(255 255 255 / 0.12);
+  --hover-strong: rgb(255 255 255 / 0.2);
+  --scrim: rgb(0 0 0 / 0.55);
+  --checkbox-bg: color-mix(in srgb, white 72%, var(--header));
+  --checkbox-check: color-mix(in srgb, black 85%, var(--header));
+  --danger: #f87171;
+}
+
+/* Light: header is chrome; open up toward white for panels */
+[data-theme="light"] {
+  --bg: color-mix(in srgb, var(--header) 45%, white);
+  --panel: #ffffff;
+  --elevated: color-mix(in srgb, var(--header) 35%, white);
+  --border: color-mix(in srgb, var(--header) 55%, black);
+  --text: color-mix(in srgb, black 88%, var(--header));
+  --muted: color-mix(in srgb, black 45%, var(--header));
+  --received: color-mix(in srgb, var(--header) 55%, white);
+  --sent-text: #ffffff;
+  --hover: rgb(0 0 0 / 0.06);
+  --hover-strong: rgb(0 0 0 / 0.1);
+  --scrim: rgb(0 0 0 / 0.4);
+  --checkbox-bg: #ffffff;
+  --checkbox-check: #ffffff;
+  --danger: #dc2626;
 }
 
 @theme inline {
@@ -20,6 +61,7 @@
   --color-panel: var(--panel);
   --color-sidebar: var(--sidebar);
   --color-elevated: var(--elevated);
+  --color-popover: var(--popover);
   --color-border: var(--border);
   --color-text: var(--text);
   --color-muted: var(--muted);
@@ -28,6 +70,10 @@
   --color-sent-text: var(--sent-text);
   --color-received: var(--received);
   --color-received-text: var(--received-text);
+  --color-hover: var(--hover);
+  --color-hover-strong: var(--hover-strong);
+  --color-scrim: var(--scrim);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
 }
 
@@ -42,12 +88,12 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   margin: 0;
   scrollbar-width: thin;
-  scrollbar-color: #6a7078 #1a1c1e;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #6a7078 #1a1c1e;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar {
@@ -56,24 +102,23 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: #1a1c1e;
+  background: var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #6a7078;
+  background: var(--scrollbar-thumb);
   border-radius: 5px;
-  border: 2px solid #1a1c1e;
+  border: 2px solid var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #838a94;
+  background: var(--scrollbar-thumb-hover);
 }
 
 *::-webkit-scrollbar-corner {
-  background: #1a1c1e;
+  background: var(--scrollbar-track);
 }
 
-/* List checkboxes: soft grey fill, lightly rounded corners */
 .checkbox-list {
   appearance: none;
   -webkit-appearance: none;
@@ -82,8 +127,8 @@ body {
   margin: 0;
   flex-shrink: 0;
   border-radius: 3px;
-  border: 1px solid #7a8088;
-  background-color: #c4c8ce;
+  border: 1px solid var(--checkbox-border);
+  background-color: var(--checkbox-bg);
   cursor: pointer;
 }
 
@@ -96,6 +141,10 @@ body {
   background-repeat: no-repeat;
 }
 
+[data-theme="light"] .checkbox-list:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+}
+
 .checkbox-list:indeterminate {
   border-color: var(--accent);
   background-color: var(--accent);
@@ -103,6 +152,10 @@ body {
   background-size: 100% 100%;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+[data-theme="light"] .checkbox-list:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2.25' stroke-linecap='round'%3E%3Cpath d='M3.5 8h9'/%3E%3C/svg%3E");
 }
 
 .checkbox-list:focus-visible {

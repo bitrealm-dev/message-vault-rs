@@ -53,7 +53,7 @@ export function SidebarNavLink({
         className={`relative flex h-8 items-center gap-2 ${navItemPad} text-[14px] transition-colors ${
           active
             ? "bg-accent/35 text-text hover:bg-accent/40"
-            : "text-muted hover:bg-white/20 hover:text-text"
+            : "text-muted hover:bg-hover-strong hover:text-text"
         }`}
       >
         {active && (
@@ -109,8 +109,8 @@ function LabelNamePopover({
 
   const floating = Boolean(anchor);
   const className = floating
-    ? "fixed z-[100] w-56 rounded-xl border border-border bg-[#2c2c2e] p-3 shadow-[0_12px_40px_rgba(0,0,0,0.55),0_2px_8px_rgba(0,0,0,0.35)]"
-    : "absolute top-full left-0 z-50 mt-1 w-56 rounded-xl border border-border bg-[#2c2c2e] p-3 shadow-xl";
+    ? "fixed z-[100] w-56 rounded-xl border border-border bg-popover p-3 shadow-[0_12px_40px_rgba(0,0,0,0.55),0_2px_8px_rgba(0,0,0,0.35)]"
+    : "absolute top-full left-0 z-50 mt-1 w-56 rounded-xl border border-border bg-popover p-3 shadow-xl";
 
   return (
     <div
@@ -155,7 +155,7 @@ function LabelNamePopover({
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="rounded-md bg-elevated px-3 py-1 text-[13px] text-text hover:bg-white/10"
+          className="rounded-md bg-elevated px-3 py-1 text-[13px] text-text hover:bg-hover"
         >
           Cancel
         </button>
@@ -343,7 +343,7 @@ export function LabelsNav({
               className={`relative flex h-8 w-full items-center gap-2 ${navItemPad} text-[14px] transition-colors ${
                 pathnameLabelActive
                   ? "bg-accent/35 text-text"
-                  : "text-muted hover:bg-white/20 hover:text-text"
+                  : "text-muted hover:bg-hover-strong hover:text-text"
               }`}
             >
               {pathnameLabelActive && (
@@ -398,7 +398,7 @@ export function LabelsNav({
                 className={`group relative flex items-center text-[14px] transition-colors ${
                   active
                     ? "bg-accent/35 text-text hover:bg-accent/40"
-                    : "text-muted hover:bg-white/20 hover:text-text"
+                    : "text-muted hover:bg-hover-strong hover:text-text"
                 }`}
               >
                 {active && (
@@ -435,7 +435,7 @@ export function LabelsNav({
                     });
                     setMenuFor(name);
                   }}
-                  className={`mr-1.5 shrink-0 rounded p-0.5 text-muted hover:bg-white/10 hover:text-text ${
+                  className={`mr-1.5 shrink-0 rounded p-0.5 text-muted hover:bg-hover hover:text-text ${
                     active || menuOpen
                       ? "opacity-100"
                       : "opacity-0 group-hover:opacity-100"
@@ -450,12 +450,12 @@ export function LabelsNav({
                 createPortal(
                   <div
                     ref={menuRef}
-                    className="fixed z-[100] min-w-[120px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+                    className="fixed z-[100] min-w-[120px] rounded-lg border border-border bg-popover py-1 shadow-xl"
                     style={{ top: menuPos.top, right: menuPos.right }}
                   >
                     <button
                       type="button"
-                      className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+                      className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong"
                       onClick={(e) => {
                         setMenuFor(null);
                         setRename({
@@ -469,7 +469,7 @@ export function LabelsNav({
                     </button>
                     <button
                       type="button"
-                      className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+                      className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong"
                       onClick={() => void deleteLabel(name)}
                     >
                       Delete

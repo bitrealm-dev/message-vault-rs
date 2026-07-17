@@ -81,7 +81,7 @@ export function SortMenu<T extends string>({
       </IconHoverTarget>
       {open && menuPos && (
         <div
-          className="fixed z-[100] min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-2 shadow-xl"
+          className="fixed z-[100] min-w-[10.5rem] rounded-xl border border-border bg-popover py-2 shadow-xl"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
           <div className="px-3 pb-1.5 text-[12px] font-semibold text-text">
@@ -262,7 +262,7 @@ function SortOption({
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong"
     >
       <span className="flex w-4 justify-center text-accent">
         {selected ? <CheckIcon /> : null}

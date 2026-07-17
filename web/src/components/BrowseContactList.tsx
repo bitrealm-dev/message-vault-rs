@@ -188,7 +188,7 @@ export function BrowseContactList({
                       ? "bg-accent/40 hover:bg-accent/50"
                       : active
                         ? "bg-accent/20 hover:bg-accent/25"
-                        : "hover:bg-white/20"
+                        : "hover:bg-hover-strong"
                   }`}
                 >
                   {active && !checked && (

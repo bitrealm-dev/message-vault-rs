@@ -123,7 +123,7 @@ export function TrashUnifiedList({
                           ? "bg-accent/40 hover:bg-accent/50"
                           : active
                             ? "bg-accent/20 hover:bg-accent/25"
-                            : "hover:bg-white/5"
+                            : "hover:bg-hover"
                       }`}
                     >
                       {active && !checked && (
@@ -217,7 +217,7 @@ export function TrashUnifiedList({
                           ? "bg-accent/40 hover:bg-accent/50"
                           : active
                             ? "bg-accent/20 hover:bg-accent/25"
-                            : "hover:bg-white/5"
+                            : "hover:bg-hover"
                       }`}
                     >
                       {active && !checked && (

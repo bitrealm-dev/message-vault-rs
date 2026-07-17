@@ -168,7 +168,7 @@ export function BrowseGroupChatsPane({
                     ? "bg-accent/40 hover:bg-accent/50"
                     : active
                       ? "bg-accent/20 hover:bg-accent/25"
-                      : "hover:bg-white/20"
+                      : "hover:bg-hover-strong"
                 } ${i < items.length - 1 ? "border-b border-border/40" : ""}`}
               >
                 {active && !checked && (

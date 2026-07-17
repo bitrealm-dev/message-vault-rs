@@ -164,7 +164,7 @@ export function LoginScreen() {
               type="button"
               disabled={submitting != null || !selectedId}
               onClick={() => void continueAsExisting()}
-              className="mt-4 w-full rounded-md border border-border bg-bg px-4 py-2 text-[13px] text-text transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="mt-4 w-full rounded-md border border-border bg-bg px-4 py-2 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
             >
               {submitting === "login" ? "Logging in…" : "Login"}
             </button>
@@ -329,7 +329,7 @@ export function LoginScreen() {
                   type="button"
                   disabled={submitting != null || !canCreate}
                   onClick={() => void createAndContinue()}
-                  className="w-full rounded-md border border-border bg-bg px-4 py-2 text-[13px] text-text transition-colors hover:bg-white/10 disabled:opacity-50"
+                  className="w-full rounded-md border border-border bg-bg px-4 py-2 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
                 >
                   {submitting === "create" ? "Creating…" : "Create and continue"}
                 </button>
@@ -338,7 +338,7 @@ export function LoginScreen() {
           </section>
 
           {error && (
-            <p className="mt-4 text-[13px] text-red-400" role="alert">
+            <p className="mt-4 text-[13px] text-danger" role="alert">
               {error}
             </p>
           )}

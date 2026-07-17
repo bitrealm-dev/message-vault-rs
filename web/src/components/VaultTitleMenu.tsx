@@ -52,7 +52,7 @@ export function VaultTitleMenu({
   };
 
   const itemClass =
-    "flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:pointer-events-none disabled:opacity-40";
+    "flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong disabled:pointer-events-none disabled:opacity-40";
 
   return (
     <div ref={rootRef} className="relative min-w-0">
@@ -64,8 +64,8 @@ export function VaultTitleMenu({
         onClick={toggle}
         className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[13px] font-medium transition-colors ${
           open
-            ? "bg-white/15 text-text"
-            : "text-text hover:bg-white/10 hover:text-accent"
+            ? "bg-hover text-text"
+            : "text-text hover:bg-hover hover:text-accent"
         }`}
       >
         <span className="truncate">Message Vault</span>
@@ -74,7 +74,7 @@ export function VaultTitleMenu({
       {open && menuPos && (
         <div
           role="menu"
-          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-popover py-1 shadow-xl"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <button

@@ -128,7 +128,7 @@ export function ContactPhoneList({
               <button
                 type="button"
                 onClick={() => onChange(removePhoneAt(phones, index))}
-                className="shrink-0 rounded px-1.5 text-[12px] text-muted hover:bg-white/10 hover:text-text"
+                className="shrink-0 rounded px-1.5 text-[12px] text-muted hover:bg-hover hover:text-text"
                 aria-label="Remove handle"
               >
                 ×

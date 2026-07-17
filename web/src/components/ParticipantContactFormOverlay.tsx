@@ -74,7 +74,7 @@ export function ParticipantContactFormOverlay({
             type="button"
             disabled={contactSaving}
             onClick={cancelContactForm}
-            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
           >
             Cancel
           </button>

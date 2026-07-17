@@ -79,14 +79,14 @@ export function YearFilterMenu({
       {open && menuPos && (
         <div
           role="listbox"
-          className="fixed z-[100] max-h-64 min-w-[7rem] overflow-y-auto rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          className="fixed z-[100] max-h-64 min-w-[7rem] overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-xl"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <button
             type="button"
             role="option"
             aria-selected={value == null}
-            className={`flex w-full px-3 py-1.5 text-left text-[13px] hover:bg-white/20 ${
+            className={`flex w-full px-3 py-1.5 text-left text-[13px] hover:bg-hover-strong ${
               value == null ? "text-accent" : "text-text"
             }`}
             onClick={() => pick(null)}
@@ -99,7 +99,7 @@ export function YearFilterMenu({
               type="button"
               role="option"
               aria-selected={value === y}
-              className={`flex w-full px-3 py-1.5 text-left text-[13px] tabular-nums hover:bg-white/20 ${
+              className={`flex w-full px-3 py-1.5 text-left text-[13px] tabular-nums hover:bg-hover-strong ${
                 value === y ? "text-accent" : "text-text"
               }`}
               onClick={() => pick(y)}

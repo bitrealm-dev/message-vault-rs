@@ -211,7 +211,7 @@ export function SettingsAccountForm() {
               <button
                 type="button"
                 onClick={addEmail}
-                className="shrink-0 rounded-md border border-border bg-elevated px-3 py-2 text-[13px] text-text transition-colors hover:bg-white/10"
+                className="shrink-0 rounded-md border border-border bg-elevated px-3 py-2 text-[13px] text-text transition-colors hover:bg-hover"
               >
                 Add
               </button>
@@ -280,13 +280,13 @@ export function SettingsAccountForm() {
           type="button"
           disabled={saving || deleting}
           onClick={() => void save()}
-          className="rounded-md border border-border bg-elevated px-4 py-2 text-[13px] text-text transition-colors hover:bg-white/10 disabled:opacity-50"
+          className="rounded-md border border-border bg-elevated px-4 py-2 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
         {saved && <span className="text-[13px] text-muted">Saved.</span>}
         {error && (
-          <span className="text-[13px] text-red-400" role="alert">
+          <span className="text-[13px] text-danger" role="alert">
             {error}
           </span>
         )}
@@ -301,11 +301,11 @@ export function SettingsAccountForm() {
             className="flex w-full items-center gap-2 text-left"
           >
             <ChevronRightIcon
-              className={`size-4 shrink-0 text-red-400/80 transition-transform ${
+              className={`size-4 shrink-0 text-danger/80 transition-transform ${
                 dangerZoneOpen ? "rotate-90" : ""
               }`}
             />
-            <span className="text-[12px] font-semibold tracking-wider text-red-400 uppercase">
+            <span className="text-[12px] font-semibold tracking-wider text-danger uppercase">
               Danger zone
             </span>
           </button>
@@ -370,15 +370,15 @@ function AdditionalEmailRow({
         aria-label={`Actions for ${email}`}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/10 hover:text-text"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-text"
       >
         <EllipsisIcon className="size-5" />
       </button>
       {open && (
-        <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-1 shadow-xl">
+        <div className="absolute top-full right-0 z-50 mt-1 min-w-[10.5rem] rounded-xl border border-border bg-popover py-1 shadow-xl">
           <button
             type="button"
-            className="flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+            className="flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong"
             onClick={() => {
               setOpen(false);
               onMakePrimary();
@@ -388,7 +388,7 @@ function AdditionalEmailRow({
           </button>
           <button
             type="button"
-            className="flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+            className="flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong"
             onClick={() => {
               setOpen(false);
               onRemove();

@@ -60,13 +60,13 @@ export function TrashTabPicker({
       {open && menuPos && (
         <div
           role="menu"
-          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-popover py-1 shadow-xl"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <button
             type="button"
             role="menuitem"
-            className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] hover:bg-white/20 ${
+            className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] hover:bg-hover-strong ${
               tab === "contacts" ? "text-accent" : "text-text"
             }`}
             onClick={() => {
@@ -81,7 +81,7 @@ export function TrashTabPicker({
           <button
             type="button"
             role="menuitem"
-            className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] hover:bg-white/20 ${
+            className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] hover:bg-hover-strong ${
               tab === "group-messages" ? "text-accent" : "text-text"
             }`}
             onClick={() => {

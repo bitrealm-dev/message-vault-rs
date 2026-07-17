@@ -73,7 +73,7 @@ export function ListHistoryMenu({
       </IconHoverTarget>
       {open && menuPos && (
         <div
-          className="fixed z-[100] min-w-[10.5rem] rounded-xl border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          className="fixed z-[100] min-w-[10.5rem] rounded-xl border border-border bg-popover py-1 shadow-xl"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
           {items.map((item) => (
@@ -84,7 +84,7 @@ export function ListHistoryMenu({
               className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text disabled:opacity-40 ${
                 item.danger
                   ? "hover:bg-red-500/15 hover:text-red-300"
-                  : "hover:bg-white/20"
+                  : "hover:bg-hover-strong"
               }`}
               onClick={() => {
                 close();
@@ -102,7 +102,7 @@ export function ListHistoryMenu({
             type="button"
             disabled={!canUndo}
             title={undoLabel ?? undefined}
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong disabled:opacity-40"
             onClick={() => {
               close();
               void undo();
@@ -115,7 +115,7 @@ export function ListHistoryMenu({
             type="button"
             disabled={!canRedo}
             title={redoLabel ?? undefined}
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong disabled:opacity-40"
             onClick={() => {
               close();
               void redo();

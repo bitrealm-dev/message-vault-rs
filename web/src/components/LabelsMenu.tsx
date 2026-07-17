@@ -227,8 +227,8 @@ export function LabelsMenu({
   };
 
   const panelClass = isFixed
-    ? "w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl"
-    : "fixed z-[220] w-64 rounded-xl border border-border bg-[#2c2c2e] shadow-xl";
+    ? "w-64 rounded-xl border border-border bg-popover shadow-xl"
+    : "fixed z-[220] w-64 rounded-xl border border-border bg-popover shadow-xl";
 
   const panelStyle =
     !isFixed && menuPos
@@ -337,7 +337,7 @@ export function LabelsMenu({
           </div>
 
           <div className="max-h-56 overflow-y-auto py-1">
-            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-white/20">
+            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-hover-strong">
               <input
                 ref={(el) => {
                   if (el) checkRefs.current.set("__excluded__", el);
@@ -362,7 +362,7 @@ export function LabelsMenu({
                 return (
                   <label
                     key={name}
-                    className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-white/20"
+                    className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] text-text hover:bg-hover-strong"
                   >
                     <input
                       ref={(el) => {
@@ -387,7 +387,7 @@ export function LabelsMenu({
               type="button"
               disabled={disabled}
               onClick={() => setMenuMode("create")}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong disabled:opacity-50"
             >
               <span className="flex size-3.5 items-center justify-center text-[15px] leading-none text-muted">
                 +
@@ -399,7 +399,7 @@ export function LabelsMenu({
                 type="button"
                 disabled={disabled || !hasAnyMembership}
                 onClick={clearAll}
-                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-50"
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-hover-strong disabled:opacity-50"
               >
                 <EraserIcon className="size-3.5 shrink-0 opacity-80" />
                 <span>Clear all</span>
@@ -442,7 +442,7 @@ export function LabelsMenu({
                 setMenuMode("list");
                 setNewName("");
               }}
-              className="rounded-md bg-elevated px-3 py-1 text-[13px] text-text hover:bg-white/10"
+              className="rounded-md bg-elevated px-3 py-1 text-[13px] text-text hover:bg-hover"
             >
               Cancel
             </button>

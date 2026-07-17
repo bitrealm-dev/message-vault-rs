@@ -69,7 +69,7 @@ export function AppSidebar({
               type="button"
               aria-label="Show navigation"
               onClick={onShowNav}
-              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-hover hover:text-text"
             >
               <PanelExpandIcon className="size-5" />
             </button>
@@ -82,7 +82,7 @@ export function AppSidebar({
                   type="button"
                   aria-label="Hide navigation"
                   onClick={onHideNav}
-                  className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
+                  className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-hover hover:text-text"
                 >
                   <PanelCollapseIcon className="size-5" />
                 </button>
@@ -102,7 +102,7 @@ export function AppSidebar({
       <div className="h-[45px] shrink-0 border-b border-border" aria-hidden />
 
       {!collapsed && resetError && (
-        <p className="shrink-0 px-3 py-1.5 text-[11px] text-red-400" role="alert">
+        <p className="shrink-0 px-3 py-1.5 text-[11px] text-danger" role="alert">
           {resetError}
         </p>
       )}

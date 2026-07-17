@@ -61,7 +61,7 @@ function MissingMediaPlaceholder({
       role="img"
       aria-label={`Missing ${kind}: ${label}`}
       title={`Missing ${kind}: ${label}`}
-      className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/25 bg-black/20 px-3 text-center ${
+      className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border bg-hover px-3 text-center ${
         tall ? "min-h-[7.5rem] w-full max-w-xs py-5" : "min-h-[3.25rem] py-2.5"
       }`}
     >

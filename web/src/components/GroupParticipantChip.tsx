@@ -15,7 +15,7 @@ export function GroupParticipantChip({
         e.stopPropagation();
         onClick(e.currentTarget.getBoundingClientRect());
       }}
-      className="group/chip inline-flex max-w-full items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-inherit transition-colors hover:bg-white/12 hover:text-text"
+      className="group/chip inline-flex max-w-full items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-inherit transition-colors hover:bg-hover hover:text-text"
     >
       <span className="truncate">{label}</span>
       {/* Fixed-width slot so hover never changes chip size / reflows the name wrap. */}

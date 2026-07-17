@@ -478,7 +478,7 @@ export function GroupMessagesShell({
             </div>
             {hasGroupSelection ? (
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bg px-5 pt-8 pb-5">
-                <div className="rounded-xl border border-border bg-[#2c2c2e] p-4">
+                <div className="rounded-xl border border-border bg-popover p-4">
                   <h2 className="text-[15px] font-semibold text-text">
                     {selectedGroupRows.length} group messages selected
                   </h2>

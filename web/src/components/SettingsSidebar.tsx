@@ -20,7 +20,7 @@ function SettingsNavLink({ href, label }: { href: string; label: string }) {
       className={`relative block py-1.5 ${navItemPad} text-[14px] transition-colors ${
         active
           ? "bg-elevated text-text"
-          : "text-muted hover:bg-white/20 hover:text-text"
+          : "text-muted hover:bg-hover-strong hover:text-text"
       }`}
     >
       {active && (
@@ -62,7 +62,7 @@ export function SettingsSidebar({
               type="button"
               aria-label="Show navigation"
               onClick={onShowNav}
-              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-hover hover:text-text"
             >
               <PanelExpandIcon className="size-5" />
             </button>
@@ -75,7 +75,7 @@ export function SettingsSidebar({
                   type="button"
                   aria-label="Hide navigation"
                   onClick={onHideNav}
-                  className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
+                  className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-hover hover:text-text"
                 >
                   <PanelCollapseIcon className="size-5" />
                 </button>
@@ -91,7 +91,7 @@ export function SettingsSidebar({
               type="button"
               aria-label="Back"
               onClick={() => router.push("/")}
-              className="ml-auto shrink-0 rounded-md px-2 py-1 text-[13px] text-muted transition-colors hover:bg-white/15 hover:text-text"
+              className="ml-auto shrink-0 rounded-md px-2 py-1 text-[13px] text-muted transition-colors hover:bg-hover hover:text-text"
             >
               Back
             </button>
@@ -102,7 +102,7 @@ export function SettingsSidebar({
       <div className="h-[45px] shrink-0 border-b border-border" aria-hidden />
 
       {!collapsed && resetError && (
-        <p className="px-3 py-2 text-[12px] text-red-400" role="alert">
+        <p className="px-3 py-2 text-[12px] text-danger" role="alert">
           {resetError}
         </p>
       )}

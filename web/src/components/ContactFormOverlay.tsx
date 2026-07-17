@@ -137,7 +137,7 @@ export function ContactFormOverlay({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className={`fixed w-[min(32rem,calc(100vw-1rem))] rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-opacity duration-150 ease-out ${
+          className={`fixed w-[min(32rem,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)] transition-opacity duration-150 ease-out ${
             entered ? "opacity-100" : "opacity-0"
           }`}
           style={
@@ -169,7 +169,7 @@ export function ContactFormOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-scrim px-4"
       role="presentation"
       onClick={() => {
         if (!busy) onDismiss();
@@ -179,7 +179,7 @@ export function ContactFormOverlay({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-lg rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+        className="w-full max-w-lg rounded-xl border border-border bg-popover p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={titleId} className="text-[16px] font-semibold text-text">

@@ -341,7 +341,7 @@ export function BrowseThreadPane({
                   }
                   title={headerExpanded ? "Hide details" : "Show details"}
                   onClick={toggleHeaderExpanded}
-                  className="absolute top-1/2 right-0 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/12 hover:text-text"
+                  className="absolute top-1/2 right-0 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-text"
                 >
                   <ChevronDownIcon
                     className={`size-3.5 transition-transform ${

@@ -29,7 +29,7 @@ export function DeleteAccountDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-scrim px-4"
       role="presentation"
       onClick={() => {
         if (!deleting) onClose();
@@ -39,7 +39,7 @@ export function DeleteAccountDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mv-delete-account-dialog-title"
-        className="relative w-full max-w-md rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+        className="relative w-full max-w-md rounded-xl border border-border bg-popover p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -47,7 +47,7 @@ export function DeleteAccountDialog({
           aria-label="Close"
           disabled={deleting}
           onClick={onClose}
-          className="absolute top-4 right-4 flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/10 hover:text-text disabled:opacity-50"
+          className="absolute top-4 right-4 flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-text disabled:opacity-50"
         >
           <XIcon className="size-4" />
         </button>

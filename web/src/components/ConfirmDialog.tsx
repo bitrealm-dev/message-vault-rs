@@ -18,7 +18,7 @@ export function ConfirmDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-scrim px-4"
       role="presentation"
       onClick={() => {
         if (!saving) onCancel();
@@ -28,7 +28,7 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mv-confirm-dialog-title"
-        className="w-full max-w-md rounded-xl border border-border bg-[#2c2c2e] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
+        className="w-full max-w-md rounded-xl border border-border bg-popover p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
@@ -42,7 +42,7 @@ export function ConfirmDialog({
             type="button"
             disabled={saving}
             onClick={onCancel}
-            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-white/14 disabled:opacity-50"
+            className="rounded-md bg-elevated px-3 py-1.5 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
           >
             {cancelLabel}
           </button>
