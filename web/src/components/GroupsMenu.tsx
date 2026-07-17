@@ -260,7 +260,7 @@ export function GroupsMenu({
                 if (open) closeMenu();
                 else openMenu();
               }}
-              className={`flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors disabled:opacity-40 ${
                 open
                   ? "bg-accent/20 text-accent"
                   : "bg-elevated text-muted hover:text-text"
@@ -281,7 +281,7 @@ export function GroupsMenu({
               if (open) closeMenu();
               else openMenu();
             }}
-            className={`inline-flex h-8 w-full items-center justify-between gap-2 rounded-md px-3 text-[13px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`inline-flex h-8 w-full items-center justify-between gap-2 rounded-md px-3 text-[13px] leading-none transition-colors disabled:opacity-40 ${
               open
                 ? "bg-accent/20 text-accent"
                 : "bg-elevated text-muted hover:text-text"
@@ -303,7 +303,7 @@ export function GroupsMenu({
                 if (open) closeMenu();
                 else openMenu();
               }}
-              className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:opacity-40 ${
                 open
                   ? "bg-accent/20 text-accent"
                   : "bg-elevated text-muted hover:text-text"

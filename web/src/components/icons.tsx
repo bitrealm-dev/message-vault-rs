@@ -292,7 +292,8 @@ export function GroupMessagesOutlineIcon({
           transform={`translate(${OUTLINE_BUBBLE_BACK_DX} ${OUTLINE_BUBBLE_BACK_DY})`}
         />
       </g>
-      <path d={OUTLINE_BUBBLE_PATH} fill="black" />
+      {/* Outline only — mask already clears the back bubble under the front */}
+      <path d={OUTLINE_BUBBLE_PATH} fill="none" />
     </svg>
   );
 }

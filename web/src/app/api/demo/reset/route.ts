@@ -37,25 +37,51 @@ function vaultBinary(): string {
   return "cargo";
 }
 
-function runResetDemo(): { ok: boolean; stdout: string; stderr: string; code: number } {
-  const bin = vaultBinary();
-  const args =
-    bin === "cargo"
-      ? ["run", "--release", "--", "reset-demo"]
-      : ["reset-demo"];
+type ResetDemoResult = {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  code: number;
+};
 
+function spawnResetDemo(bin: string, args: string[]): ResetDemoResult {
   const result = spawnSync(bin, args, {
     cwd: repoRoot(),
     encoding: "utf8",
     timeout: 5 * 60 * 1000,
   });
-
   return {
     ok: result.status === 0,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
     code: result.status ?? 1,
   };
+}
+
+/** Stale release binaries built before reset-demo was added reject the subcommand. */
+function lacksResetDemoSubcommand(result: ResetDemoResult): boolean {
+  if (result.ok) return false;
+  const text = `${result.stderr}\n${result.stdout}`.toLowerCase();
+  return (
+    text.includes("unrecognized subcommand") ||
+    text.includes("unexpected argument") ||
+    (text.includes("reset-demo") && text.includes("usage:"))
+  );
+}
+
+function runResetDemo(): ResetDemoResult {
+  const bin = vaultBinary();
+  if (bin === "cargo") {
+    return spawnResetDemo("cargo", ["run", "--release", "--", "reset-demo"]);
+  }
+
+  const result = spawnResetDemo(bin, ["reset-demo"]);
+  if (!lacksResetDemoSubcommand(result)) {
+    return result;
+  }
+
+  // Fall back so the GUI works without rebuilding the release binary.
+  return spawnResetDemo("cargo", ["run", "--release", "--", "reset-demo"]);
 }
 
 function parseStats(stdout: string) {

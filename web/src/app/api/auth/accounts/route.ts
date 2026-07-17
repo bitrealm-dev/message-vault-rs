@@ -1,12 +1,5 @@
-import {
-  createAccount,
-  getAccount,
-  listAccounts,
-} from "@/lib/accounts";
-import {
-  accountCookieOptions,
-  clearAccountCookieOptions,
-} from "@/lib/session";
+import { createAccount, listAccounts } from "@/lib/accounts";
+import { accountCookieOptions } from "@/lib/session";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -30,16 +23,20 @@ export async function POST(req: Request) {
   }
 
   const username = typeof body.username === "string" ? body.username.trim() : "";
-  const primaryEmail =
-    typeof body.primaryEmail === "string" ? body.primaryEmail.trim() : "";
   const firstName =
     typeof body.firstName === "string" ? body.firstName.trim() : "";
   const lastName = typeof body.lastName === "string" ? body.lastName.trim() : "";
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  const primaryEmail =
+    typeof body.primaryEmail === "string" && body.primaryEmail.trim()
+      ? body.primaryEmail.trim()
+      : username
+        ? `${username.toLowerCase()}@local`
+        : "";
 
-  if (!username || !primaryEmail || !firstName || !phone) {
+  if (!username || !firstName || !phone) {
     return NextResponse.json(
-      { error: "username, primaryEmail, firstName, and phone are required" },
+      { error: "username, firstName, and phone are required" },
       { status: 400 },
     );
   }

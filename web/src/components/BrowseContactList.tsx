@@ -128,7 +128,7 @@ export function BrowseContactList({
                 aria-label="Edit contact"
                 disabled={editDisabled}
                 onClick={(e) => onEdit(e.currentTarget)}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:opacity-40"
               >
                 <PencilIcon className="size-4" />
               </button>

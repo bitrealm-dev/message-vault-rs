@@ -77,7 +77,7 @@ export function BrowseGroupChatsPane({
           disabled={searchDisabled}
           onChange={(e) => onSearchQueryChange(e.target.value)}
           placeholder="Search groups for name or phone…"
-          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded-md border border-border bg-elevated px-2.5 py-1.5 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent disabled:opacity-40"
         />
       </div>
       <div className="flex h-[45px] shrink-0 items-center justify-between gap-2 border-b border-border px-3">
@@ -105,7 +105,7 @@ export function BrowseGroupChatsPane({
                 aria-label="Delete group messages"
                 disabled={trashDisabled}
                 onClick={onTrashMessages}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted transition-colors hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40 disabled:hover:border-red-500/40 disabled:hover:bg-red-500/15 disabled:hover:text-red-300"
               >
                 <TrashMessagesIcon className="size-4" />
               </button>

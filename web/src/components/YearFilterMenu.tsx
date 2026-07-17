@@ -66,7 +66,7 @@ export function YearFilterMenu({
           aria-label="Filter by year"
           disabled={disabled}
           onClick={toggle}
-          className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+          className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-none transition-colors disabled:opacity-40 ${
             open
               ? "bg-accent/20 text-accent"
               : "bg-elevated text-muted hover:text-text"

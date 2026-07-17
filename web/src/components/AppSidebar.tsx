@@ -14,6 +14,7 @@ import {
 } from "react";
 import {
   AddressBookIcon,
+  ChevronDownIcon,
   EllipsisIcon,
   GroupMessagesOutlineIcon,
   PeopleGroupIcon,
@@ -355,9 +356,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
         </div>
       </div>
 
-      {displayGroups.length === 0 ? (
-        <p className={`${navItemPad} py-1 text-[13px] text-muted`}>No groups</p>
-      ) : (
+      {displayGroups.length > 0 &&
         displayGroups.map((name) => {
           const href = `/group/${groupSlug(name)}`;
           const active = pathname === href;
@@ -453,8 +452,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
               )}
             </div>
           );
-        })
-      )}
+        })}
 
       <NavLink
         href="/no-group"
@@ -482,6 +480,129 @@ function GroupsNav({ groups }: { groups: string[] }) {
           onSave={(to) => renameGroup(rename.name, to)}
           onCancel={() => setRename(null)}
         />
+      )}
+    </div>
+  );
+}
+
+function VaultTitleMenu({
+  demoResetAvailable,
+  resettingDemo,
+  onResetDemo,
+  onLogout,
+}: {
+  demoResetAvailable: boolean;
+  resettingDemo: boolean;
+  onResetDemo: () => void;
+  onLogout: () => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useDismissible({
+    open,
+    onDismiss: () => {
+      setOpen(false);
+      setMenuPos(null);
+    },
+    refs: [rootRef],
+  });
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      setMenuPos(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(true);
+  };
+
+  const close = () => {
+    setOpen(false);
+    setMenuPos(null);
+  };
+
+  const itemClass =
+    "flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:pointer-events-none disabled:opacity-40";
+
+  return (
+    <div ref={rootRef} className="relative min-w-0">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={toggle}
+        className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[13px] font-medium transition-colors ${
+          open
+            ? "bg-white/15 text-text"
+            : "text-text hover:bg-white/10 hover:text-accent"
+        }`}
+      >
+        <span className="truncate">Message Vault</span>
+        <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+      </button>
+      {open && menuPos && (
+        <div
+          role="menu"
+          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => {
+              close();
+              router.push("/");
+            }}
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => {
+              close();
+              onLogout();
+            }}
+          >
+            Logout
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => {
+              close();
+              router.push("/settings");
+            }}
+          >
+            User Settings
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!demoResetAvailable || resettingDemo}
+            className={itemClass}
+            onClick={() => {
+              close();
+              onResetDemo();
+            }}
+          >
+            {resettingDemo ? "Resetting demo…" : "Reset demo"}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -541,9 +662,12 @@ export function AppSidebar({
     }
   }, [confirm, router]);
 
-  const groupIcon = (
-    <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
-  );
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }, [router]);
+
   const groupMessagesIcon = (
     <GroupMessagesOutlineIcon className="size-5 shrink-0 opacity-80" />
   );
@@ -552,13 +676,19 @@ export function AppSidebar({
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       {!collapsed && (
         <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-          <Link
-            href="/"
-            className="truncate text-[13px] font-medium text-text transition-colors hover:text-accent"
-          >
-            Message Vault
-          </Link>
+          <VaultTitleMenu
+            demoResetAvailable={demoResetAvailable}
+            resettingDemo={resettingDemo}
+            onResetDemo={() => void resetDemo()}
+            onLogout={() => void logout()}
+          />
         </div>
+      )}
+
+      {!collapsed && resetError && (
+        <p className="shrink-0 px-3 py-1.5 text-[11px] text-red-400" role="alert">
+          {resetError}
+        </p>
       )}
 
       {!collapsed && (
@@ -599,24 +729,6 @@ export function AppSidebar({
 
           <GroupsNav groups={groups} />
         </nav>
-      )}
-
-      {!collapsed && demoResetAvailable && (
-        <div className="shrink-0 border-t border-border px-3 py-2">
-          <button
-            type="button"
-            disabled={resettingDemo}
-            onClick={() => void resetDemo()}
-            className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-muted transition-colors hover:bg-white/15 hover:text-text disabled:opacity-50"
-          >
-            {resettingDemo ? "Resetting demo…" : "Reset demo"}
-          </button>
-          {resetError && (
-            <p className="mt-1 text-[11px] text-red-400" role="alert">
-              {resetError}
-            </p>
-          )}
-        </div>
       )}
       {confirmDialog}
     </aside>
