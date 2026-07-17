@@ -67,17 +67,30 @@ export function BrowseContactList({
   const menuItems: ListHistoryMenuItem[] = [
     {
       key: "new-contact",
-      label: "New contact",
+      label: "New",
       icon: <NewContactIcon className="size-5 shrink-0 opacity-80" />,
       onClick: (triggerEl) => {
         if (triggerEl) onNewContact(triggerEl);
       },
     },
+    ...(onEdit
+      ? [
+          {
+            key: "edit",
+            label: "Edit",
+            icon: <PencilIcon className="size-5 shrink-0 opacity-80" />,
+            disabled: editDisabled,
+            onClick: (triggerEl) => {
+              if (triggerEl) onEdit(triggerEl);
+            },
+          } satisfies ListHistoryMenuItem,
+        ]
+      : []),
     ...(onTrashContact
       ? [
           {
             key: "delete",
-            label: "Delete contact",
+            label: "Delete",
             icon: <XIcon className="size-5 shrink-0 opacity-80" />,
             disabled: deleteDisabled,
             danger: true,
@@ -116,19 +129,6 @@ export function BrowseContactList({
         </label>
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
           {!vaultReadOnly && groupsMenu}
-          {!vaultReadOnly && onEdit && (
-            <IconHoverTarget label="Edit contact" placement="bottom">
-              <button
-                type="button"
-                aria-label="Edit contact"
-                disabled={editDisabled}
-                onClick={(e) => onEdit(e.currentTarget)}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted hover:text-text disabled:opacity-40"
-              >
-                <PencilIcon className="size-4" />
-              </button>
-            </IconHoverTarget>
-          )}
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
           <ListHistoryMenu items={vaultReadOnly ? [] : menuItems} />
         </div>

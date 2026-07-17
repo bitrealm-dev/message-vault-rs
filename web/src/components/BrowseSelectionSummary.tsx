@@ -74,8 +74,6 @@ export function BrowseSelectionSummary({
   onClearContactSelection,
   onClearGroupSelection,
   onClearContactFocus,
-  onSelectContact,
-  onSelectGroup,
 }: {
   showContactsCard: boolean;
   showGroupsCard: boolean;
@@ -92,8 +90,6 @@ export function BrowseSelectionSummary({
   onClearContactSelection: () => void;
   onClearGroupSelection: () => void;
   onClearContactFocus: () => void;
-  onSelectContact: (id: number) => void;
-  onSelectGroup: (g: CollapsedGroupConversation) => void;
 }) {
   const groupRowDate = (g: CollapsedGroupConversation) =>
     g.dateStart === g.dateEnd
@@ -121,13 +117,9 @@ export function BrowseSelectionSummary({
             key={c.id}
             className="relative flex items-center justify-between gap-4 px-4 py-2.5"
           >
-            <button
-              type="button"
-              onClick={() => onSelectContact(c.id)}
-              className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
-            >
+            <span className="min-w-0 truncate text-[13px] text-text">
               {c.displayName}
-            </button>
+            </span>
             <span className="shrink-0 text-[13px] text-muted tabular-nums">
               {c.preferredHandle ?? ""}
             </span>
@@ -160,13 +152,9 @@ export function BrowseSelectionSummary({
         </div>
         <ul className="bg-[#3a3a3c]">
           <li className="flex items-center justify-between gap-4 px-4 py-2.5">
-            <button
-              type="button"
-              onClick={() => onSelectContact(focusedContact.id)}
-              className="min-w-0 truncate text-left text-[13px] text-text hover:text-accent"
-            >
+            <span className="min-w-0 truncate text-[13px] text-text">
               {focusedContact.displayName}
-            </button>
+            </span>
             <span className="shrink-0 text-[13px] text-muted tabular-nums">
               {focusedContact.preferredHandle ?? ""}
             </span>
@@ -199,12 +187,7 @@ export function BrowseSelectionSummary({
               key={g.conversationId}
               className="relative flex items-start justify-between gap-4 px-4 py-2.5"
             >
-              <button
-                type="button"
-                onClick={() => onSelectGroup(g)}
-                className="min-w-0 flex-1 text-left text-[13px] hover:text-accent"
-                title={g.titleFull}
-              >
+              <span className="min-w-0 flex-1 text-[13px]">
                 {namedTitle ? (
                   <span className="block truncate font-medium text-text">
                     {namedTitle}
@@ -223,7 +206,7 @@ export function BrowseSelectionSummary({
                     {g.title || "Group message"}
                   </span>
                 )}
-              </button>
+              </span>
               <span className="shrink-0 pt-px text-[13px] leading-snug text-muted tabular-nums">
                 {groupRowDate(g)}
               </span>

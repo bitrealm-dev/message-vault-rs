@@ -768,14 +768,8 @@ export function AppSidebar({
         )}
       </div>
 
-      {/* Aligns with panel 2 search row; "View" heading when expanded. */}
-      <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-        {!collapsed && (
-          <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
-            View
-          </span>
-        )}
-      </div>
+      {/* Aligns nav with contact-list body (search + toolbar are both 45px). */}
+      <div className="h-[45px] shrink-0 border-b border-border" aria-hidden />
 
       {!collapsed && resetError && (
         <p className="shrink-0 px-3 py-1.5 text-[11px] text-red-400" role="alert">
@@ -784,6 +778,13 @@ export function AppSidebar({
       )}
 
       <nav className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pb-2">
+        {!collapsed && (
+          <div className={`flex h-8 items-center ${navHeadingClass}`}>
+            <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
+              View
+            </span>
+          </div>
+        )}
         <NavLink
           href="/all"
           label="All"

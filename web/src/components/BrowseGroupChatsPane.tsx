@@ -97,6 +97,17 @@ export function BrowseGroupChatsPane({
           </span>
         </label>
         <div className="flex shrink-0 items-center gap-1.5">
+          <YearFilterMenu
+            years={years}
+            value={filterYear}
+            onChange={onFilterYearChange}
+          />
+          <BrowseGroupChatSortMenu
+            sortBy={sortBy}
+            order={sortOrder}
+            onChange={onSortChange}
+            disabled={items.length === 0}
+          />
           {!vaultReadOnly && onTrashMessages && (
             <IconHoverTarget label="Delete group messages" placement="bottom">
               <button
@@ -110,17 +121,6 @@ export function BrowseGroupChatsPane({
               </button>
             </IconHoverTarget>
           )}
-          <YearFilterMenu
-            years={years}
-            value={filterYear}
-            onChange={onFilterYearChange}
-          />
-          <BrowseGroupChatSortMenu
-            sortBy={sortBy}
-            order={sortOrder}
-            onChange={onSortChange}
-            disabled={items.length === 0}
-          />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">

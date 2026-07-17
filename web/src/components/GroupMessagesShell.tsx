@@ -46,11 +46,6 @@ import { useSourceFilter } from "./SourceFilter";
 import { useThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
 import { useVaultReadOnly } from "./useVaultReadOnly";
-import {
-  VaultOwnerEditOverlay,
-  contactFormAnchorFromRect,
-  type ContactFormAnchor,
-} from "./VaultOwnerEditOverlay";
 
 export function GroupMessagesShell({
   owner,
@@ -71,10 +66,6 @@ export function GroupMessagesShell({
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
 
   const [groupChats, setGroupChats] = useState(initialGroupChats);
-  const [ownerState, setOwnerState] = useState(owner);
-  const [ownerEditOpen, setOwnerEditOpen] = useState(false);
-  const [ownerEditAnchor, setOwnerEditAnchor] =
-    useState<ContactFormAnchor | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(
     initialConversationId,
   );
@@ -120,10 +111,6 @@ export function GroupMessagesShell({
   });
 
   const pendingScrollYearRef = useRef<number | null>(initialYear);
-
-  useEffect(() => {
-    setOwnerState(owner);
-  }, [owner]);
 
   useEffect(() => {
     setGroupChats(initialGroupChats);
@@ -436,16 +423,7 @@ export function GroupMessagesShell({
           maxSize={420}
           className="min-h-0"
         >
-          <MyContactPane
-            owner={ownerState}
-            vaultReadOnly={vaultReadOnly}
-            onEdit={(el) => {
-              setOwnerEditAnchor(
-                contactFormAnchorFromRect(el.getBoundingClientRect()),
-              );
-              setOwnerEditOpen(true);
-            }}
-          />
+          <MyContactPane owner={owner} />
         </Panel>
 
         <PaneSeparator orientation="vertical" />
@@ -548,19 +526,6 @@ export function GroupMessagesShell({
       <ParticipantContactFormOverlay
         form={participantForm}
         titleId="mv-group-messages-contact-form-title"
-      />
-      <VaultOwnerEditOverlay
-        open={ownerEditOpen}
-        owner={ownerState}
-        anchor={ownerEditAnchor}
-        onDismiss={() => {
-          setOwnerEditOpen(false);
-          setOwnerEditAnchor(null);
-        }}
-        onSaved={(next) => {
-          setOwnerState(next);
-          router.refresh();
-        }}
       />
     </>
   );

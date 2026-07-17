@@ -1950,11 +1950,6 @@ export function BrowseShell({
           onClearContactSelection={clearSelection}
           onClearGroupSelection={clearGroupSelection}
           onClearContactFocus={clearContactFocus}
-          onSelectContact={selectContact}
-          onSelectGroup={(g) => {
-            clearGroupSelection();
-            selectGroupConversation(g);
-          }}
         />
       </Panel>
     </Group>

@@ -3,23 +3,11 @@
 import type { VaultOwner } from "@/lib/vaultOwner";
 import { IconHoverTarget } from "./IconHoverLabel";
 import { ListHistoryMenu } from "./history";
-import {
-  ChevronDownIcon,
-  PencilIcon,
-  PeopleGroupIcon,
-} from "./icons";
+import { ChevronDownIcon, PeopleGroupIcon } from "./icons";
 import { PaneSearchField } from "./PaneSearchField";
 
 /** Contact-list chrome for vault owner — matches Panel 2; most controls inert. */
-export function MyContactPane({
-  owner,
-  vaultReadOnly = false,
-  onEdit,
-}: {
-  owner: VaultOwner;
-  vaultReadOnly?: boolean;
-  onEdit?: (anchorEl: HTMLElement) => void;
-}) {
+export function MyContactPane({ owner }: { owner: VaultOwner }) {
   const displayName = owner.display_name || "Me";
   const preferredHandle = owner.phones[0] ?? "";
   const letter = (displayName.trim().charAt(0) || "#").toUpperCase();
@@ -58,24 +46,6 @@ export function MyContactPane({
               <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
             </span>
           </IconHoverTarget>
-          {!vaultReadOnly && onEdit ? (
-            <IconHoverTarget label="Edit contact" placement="bottom">
-              <button
-                type="button"
-                aria-label="Edit contact"
-                onClick={(e) => onEdit(e.currentTarget)}
-                className={`${toolbarBtn} hover:text-text`}
-              >
-                <PencilIcon className="size-4" />
-              </button>
-            </IconHoverTarget>
-          ) : (
-            <IconHoverTarget label="Edit (unavailable)" placement="bottom">
-              <span className={`${toolbarBtn} opacity-40`} aria-hidden>
-                <PencilIcon className="size-4" />
-              </span>
-            </IconHoverTarget>
-          )}
           <IconHoverTarget label="Sort (unavailable)" placement="bottom">
             <span className={`${toolbarBtn} opacity-40`} aria-hidden>
               <SortArrowsIcon />

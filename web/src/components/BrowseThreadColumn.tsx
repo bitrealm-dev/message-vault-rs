@@ -48,8 +48,6 @@ export function BrowseThreadColumn({
   onClearContactSelection,
   onClearGroupSelection,
   onClearContactFocus,
-  onSelectContact,
-  onSelectGroup,
 }: {
   paneStorageKey: string;
   selectedIds: ReadonlySet<number>;
@@ -83,8 +81,6 @@ export function BrowseThreadColumn({
   onClearContactSelection: () => void;
   onClearGroupSelection: () => void;
   onClearContactFocus: () => void;
-  onSelectContact: (id: number) => void;
-  onSelectGroup: (g: CollapsedGroupConversation) => void;
 }) {
   const {
     showContactsCard,
@@ -145,8 +141,6 @@ export function BrowseThreadColumn({
           onClearContactSelection={onClearContactSelection}
           onClearGroupSelection={onClearGroupSelection}
           onClearContactFocus={onClearContactFocus}
-          onSelectContact={onSelectContact}
-          onSelectGroup={onSelectGroup}
         />
       ) : showThreadPane ? (
         <div className="min-h-0 flex-1">
