@@ -6,15 +6,15 @@ import { Suspense, type ReactNode } from "react";
 /** Shared AppShell + Suspense scaffold for browse-style pages. */
 export function BrowsePageLayout({
   active,
-  groups,
+  labels,
   children,
 }: {
   active: string;
-  groups: string[];
+  labels: string[];
   children: ReactNode;
 }) {
   return (
-    <AppShell active={active} groups={groups}>
+    <AppShell active={active} labels={labels}>
       <div className="h-full min-h-0 min-w-0">
         <Suspense
           fallback={<div className="p-4 text-sm text-muted">Loading…</div>}

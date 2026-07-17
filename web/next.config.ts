@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/group-chats", destination: "/group-messages", permanent: false },
       { source: "/group-chats-2", destination: "/group-messages", permanent: false },
+      { source: "/group/:slug", destination: "/label/:slug", permanent: false },
+      { source: "/no-group", destination: "/no-label", permanent: false },
       { source: "/unassigned", destination: "/all", permanent: false },
     ];
   },

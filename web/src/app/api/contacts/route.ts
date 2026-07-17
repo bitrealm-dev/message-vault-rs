@@ -35,10 +35,10 @@ export async function POST(req: Request) {
       ? body.phones.map((p) => p.trim()).filter(Boolean)
       : undefined;
   const exclude = typeof body.exclude === "boolean" ? body.exclude : undefined;
-  const groupsBody = body.contactGroups;
-  const contactGroups =
-    Array.isArray(groupsBody) && groupsBody.every((t) => typeof t === "string")
-      ? groupsBody.map((t) => t.trim()).filter(Boolean)
+  const labelsBody = body.labels ?? body.contactGroups;
+  const labels =
+    Array.isArray(labelsBody) && labelsBody.every((t) => typeof t === "string")
+      ? labelsBody.map((t) => t.trim()).filter(Boolean)
       : undefined;
 
   try {
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         lastName,
         phones,
         exclude,
-        contactGroups,
+        labels,
       });
       return NextResponse.json({ contact });
     });

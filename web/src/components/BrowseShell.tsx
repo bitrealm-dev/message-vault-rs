@@ -43,7 +43,7 @@ import {
   createGroupChatTrashOptions,
   groupChatToastTitle,
 } from "./groupChatTrash";
-import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import { LabelsMenu, type LabelCheckState } from "./LabelsMenu";
 import { useHistory } from "./history";
 import { trashContactsLabel } from "./history/historyTypes";
 import { ParticipantContactFormOverlay } from "./ParticipantContactFormOverlay";
@@ -77,14 +77,14 @@ export function BrowseShell({
   sectionLabel,
   contactSection,
   contacts,
-  allGroups = [],
+  allLabels = [],
   initialContactId,
 }: {
   paneStorageKey: string;
   sectionLabel: string;
   contactSection: ContactSection;
   contacts: ContactListItem[];
-  allGroups?: string[];
+  allLabels?: string[];
   initialContactId: number | null;
 }) {
   const vaultReadOnly = useVaultReadOnly() === true;
@@ -222,7 +222,7 @@ export function BrowseShell({
     async (
       patch: {
         exclude?: boolean;
-        contactGroups?: string[];
+        labels?: string[];
         firstName?: string | null;
         lastName?: string | null;
         phones?: string[];
@@ -455,7 +455,7 @@ export function BrowseShell({
         if (switchingContact) {
           const contact = data.contact as ContactDetail;
           const ov = groupOverridesRef.current.get(contact.id);
-          setDetail(ov ? { ...contact, contactGroups: ov } : contact);
+          setDetail(ov ? { ...contact, labels: ov } : contact);
         }
         const nextYearly: YearThread[] = data.yearly ?? [];
         const nextGroupChats: GroupChatThread[] = data.groupChats ?? [];
@@ -747,18 +747,18 @@ export function BrowseShell({
 
   const createDefaults = useMemo(() => {
     if (typeof contactSection === "object") {
-      return { contactGroups: [contactSection.group], exclude: false };
+      return { labels: [contactSection.label], exclude: false };
     }
     if (contactSection === "excluded") {
-      return { contactGroups: [] as string[], exclude: true };
+      return { labels: [] as string[], exclude: true };
     }
     // all, no-group
-    return { contactGroups: [] as string[], exclude: false };
+    return { labels: [] as string[], exclude: false };
   }, [contactSection]);
 
   const participantForm = useParticipantContactForm({
     vaultReadOnly,
-    knownGroups: allGroups,
+    knownGroups: allLabels,
     createDefaults,
     setStatus: setStatusMsg,
     shouldIgnoreEscape: () => ctxMenu != null || groupsPanelPos != null,
@@ -840,8 +840,8 @@ export function BrowseShell({
         detail.id,
         seedContactEditDraft({
           ...detail,
-          contactGroups:
-            groupOverrides.get(detail.id) ?? detail.contactGroups,
+          labels:
+            groupOverrides.get(detail.id) ?? detail.labels,
           exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
         }),
         anchor ?? null,
@@ -881,8 +881,8 @@ export function BrowseShell({
       detail.id,
       seedContactEditDraft({
         ...detail,
-        contactGroups:
-          groupOverrides.get(detail.id) ?? detail.contactGroups,
+        labels:
+          groupOverrides.get(detail.id) ?? detail.labels,
         exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
       }),
       null,
@@ -1080,7 +1080,7 @@ export function BrowseShell({
       if (!groups && !hasExclude) return prev;
       return {
         ...prev,
-        ...(groups ? { contactGroups: groups } : {}),
+        ...(groups ? { labels: groups } : {}),
         ...(hasExclude ? { exclude: excludeOv.get(prev.id)! } : {}),
       };
     });
@@ -1281,7 +1281,7 @@ export function BrowseShell({
         return [
           {
             id: c.id,
-            contactGroups: groupsFor(c.id, c.contactGroups),
+            labels: groupsFor(c.id, c.labels),
           },
         ];
       });
@@ -1289,13 +1289,13 @@ export function BrowseShell({
     if (hasSelection) {
       return selectedContacts.map((c) => ({
         id: c.id,
-        contactGroups: groupsFor(c.id, c.contactGroups),
+        labels: groupsFor(c.id, c.labels),
       }));
     }
     if (detail) {
-      return [{ id: detail.id, contactGroups: groupsFor(detail.id, detail.contactGroups) }];
+      return [{ id: detail.id, labels: groupsFor(detail.id, detail.labels) }];
     }
-    return [] as Array<{ id: number; contactGroups: string[] }>;
+    return [] as Array<{ id: number; labels: string[] }>;
   }, [
     groupTargetOverrideIds,
     contacts,
@@ -1305,17 +1305,17 @@ export function BrowseShell({
     groupsFor,
   ]);
   const menuGroups = useMemo(() => {
-    const names = new Set(allGroups);
+    const names = new Set(allLabels);
     for (const person of groupTargets) {
-      for (const group of person.contactGroups) names.add(group);
+      for (const group of person.labels) names.add(group);
     }
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [allGroups, groupTargets]);
+  }, [allLabels, groupTargets]);
 
   const groupChecks = useMemo(() => {
-    const result: Record<string, GroupCheckState> = {};
+    const result: Record<string, LabelCheckState> = {};
     const n = groupTargets.length;
     for (const name of menuGroups) {
       if (n === 0) {
@@ -1324,7 +1324,7 @@ export function BrowseShell({
       }
       let count = 0;
       for (const person of groupTargets) {
-        if (person.contactGroups.includes(name)) count++;
+        if (person.labels.includes(name)) count++;
       }
       result[name] =
         count === 0 ? "off" : count === n ? "on" : "mixed";
@@ -1339,14 +1339,14 @@ export function BrowseShell({
 
       let changed = 0;
       for (const person of targets) {
-        if (person.contactGroups.includes(name) !== enable) changed++;
+        if (person.labels.includes(name) !== enable) changed++;
       }
       if (changed === 0) return;
 
       const nextGroupsById = new Map<number, string[]>();
       for (const person of targets) {
         const current =
-          groupOverridesRef.current.get(person.id) ?? person.contactGroups;
+          groupOverridesRef.current.get(person.id) ?? person.labels;
         const has = current.includes(name);
         if (enable === has) {
           nextGroupsById.set(person.id, current);
@@ -1373,7 +1373,7 @@ export function BrowseShell({
         if (!prev) return prev;
         const groups = nextGroupsById.get(prev.id);
         if (!groups) return prev;
-        return { ...prev, contactGroups: groups };
+        return { ...prev, labels: groups };
       });
       selectionDirtyRef.current = true;
 
@@ -1386,20 +1386,20 @@ export function BrowseShell({
 
       try {
         for (const person of targets) {
-          const has = person.contactGroups.includes(name);
+          const has = person.labels.includes(name);
           if (enable === has) continue;
           const groups =
             nextGroupsById.get(person.id) ??
             (enable
-              ? [...person.contactGroups, name].sort((a, b) =>
+              ? [...person.labels, name].sort((a, b) =>
                   a.localeCompare(b, undefined, { sensitivity: "base" }),
                 )
-              : person.contactGroups.filter((g) => g !== name));
+              : person.labels.filter((g) => g !== name));
 
           const res = await fetch(`/api/contacts/${person.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contactGroups: groups }),
+            body: JSON.stringify({ labels: groups }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error ?? "save failed");
@@ -1490,7 +1490,7 @@ export function BrowseShell({
     excludeOverrides,
   ]);
 
-  const excludedCheck = useMemo((): GroupCheckState => {
+  const excludedCheck = useMemo((): LabelCheckState => {
     const n = selectionFieldTargets.length;
     if (n === 0) return "off";
     let excluded = 0;
@@ -1580,7 +1580,7 @@ export function BrowseShell({
     setDetail((prev) => {
       if (!prev) return prev;
       if (!nextGroupsById.has(prev.id)) return prev;
-      return { ...prev, contactGroups: [], exclude: false };
+      return { ...prev, labels: [], exclude: false };
     });
 
     const excludeTargets = selectionFieldTargets.filter((p) => p.exclude);
@@ -1600,8 +1600,8 @@ export function BrowseShell({
 
     try {
       for (const person of targets) {
-        const body: { contactGroups: string[]; exclude?: boolean } = {
-          contactGroups: [],
+        const body: { labels: string[]; exclude?: boolean } = {
+          labels: [],
         };
         const wasExcluded =
           excludeOverrides.get(person.id) ??
@@ -1835,8 +1835,8 @@ export function BrowseShell({
           }
           vaultReadOnly={vaultReadOnly}
           groupsMenu={
-            <GroupsMenu
-              allGroups={menuGroups}
+            <LabelsMenu
+              allLabels={menuGroups}
               checks={groupChecks}
               excludedCheck={excludedCheck}
               disabled={!canEditGroups}
@@ -2002,9 +2002,9 @@ export function BrowseShell({
         onMouseEnter={cancelCloseGroupsPanel}
         onMouseLeave={scheduleCloseGroupsPanel}
       >
-        <GroupsMenu
+        <LabelsMenu
           fixedPosition={groupsPanelPos}
-          allGroups={menuGroups}
+          allLabels={menuGroups}
           checks={groupChecks}
           excludedCheck={excludedCheck}
           disabled={formOpen}

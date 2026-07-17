@@ -1,5 +1,5 @@
-import { restoreGroup } from "@/lib/contactsWrite";
-import { listGroups } from "@/lib/db";
+import { restoreLabel } from "@/lib/contactsWrite";
+import { listLabels } from "@/lib/db";
 import {
   unauthorizedResponse,
   withAccountHandler,
@@ -36,8 +36,8 @@ export async function POST(req: Request) {
 
   try {
     return await withAccountHandler(async () => {
-      const name = restoreGroup(body.name as string, memberContactIds);
-      return NextResponse.json({ name, groups: listGroups() });
+      const name = restoreLabel(body.name as string, memberContactIds);
+      return NextResponse.json({ name, labels: listLabels() });
     });
   } catch (err) {
     const auth = authError(err);

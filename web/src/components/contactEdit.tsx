@@ -5,7 +5,7 @@ export type ContactEditDraft = {
   lastName: string;
   phones: string[];
   exclude: boolean;
-  contactGroups: string[];
+  labels: string[];
 };
 
 export function seedContactEditDraft(contact: {
@@ -13,27 +13,27 @@ export function seedContactEditDraft(contact: {
   lastName: string | null;
   phones: string[];
   exclude: boolean;
-  contactGroups?: string[];
+  labels?: string[];
 }): ContactEditDraft {
   return {
     firstName: contact.firstName ?? "",
     lastName: contact.lastName ?? "",
     phones: [...contact.phones, ""],
     exclude: contact.exclude,
-    contactGroups: contact.contactGroups ? [...contact.contactGroups] : [],
+    labels: contact.labels ? [...contact.labels] : [],
   };
 }
 
 export function emptyContactEditDraft(defaults?: {
   exclude?: boolean;
-  contactGroups?: string[];
+  labels?: string[];
 }): ContactEditDraft {
   return {
     firstName: "",
     lastName: "",
     phones: [""],
     exclude: defaults?.exclude ?? false,
-    contactGroups: defaults?.contactGroups ? [...defaults.contactGroups] : [],
+    labels: defaults?.labels ? [...defaults.labels] : [],
   };
 }
 
@@ -41,12 +41,12 @@ export function draftHasName(draft: ContactEditDraft): boolean {
   return draft.firstName.trim() !== "" || draft.lastName.trim() !== "";
 }
 
-/** Groups list for the contact card: Inactive first when set. */
-export function displayGroupNames(
-  contactGroups: string[],
+/** Labels list for the contact card: Inactive first when set. */
+export function displayLabelNames(
+  labels: string[],
   excluded: boolean,
 ): string[] {
-  const rest = contactGroups.filter((g) => g.toLowerCase() !== "excluded");
+  const rest = labels.filter((g) => g.toLowerCase() !== "excluded");
   return excluded ? ["Inactive", ...rest] : rest;
 }
 

@@ -1,9 +1,9 @@
 export { resetDb } from "./dbCore";
-export { groupSlug } from "./groupSlug";
+export { labelSlug } from "./labelSlug";
 export {
-  listGroups,
-  listGroupMemberContactIds,
-  groupFromSlug,
+  listLabels,
+  listLabelMemberContactIds,
+  labelFromSlug,
   listContacts,
   getContact,
   contactThreadsBundle,

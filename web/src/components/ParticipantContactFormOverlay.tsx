@@ -6,7 +6,7 @@ import {
   ContactFormOverlay,
   type ContactFormAnchor,
 } from "./ContactFormOverlay";
-import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
+import { LabelsMenu, type LabelCheckState } from "./LabelsMenu";
 import type { Dispatch, SetStateAction } from "react";
 
 /** Props needed to render the shared participant contact form overlay. */
@@ -19,8 +19,8 @@ export type ParticipantContactFormView = {
   contactSaving: boolean;
   canSaveForm: boolean;
   draftMenuGroups: string[];
-  draftGroupChecks: Record<string, GroupCheckState>;
-  draftExcludedCheck: GroupCheckState;
+  draftGroupChecks: Record<string, LabelCheckState>;
+  draftExcludedCheck: LabelCheckState;
   cancelContactForm: () => void;
   saveContactEdit: () => Promise<void>;
   saveContactCreate: () => Promise<void>;
@@ -96,13 +96,13 @@ export function ParticipantContactFormOverlay({
         framed={false}
         draft={editDraft}
         onDraftChange={setEditDraft}
-        groups={editDraft.contactGroups}
+        labels={editDraft.labels}
         excluded={editDraft.exclude}
         phonesView={phonesView}
-        groupsEditor={
-          <GroupsMenu
+        labelsEditor={
+          <LabelsMenu
             labeled
-            allGroups={draftMenuGroups}
+            allLabels={draftMenuGroups}
             checks={draftGroupChecks}
             excludedCheck={draftExcludedCheck}
             disabled={contactSaving}

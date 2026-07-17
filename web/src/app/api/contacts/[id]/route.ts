@@ -58,12 +58,12 @@ export async function PATCH(req: Request, { params }: Params) {
   if (typeof body.exclude === "boolean") {
     patch.exclude = body.exclude;
   }
-  const groupsBody = body.contactGroups;
+  const labelsBody = body.labels ?? body.contactGroups;
   if (
-    Array.isArray(groupsBody) &&
-    groupsBody.every((t) => typeof t === "string")
+    Array.isArray(labelsBody) &&
+    labelsBody.every((t) => typeof t === "string")
   ) {
-    patch.contactGroups = groupsBody.map((t) => t.trim()).filter(Boolean);
+    patch.labels = labelsBody.map((t) => t.trim()).filter(Boolean);
   }
   if (body.firstName === null || typeof body.firstName === "string") {
     patch.firstName = body.firstName;
@@ -79,7 +79,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
   if (
     patch.exclude === undefined &&
-    patch.contactGroups === undefined &&
+    patch.labels === undefined &&
     patch.firstName === undefined &&
     patch.lastName === undefined &&
     patch.phones === undefined
@@ -87,7 +87,7 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json(
       {
         error:
-          "exclude, contactGroups, firstName, lastName, and/or phones required",
+          "exclude, labels, firstName, lastName, and/or phones required",
       },
       { status: 400 },
     );

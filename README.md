@@ -207,7 +207,7 @@ Contact browsing:
 
 - **Contacts** — everyone with messages who is not excluded (`exclude=false` in `config/contacts.csv`). Derived as All − Excluded; you only manage the `exclude` column.
 - **All** — every contact with messages, including excluded.
-- **Excluded** — `exclude=true`. Still browsable; hidden from Contacts and from groups.
+- **Excluded** — `exclude=true`. Still browsable; hidden from Contacts and from labels.
 
 `contacts.csv` maps **phone numbers** only. In SQLite, `contact_handles` stores phones and optional iMessage emails for thread linking; emails are never written back to the CSV. Email-only peers you do not want to map stay under Unassigned.
 

@@ -1,6 +1,6 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { BrowseShell } from "@/components/BrowseShell";
-import { listContacts, listGroups, groupSlug } from "@/lib/db";
+import { listContacts, listLabels, labelSlug } from "@/lib/db";
 import { ensureUnknownContacts } from "@/lib/contactsWrite";
 import { withServerAccount } from "@/lib/serverAccount";
 import type { ContactSection } from "@/lib/types";
@@ -19,18 +19,18 @@ export async function ContactBrowsePage({
   return withServerAccount(async () => {
     ensureUnknownContacts();
     const contacts = listContacts(section);
-    const groups = listGroups();
+    const labels = listLabels();
     const paneKey =
-      typeof section === "object" ? `group-${groupSlug(section.group)}` : section;
+      typeof section === "object" ? `label-${labelSlug(section.label)}` : section;
 
     return (
-      <BrowsePageLayout active={nav} groups={groups}>
+      <BrowsePageLayout active={nav} labels={labels}>
         <BrowseShell
           paneStorageKey={paneKey}
           sectionLabel={label}
           contactSection={section}
           contacts={contacts}
-          allGroups={groups}
+          allLabels={labels}
           initialContactId={contactId}
         />
       </BrowsePageLayout>

@@ -25,17 +25,17 @@ import {
 /** App chrome: resizable nav drawer (compacts to icon rail) | main content. */
 export function AppShell({
   active,
-  groups = [],
+  labels = [],
   children,
 }: {
   active: string;
-  groups?: string[];
+  labels?: string[];
   children: ReactNode;
 }) {
   const navPanelRef = usePanelRef();
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [navAnim, setNavAnim] = useState<NavAnimDirection>(null);
-  const [focusGroupsToken, setFocusGroupsToken] = useState(0);
+  const [focusLabelsToken, setFocusLabelsToken] = useState(0);
   const onCollapsedChange = useCallback((c: boolean) => {
     setNavCollapsed(c);
   }, []);
@@ -55,9 +55,9 @@ export function AppShell({
     storage,
   });
 
-  const onExpandGroups = useCallback(() => {
+  const onExpandLabels = useCallback(() => {
     void expand();
-    setFocusGroupsToken((n) => n + 1);
+    setFocusLabelsToken((n) => n + 1);
   }, [expand]);
 
   const navMinSize = navAnimating ? 0 : 120;
@@ -91,13 +91,13 @@ export function AppShell({
             ) : (
               <AppSidebar
                 active={active}
-                groups={groups}
+                labels={labels}
                 collapsed={collapsed}
                 animating={navAnim === "collapse"}
                 onHideNav={() => void collapse()}
                 onShowNav={() => void expand()}
-                onExpandGroups={onExpandGroups}
-                focusGroupsToken={focusGroupsToken}
+                onExpandLabels={onExpandLabels}
+                focusLabelsToken={focusLabelsToken}
               />
             )}
           </Panel>

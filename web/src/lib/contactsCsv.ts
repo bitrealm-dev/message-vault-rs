@@ -48,6 +48,14 @@ function escapeCsvField(value: string): string {
   return value;
 }
 
+const CSV_LABEL_COLUMNS = [
+  "label_1",
+  "label_2",
+  "label_3",
+  "label_4",
+  "label_5",
+] as const;
+
 const CSV_GROUP_COLUMNS = [
   "group_1",
   "group_2",
@@ -56,45 +64,69 @@ const CSV_GROUP_COLUMNS = [
   "group_5",
 ] as const;
 
-function groupColumnIndexes(header: string[]): number[] {
-  return CSV_GROUP_COLUMNS.map((name) => header.indexOf(name));
+/** Prefer label_* columns; fall back to legacy group_* for older CSVs. */
+function labelColumnIndexes(header: string[]): number[] {
+  const labelIdx = CSV_LABEL_COLUMNS.map((name) => header.indexOf(name));
+  if (labelIdx.every((i) => i >= 0)) return labelIdx;
+  const groupIdx = CSV_GROUP_COLUMNS.map((name) => header.indexOf(name));
+  if (groupIdx.every((i) => i >= 0)) return groupIdx;
+  // Mixed / partial: per-slot prefer label_N then group_N
+  return CSV_LABEL_COLUMNS.map((labelName, i) => {
+    const li = header.indexOf(labelName);
+    if (li >= 0) return li;
+    return header.indexOf(CSV_GROUP_COLUMNS[i]!);
+  });
 }
 
-function readCsvGroups(cols: string[], groupIdx: number[]): string[] {
+/** Read labels from label_* and/or group_* columns (label wins per slot). */
+function readCsvLabels(cols: string[], header: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const i of groupIdx) {
-    if (i < 0) continue;
-    const group = (cols[i] ?? "").trim();
-    if (!group) continue;
-    const key = group.toLowerCase();
+  for (let i = 0; i < 5; i++) {
+    const labelCol = header.indexOf(CSV_LABEL_COLUMNS[i]!);
+    const groupCol = header.indexOf(CSV_GROUP_COLUMNS[i]!);
+    const raw =
+      (labelCol >= 0 ? (cols[labelCol] ?? "").trim() : "") ||
+      (groupCol >= 0 ? (cols[groupCol] ?? "").trim() : "");
+    if (!raw) continue;
+    const key = raw.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(group);
+    out.push(raw);
   }
   return out;
 }
 
-function writeCsvGroups(
+function writeCsvLabels(
   cols: string[],
-  groupIdx: number[],
-  groups: string[],
+  labelIdx: number[],
+  labels: string[],
 ): void {
   const unique: string[] = [];
   const seen = new Set<string>();
-  for (const group of groups) {
-    const trimmed = group.trim();
+  for (const label of labels) {
+    const trimmed = label.trim();
     if (!trimmed) continue;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(trimmed);
   }
-  for (let i = 0; i < groupIdx.length; i++) {
-    const col = groupIdx[i]!;
+  for (let i = 0; i < labelIdx.length; i++) {
+    const col = labelIdx[i]!;
     if (col < 0) continue;
     cols[col] = unique[i] ?? "";
   }
+}
+
+function requireLabelColumns(header: string[]): number[] {
+  const labelIdx = labelColumnIndexes(header);
+  if (labelIdx.some((i) => i < 0)) {
+    throw new Error(
+      "contacts CSV missing label_1..label_5 (or legacy group_1..group_5) columns",
+    );
+  }
+  return labelIdx;
 }
 
 export function updateContactsCsv(
@@ -127,8 +159,8 @@ export function updateContactsCsv(
     lastName: header.indexOf("last_name"),
     exclude: header.indexOf("exclude"),
   };
-  const groupIdx = groupColumnIndexes(header);
-  if (idx.phones < 0 || idx.exclude < 0 || groupIdx.some((i) => i < 0)) {
+  const labelIdx = requireLabelColumns(header);
+  if (idx.phones < 0 || idx.exclude < 0) {
     throw new Error("contacts CSV missing required columns");
   }
 
@@ -168,7 +200,7 @@ export function updateContactsCsv(
       cols[idx.lastName] = patch.lastName ?? "";
     }
     cols[idx.exclude] = patch.exclude ? "true" : "false";
-    writeCsvGroups(cols, groupIdx, patch.groups);
+    writeCsvLabels(cols, labelIdx, patch.groups);
     return cols.map(escapeCsvField).join(",");
   });
 
@@ -207,8 +239,8 @@ export function appendContactsCsv(row: {
     lastName: header.indexOf("last_name"),
     exclude: header.indexOf("exclude"),
   };
-  const groupIdx = groupColumnIndexes(header);
-  if (idx.phones < 0 || idx.exclude < 0 || groupIdx.some((i) => i < 0)) {
+  const labelIdx = requireLabelColumns(header);
+  if (idx.phones < 0 || idx.exclude < 0) {
     throw new Error("contacts CSV missing required columns");
   }
 
@@ -217,7 +249,7 @@ export function appendContactsCsv(row: {
   if (idx.firstName >= 0) cols[idx.firstName] = row.firstName ?? "";
   if (idx.lastName >= 0) cols[idx.lastName] = row.lastName ?? "";
   cols[idx.exclude] = row.exclude ? "true" : "false";
-  writeCsvGroups(cols, groupIdx, row.groups);
+  writeCsvLabels(cols, labelIdx, row.groups);
 
   const line = cols.map(escapeCsvField).join(",");
   const needsNewline = raw.length > 0 && !/\r?\n$/.test(raw);
@@ -225,9 +257,9 @@ export function appendContactsCsv(row: {
 }
 
 
-/** Rewrite group_1..group_5 in contacts.csv by mapping old group names. */
-export function rewriteCsvGroups(
-  mapGroup: (group: string) => string | null,
+/** Rewrite label_1..label_5 (or legacy group_*) in contacts.csv by mapping names. */
+export function rewriteCsvLabels(
+  mapLabel: (label: string) => string | null,
 ): void {
   const csvPath = contactsCsvPath();
   if (!fs.existsSync(csvPath)) {
@@ -241,19 +273,16 @@ export function rewriteCsvGroups(
   }
 
   const header = parseCsvLine(lines[0] ?? "");
-  const groupIdx = groupColumnIndexes(header);
-  if (groupIdx.some((i) => i < 0)) {
-    throw new Error("contacts CSV missing group_1..group_5 columns");
-  }
+  const labelIdx = requireLabelColumns(header);
 
   const out = lines.map((line, lineNo) => {
     if (lineNo === 0 || !line.trim()) return line;
     const cols = parseCsvLine(line);
     while (cols.length < header.length) cols.push("");
-    const groups = readCsvGroups(cols, groupIdx)
-      .map(mapGroup)
+    const labels = readCsvLabels(cols, header)
+      .map(mapLabel)
       .filter((g): g is string => Boolean(g));
-    writeCsvGroups(cols, groupIdx, groups);
+    writeCsvLabels(cols, labelIdx, labels);
     return cols.map(escapeCsvField).join(",");
   });
 
@@ -333,4 +362,3 @@ export function removeContactsCsv(
   if (endsWithNewline && !body.endsWith("\n")) body += "\n";
   fs.writeFileSync(csvPath, body, "utf8");
 }
-

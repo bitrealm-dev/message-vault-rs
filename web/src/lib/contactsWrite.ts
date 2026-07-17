@@ -5,7 +5,7 @@ import { getContact, resetDb } from "./db";
 import {
   appendContactsCsv,
   removeContactsCsv,
-  rewriteCsvGroups,
+  rewriteCsvLabels,
   updateContactsCsv,
 } from "./contactsCsv";
 import {
@@ -16,23 +16,23 @@ import {
 import { clearTrashedHandles } from "./handlesWrite";
 import type { ContactDetail } from "./types";
 import {
-  isReservedGroupName,
-  RESERVED_GROUP_NAMES,
-  reservedGroupError,
-} from "./reservedGroups";
+  isReservedLabelName,
+  RESERVED_LABEL_NAMES,
+  reservedLabelError,
+} from "./reservedLabels";
 import { assertNotOwnerHandle, assertVaultWritable } from "./owner";
 
 export type ContactPatch = {
   exclude?: boolean;
-  contactGroups?: string[];
+  labels?: string[];
   firstName?: string | null;
   lastName?: string | null;
   phones?: string[];
 };
 
-function assertAllowedGroupName(name: string): void {
-  if (isReservedGroupName(name)) {
-    throw new Error(reservedGroupError(name));
+function assertAllowedLabelName(name: string): void {
+  if (isReservedLabelName(name)) {
+    throw new Error(reservedLabelError(name));
   }
 }
 
@@ -41,7 +41,7 @@ export type ContactCreate = {
   lastName?: string | null;
   phones?: string[];
   exclude?: boolean;
-  contactGroups?: string[];
+  labels?: string[];
 };
 
 /** Insert a new contact in SQLite and append contacts.csv; returns the contact. */
@@ -62,10 +62,10 @@ export function createContact(input: ContactCreate): ContactDetail {
   }
   const exclude = input.exclude ?? false;
   const preferredHandle = preferredPhoneHandle(phones);
-  const contactGroups = (input.contactGroups ?? [])
+  const labels = (input.labels ?? [])
     .map((t) => t.trim())
     .filter(Boolean)
-    .filter((t) => !RESERVED_GROUP_NAMES.has(t.toLowerCase()));
+    .filter((t) => !RESERVED_LABEL_NAMES.has(t.toLowerCase()));
 
   for (const phone of phones) {
     assertNotOwnerHandle(phone);
@@ -98,12 +98,12 @@ export function createContact(input: ContactCreate): ContactDetail {
       }
       clearTrashedHandles(writeDb, phones, accountId);
 
-      if (contactGroups.length > 0) {
+      if (labels.length > 0) {
         const insertMember = writeDb.prepare(
-          `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
+          `INSERT OR IGNORE INTO contact_label_members (contact_id, label_id) VALUES (?, ?)`,
         );
-        for (const name of contactGroups) {
-          const groupId = ensureGroupId(writeDb, name, accountId);
+        for (const name of labels) {
+          const groupId = ensureLabelId(writeDb, name, accountId);
           insertMember.run(newId, groupId);
         }
       }
@@ -119,7 +119,7 @@ export function createContact(input: ContactCreate): ContactDetail {
     firstName,
     lastName,
     exclude,
-    groups: contactGroups,
+    groups: labels,
   });
 
   const created = getContact(newId);
@@ -129,53 +129,53 @@ export function createContact(input: ContactCreate): ContactDetail {
   return created;
 }
 
-function ensureGroupId(
+function ensureLabelId(
   db: Database.Database,
   name: string,
   accountId: string,
 ): number {
-  assertAllowedGroupName(name);
+  assertAllowedLabelName(name);
   db.prepare(
-    `INSERT OR IGNORE INTO contact_groups (account_id, name) VALUES (?, ?)`,
+    `INSERT OR IGNORE INTO contact_labels (account_id, name) VALUES (?, ?)`,
   ).run(accountId, name);
   const row = db
-    .prepare(`SELECT id FROM contact_groups WHERE account_id = ? AND name = ?`)
+    .prepare(`SELECT id FROM contact_labels WHERE account_id = ? AND name = ?`)
     .get(accountId, name) as { id: number } | undefined;
   if (!row) throw new Error(`failed to ensure label ${name}`);
   return row.id;
 }
 
-function findGroupId(
+function findLabelId(
   db: Database.Database,
   name: string,
   accountId: string,
 ): number | null {
   const row = db
-    .prepare(`SELECT id FROM contact_groups WHERE account_id = ? AND name = ?`)
+    .prepare(`SELECT id FROM contact_labels WHERE account_id = ? AND name = ?`)
     .get(accountId, name) as { id: number } | undefined;
   return row?.id ?? null;
 }
 
 
-export function createGroup(name: string): string {
+export function createLabel(name: string): string {
   assertVaultWritable();
   const accountId = currentAccountId();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
-  assertAllowedGroupName(trimmed);
+  assertAllowedLabelName(trimmed);
 
   const writeDb = new Database(dbPath());
   try {
     const existing = writeDb
       .prepare(
-        `SELECT name FROM contact_groups WHERE account_id = ? AND name = ? COLLATE NOCASE`,
+        `SELECT name FROM contact_labels WHERE account_id = ? AND name = ? COLLATE NOCASE`,
       )
       .get(accountId, trimmed) as { name: string } | undefined;
     if (existing) {
       throw new Error("label already exists");
     }
     writeDb
-      .prepare(`INSERT INTO contact_groups (account_id, name) VALUES (?, ?)`)
+      .prepare(`INSERT INTO contact_labels (account_id, name) VALUES (?, ?)`)
       .run(accountId, trimmed);
   } finally {
     writeDb.close();
@@ -185,13 +185,13 @@ export function createGroup(name: string): string {
   return trimmed;
 }
 
-export function renameGroup(from: string, to: string): string {
+export function renameLabel(from: string, to: string): string {
   assertVaultWritable();
   const accountId = currentAccountId();
   const oldName = from.trim();
   const newName = to.trim();
   if (!oldName || !newName) throw new Error("name required");
-  assertAllowedGroupName(newName);
+  assertAllowedLabelName(newName);
   if (oldName.toLowerCase() === newName.toLowerCase()) {
     // Same name ignoring case — allow casing fix
     if (oldName === newName) return newName;
@@ -199,32 +199,32 @@ export function renameGroup(from: string, to: string): string {
 
   const writeDb = new Database(dbPath());
   try {
-    const id = findGroupId(writeDb, oldName, accountId);
+    const id = findLabelId(writeDb, oldName, accountId);
     if (id == null) throw new Error("label not found");
 
     const clash = writeDb
       .prepare(
-        `SELECT id FROM contact_groups
+        `SELECT id FROM contact_labels
          WHERE account_id = ? AND name = ? COLLATE NOCASE AND id != ?`,
       )
       .get(accountId, newName, id) as { id: number } | undefined;
     if (clash) throw new Error("label already exists");
 
     writeDb
-      .prepare(`UPDATE contact_groups SET name = ? WHERE id = ? AND account_id = ?`)
+      .prepare(`UPDATE contact_labels SET name = ? WHERE id = ? AND account_id = ?`)
       .run(newName, id, accountId);
   } finally {
     writeDb.close();
   }
 
   resetDb();
-  rewriteCsvGroups((group) =>
+  rewriteCsvLabels((group) =>
     group.toLowerCase() === oldName.toLowerCase() ? newName : group,
   );
   return newName;
 }
 
-export function deleteGroup(name: string): void {
+export function deleteLabel(name: string): void {
   assertVaultWritable();
   const accountId = currentAccountId();
   const trimmed = name.trim();
@@ -232,20 +232,20 @@ export function deleteGroup(name: string): void {
 
   const writeDb = new Database(dbPath());
   try {
-    const id = findGroupId(writeDb, trimmed, accountId);
+    const id = findLabelId(writeDb, trimmed, accountId);
     if (id == null) throw new Error("label not found");
     writeDb
-      .prepare(`DELETE FROM contact_group_members WHERE group_id = ?`)
+      .prepare(`DELETE FROM contact_label_members WHERE label_id = ?`)
       .run(id);
     writeDb
-      .prepare(`DELETE FROM contact_groups WHERE id = ? AND account_id = ?`)
+      .prepare(`DELETE FROM contact_labels WHERE id = ? AND account_id = ?`)
       .run(id, accountId);
   } finally {
     writeDb.close();
   }
 
   resetDb();
-  rewriteCsvGroups((group) =>
+  rewriteCsvLabels((group) =>
     group.toLowerCase() === trimmed.toLowerCase() ? null : group,
   );
 }
@@ -352,7 +352,7 @@ export function patchContact(
   }
 
   const exclude = patch.exclude ?? existing.exclude;
-  const contactGroups = patch.contactGroups ?? existing.contactGroups;
+  const labels = patch.labels ?? existing.labels;
   const firstName =
     patch.firstName !== undefined
       ? patch.firstName?.trim() || null
@@ -400,15 +400,15 @@ export function patchContact(
         )
         .run(firstName, lastName, exclude ? 1 : 0, preferredHandle, id, accountId);
 
-      if (patch.contactGroups) {
+      if (patch.labels) {
         writeDb
-          .prepare(`DELETE FROM contact_group_members WHERE contact_id = ?`)
+          .prepare(`DELETE FROM contact_label_members WHERE contact_id = ?`)
           .run(id);
         const insert = writeDb.prepare(
-          `INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?, ?)`,
+          `INSERT OR IGNORE INTO contact_label_members (contact_id, label_id) VALUES (?, ?)`,
         );
-        for (const name of contactGroups) {
-          const groupId = ensureGroupId(writeDb, name, accountId);
+        for (const name of labels) {
+          const groupId = ensureLabelId(writeDb, name, accountId);
           insert.run(id, groupId);
         }
       }
@@ -424,7 +424,7 @@ export function patchContact(
     { firstName: existing.firstName, lastName: existing.lastName },
     {
       exclude,
-      groups: contactGroups,
+      groups: labels,
       firstName: patch.firstName !== undefined ? firstName : undefined,
       lastName: patch.lastName !== undefined ? lastName : undefined,
       phones: csvPhonesChanged ? csvPhones : undefined,
@@ -535,24 +535,24 @@ export function removePhoneFromContact(
  * Recreate a deleted group and re-attach member contacts.
  * Contacts that no longer exist are skipped.
  */
-export function restoreGroup(
+export function restoreLabel(
   name: string,
   memberContactIds: number[],
 ): string {
   assertVaultWritable();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("name required");
-  assertAllowedGroupName(trimmed);
+  assertAllowedLabelName(trimmed);
 
-  const created = createGroup(trimmed);
+  const created = createLabel(trimmed);
   for (const contactId of memberContactIds) {
     const contact = getContact(contactId);
     if (!contact) continue;
-    if (contact.contactGroups.some((g) => g.toLowerCase() === created.toLowerCase())) {
+    if (contact.labels.some((g) => g.toLowerCase() === created.toLowerCase())) {
       continue;
     }
     patchContact(contactId, {
-      contactGroups: [...contact.contactGroups, created].sort((a, b) =>
+      labels: [...contact.labels, created].sort((a, b) =>
         a.localeCompare(b, undefined, { sensitivity: "base" }),
       ),
     });
@@ -689,7 +689,7 @@ export function mergeContacts(fromId: number, intoId: number): ContactDetail {
           .run(intoId, accountId, handle, fromId);
       }
       writeDb
-        .prepare(`DELETE FROM contact_group_members WHERE contact_id = ?`)
+        .prepare(`DELETE FROM contact_label_members WHERE contact_id = ?`)
         .run(fromId);
       writeDb
         .prepare(`DELETE FROM contacts WHERE id = ? AND account_id = ?`)
@@ -728,7 +728,7 @@ export function mergeContacts(fromId: number, intoId: number): ContactDetail {
         firstName: target.firstName,
         lastName: target.lastName,
         exclude: target.exclude,
-        groups: target.contactGroups,
+        groups: target.labels,
         phones: mergedCsvPhones,
       },
     );

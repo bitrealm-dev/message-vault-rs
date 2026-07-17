@@ -22,7 +22,7 @@ import {
   contactFormAnchorFromRect,
   type ContactFormAnchor,
 } from "./ContactFormOverlay";
-import type { GroupCheckState } from "./GroupsMenu";
+import type { LabelCheckState } from "./LabelsMenu";
 
 export type ParticipantContactSavedResult = {
   kind: "edit" | "create";
@@ -33,10 +33,10 @@ export type ParticipantContactSavedResult = {
 export type UseParticipantContactFormOptions = {
   vaultReadOnly: boolean;
   setStatus?: (message: string | null) => void;
-  /** Extra group names always listed in the draft Groups menu (e.g. browse allGroups). */
+  /** Extra group names always listed in the draft Groups menu (e.g. browse allLabels). */
   knownGroups?: string[];
   /** Defaults applied when creating a contact from a handle. */
-  createDefaults?: { contactGroups: string[]; exclude: boolean };
+  createDefaults?: { labels: string[]; exclude: boolean };
   /** Return true to ignore Escape (e.g. another modal is open). */
   shouldIgnoreEscape?: () => boolean;
   /** After successful create/edit (default: router.refresh). */
@@ -53,8 +53,8 @@ export type ParticipantContactFormState = {
   contactSaving: boolean;
   canSaveForm: boolean;
   draftMenuGroups: string[];
-  draftGroupChecks: Record<string, GroupCheckState>;
-  draftExcludedCheck: GroupCheckState;
+  draftGroupChecks: Record<string, LabelCheckState>;
+  draftExcludedCheck: LabelCheckState;
   cancelContactForm: () => void;
   saveContactEdit: () => Promise<void>;
   saveContactCreate: () => Promise<void>;
@@ -107,22 +107,22 @@ export function useParticipantContactForm(
 
   const draftMenuGroups = useMemo(() => {
     const names = new Set([...knownGroups, ...extraDraftGroups]);
-    for (const g of editDraft?.contactGroups ?? []) names.add(g);
+    for (const g of editDraft?.labels ?? []) names.add(g);
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [knownGroups, extraDraftGroups, editDraft?.contactGroups]);
+  }, [knownGroups, extraDraftGroups, editDraft?.labels]);
 
   const draftGroupChecks = useMemo(() => {
-    const result: Record<string, GroupCheckState> = {};
-    const groups = editDraft?.contactGroups ?? [];
+    const result: Record<string, LabelCheckState> = {};
+    const groups = editDraft?.labels ?? [];
     for (const name of draftMenuGroups) {
       result[name] = groups.includes(name) ? "on" : "off";
     }
     return result;
-  }, [draftMenuGroups, editDraft?.contactGroups]);
+  }, [draftMenuGroups, editDraft?.labels]);
 
-  const draftExcludedCheck = useMemo((): GroupCheckState => {
+  const draftExcludedCheck = useMemo((): LabelCheckState => {
     return editDraft?.exclude ? "on" : "off";
   }, [editDraft?.exclude]);
 
@@ -149,13 +149,13 @@ export function useParticipantContactForm(
   const toggleDraftGroup = useCallback((name: string) => {
     setEditDraft((prev) => {
       if (!prev) return prev;
-      const has = prev.contactGroups.includes(name);
-      const contactGroups = has
-        ? prev.contactGroups.filter((g) => g !== name)
-        : [...prev.contactGroups, name].sort((a, b) =>
+      const has = prev.labels.includes(name);
+      const labels = has
+        ? prev.labels.filter((g) => g !== name)
+        : [...prev.labels, name].sort((a, b) =>
             a.localeCompare(b, undefined, { sensitivity: "base" }),
           );
-      return { ...prev, contactGroups };
+      return { ...prev, labels };
     });
   }, []);
 
@@ -165,10 +165,10 @@ export function useParticipantContactForm(
     );
     setEditDraft((prev) => {
       if (!prev) return prev;
-      if (prev.contactGroups.includes(name)) return prev;
+      if (prev.labels.includes(name)) return prev;
       return {
         ...prev,
-        contactGroups: [...prev.contactGroups, name].sort((a, b) =>
+        labels: [...prev.labels, name].sort((a, b) =>
           a.localeCompare(b, undefined, { sensitivity: "base" }),
         ),
       };
@@ -183,7 +183,7 @@ export function useParticipantContactForm(
 
   const clearDraftGroups = useCallback(() => {
     setEditDraft((prev) =>
-      prev ? { ...prev, contactGroups: [], exclude: false } : prev,
+      prev ? { ...prev, labels: [], exclude: false } : prev,
     );
   }, []);
 
@@ -280,7 +280,7 @@ export function useParticipantContactForm(
           lastName: editDraft.lastName.trim() || null,
           phones: phonesForSave(editDraft.phones),
           exclude: editDraft.exclude,
-          contactGroups: editDraft.contactGroups,
+          labels: editDraft.labels,
         }),
       });
       const data = await res.json();
@@ -310,7 +310,7 @@ export function useParticipantContactForm(
           lastName: editDraft.lastName.trim() || null,
           phones: phonesForSave(editDraft.phones),
           exclude: editDraft.exclude,
-          contactGroups: editDraft.contactGroups,
+          labels: editDraft.labels,
         }),
       });
       const data = await res.json();

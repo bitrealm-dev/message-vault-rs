@@ -9,9 +9,9 @@ import {
   hasTrashedHandlesTable,
   sortFields,
 } from "./dbCore";
-import { groupSlug } from "./groupSlug";
+import { labelSlug } from "./labelSlug";
 import { contactGroupChatThreadsForPhones, contactGroupChatThreadsForPhoneSets } from "./groupChatsRead";
-import { RESERVED_GROUP_NAMES } from "./reservedGroups";
+import { RESERVED_LABEL_NAMES } from "./reservedLabels";
 import type {
   ContactDetail,
   ContactListItem,
@@ -22,24 +22,24 @@ import type {
   YearThread,
 } from "./types";
 
-/** Contact labels (GUI "Labels"). Stored in SQLite `contact_groups` / `contact_group_members`. */
-export function listGroups(): string[] {
+/** Contact labels (GUI "Labels"). Stored in SQLite `contact_labels` / `contact_label_members`. */
+export function listLabels(): string[] {
   const accountId = currentAccountId();
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT name FROM contact_groups
+      `SELECT name FROM contact_labels
        WHERE account_id = ?
        ORDER BY name COLLATE NOCASE`,
     )
     .all(accountId) as Array<{ name: string }>;
   return rows
     .map((r) => r.name)
-    .filter((name) => !RESERVED_GROUP_NAMES.has(name.trim().toLowerCase()));
+    .filter((name) => !RESERVED_LABEL_NAMES.has(name.trim().toLowerCase()));
 }
 
 /** Contact ids that currently belong to a named group (case-insensitive). */
-export function listGroupMemberContactIds(name: string): number[] {
+export function listLabelMemberContactIds(name: string): number[] {
   const accountId = currentAccountId();
   const trimmed = name.trim();
   if (!trimmed) return [];
@@ -47,8 +47,8 @@ export function listGroupMemberContactIds(name: string): number[] {
   const rows = db
     .prepare(
       `SELECT cgm.contact_id AS contact_id
-       FROM contact_group_members cgm
-       JOIN contact_groups cg ON cg.id = cgm.group_id
+       FROM contact_label_members cgm
+       JOIN contact_labels cg ON cg.id = cgm.label_id
        WHERE cg.name = ? COLLATE NOCASE AND cg.account_id = ?
        ORDER BY cgm.contact_id`,
     )
@@ -56,21 +56,21 @@ export function listGroupMemberContactIds(name: string): number[] {
   return rows.map((r) => r.contact_id);
 }
 
-export function groupFromSlug(slug: string): string | null {
+export function labelFromSlug(slug: string): string | null {
   const trimmed = slug.trim();
   if (!trimmed) return null;
 
-  const groups = listGroups();
+  const groups = listLabels();
 
   // Prefer exact (case-preserving) slug match.
   for (const name of groups) {
-    if (groupSlug(name) === trimmed) return name;
+    if (labelSlug(name) === trimmed) return name;
   }
 
   // Fallback for older lowercase-only URLs: first case-insensitive hit.
   const folded = trimmed.toLowerCase();
   for (const name of groups) {
-    if (groupSlug(name).toLowerCase() === folded) return name;
+    if (labelSlug(name).toLowerCase() === folded) return name;
   }
 
   return null;
@@ -132,20 +132,20 @@ function sectionQueryBody(
   const accountId = currentAccountId();
   const hasMsgs = contactHasMessagesSql();
   const notTrashed = notTrashedContactSql("c");
-  if (typeof section === "object" && "group" in section) {
+  if (typeof section === "object" && "label" in section) {
     // Exclude and no-messages override groups: those contacts only appear under
     // their implicit sections.
     return {
       fromWhere: `
         FROM contacts c
-        JOIN contact_group_members cgm ON cgm.contact_id = c.id
-        JOIN contact_groups cg ON cg.id = cgm.group_id AND cg.name = ?
+        JOIN contact_label_members cgm ON cgm.contact_id = c.id
+        JOIN contact_labels cg ON cg.id = cgm.label_id AND cg.name = ?
         WHERE c.account_id = ?
           AND c.exclude = 0
           ${notTrashed}
           AND ${hasMsgs}
       `,
-      params: [section.group, accountId],
+      params: [section.label, accountId],
     };
   }
   switch (section) {
@@ -194,7 +194,7 @@ function sectionQueryBody(
         `,
         params: [accountId],
       };
-    case "no-group":
+    case "no-label":
       return {
         fromWhere: `
           FROM contacts c
@@ -202,7 +202,7 @@ function sectionQueryBody(
             AND c.exclude = 0
             ${notTrashed}
             AND NOT EXISTS (
-              SELECT 1 FROM contact_group_members cgm WHERE cgm.contact_id = c.id
+              SELECT 1 FROM contact_label_members cgm WHERE cgm.contact_id = c.id
             )
             AND ${hasMsgs}
         `,
@@ -235,8 +235,8 @@ export function listContacts(section: ContactSection): ContactListItem[] {
   const groupRows = db
     .prepare(
       `SELECT cgm.contact_id AS contact_id, cg.name AS name
-       FROM contact_group_members cgm
-       JOIN contact_groups cg ON cg.id = cgm.group_id
+       FROM contact_label_members cgm
+       JOIN contact_labels cg ON cg.id = cgm.label_id
        WHERE cg.account_id = ?
        ORDER BY cg.name COLLATE NOCASE`,
     )
@@ -262,7 +262,7 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         preferredHandle: row.preferred_handle,
         firstName: row.first_name,
         lastName: row.last_name,
-        contactGroups: groupsByContact.get(row.id) ?? [],
+        labels: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: messageCounts.get(row.id) ?? 0,
         groupMessageCount: groupMessageCounts.get(row.id) ?? 0,
@@ -303,8 +303,8 @@ export function getContact(id: number): ContactDetail | null {
 
   const groups = db
     .prepare(
-      `SELECT cg.name FROM contact_group_members cgm
-       JOIN contact_groups cg ON cg.id = cgm.group_id
+      `SELECT cg.name FROM contact_label_members cgm
+       JOIN contact_labels cg ON cg.id = cgm.label_id
        WHERE cgm.contact_id = ? AND cg.account_id = ?
        ORDER BY cg.name COLLATE NOCASE`,
     )
@@ -325,7 +325,7 @@ export function getContact(id: number): ContactDetail | null {
     firstName: row.first_name,
     lastName: row.last_name,
     exclude: row.exclude !== 0,
-    contactGroups: groups.map((t) => t.name),
+    labels: groups.map((t) => t.name),
     phones: phoneList,
     dateStart: dateRange?.start ?? null,
     dateEnd: dateRange?.end ?? null,
@@ -661,8 +661,8 @@ export function listContactsForPicker(): ContactListItem[] {
   const groupRows = db
     .prepare(
       `SELECT cgm.contact_id AS contact_id, cg.name AS name
-       FROM contact_group_members cgm
-       JOIN contact_groups cg ON cg.id = cgm.group_id
+       FROM contact_label_members cgm
+       JOIN contact_labels cg ON cg.id = cgm.label_id
        WHERE cg.account_id = ?
        ORDER BY cg.name COLLATE NOCASE`,
     )
@@ -684,7 +684,7 @@ export function listContactsForPicker(): ContactListItem[] {
         preferredHandle: row.preferred_handle,
         firstName: row.first_name,
         lastName: row.last_name,
-        contactGroups: groupsByContact.get(row.id) ?? [],
+        labels: groupsByContact.get(row.id) ?? [],
         exclude: row.exclude !== 0,
         messageCount: 0,
         groupMessageCount: 0,

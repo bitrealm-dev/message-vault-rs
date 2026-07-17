@@ -2,7 +2,7 @@
  * Names that must not appear as user-created labels, and are filtered
  * from the labels list (nav / section labels).
  */
-export const RESERVED_GROUP_NAMES = new Set(
+export const RESERVED_LABEL_NAMES = new Set(
   [
     "home",
     "contacts",
@@ -22,7 +22,7 @@ export const RESERVED_GROUP_NAMES = new Set(
     "group messages",
     "group-messages-2",
     "group messages 2",
-    "no-group",
+    "no-label",
     "no group",
     "labels",
     "label",
@@ -31,11 +31,11 @@ export const RESERVED_GROUP_NAMES = new Set(
   ].map((s) => s.toLowerCase()),
 );
 
-export function isReservedGroupName(name: string): boolean {
-  return RESERVED_GROUP_NAMES.has(name.trim().toLowerCase());
+export function isReservedLabelName(name: string): boolean {
+  return RESERVED_LABEL_NAMES.has(name.trim().toLowerCase());
 }
 
-export function reservedGroupError(name: string): string {
+export function reservedLabelError(name: string): string {
   const key = name.trim().toLowerCase();
   if (key === "contacts") return "Active is a reserved label";
   if (key === "all") return "All is a reserved label";
@@ -64,7 +64,7 @@ export function reservedGroupError(name: string): string {
     key === "label" ||
     key === "no-label" ||
     key === "no label" ||
-    key === "no-group" ||
+    key === "no-label" ||
     key === "no group"
   ) {
     return `"${name.trim()}" is a reserved label`;

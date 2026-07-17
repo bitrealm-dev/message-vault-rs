@@ -58,7 +58,7 @@ function syntheticContactDetail(
     sortFirst: item.displayName,
     sortLast: item.displayName,
     letter: "#",
-    contactGroups: [],
+    labels: [],
     exclude: false,
     messageCount: item.messageCount,
     groupMessageCount: 0,

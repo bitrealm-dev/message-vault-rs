@@ -376,7 +376,7 @@ fn main() -> Result<()> {
                 } else {
                     println!("  contacts:      {}", stats.contacts);
                     println!("  contact handles:{}", stats.contact_handles);
-                    println!("  contact groups:{}", stats.contact_group_links);
+                    println!("  contact labels:{}", stats.contact_label_links);
                 }
                 println!("  files:         {}", stats.files);
                 println!("  conversations: {}", stats.conversations);
@@ -450,7 +450,7 @@ fn main() -> Result<()> {
             println!("  contacts csv: {}", contacts_csv.display());
             println!("  contacts:     {}", stats.contacts);
             println!("  phones:       {}", stats.phones);
-            println!("  group links:  {}", stats.groups);
+            println!("  label links:  {}", stats.labels);
         }
 
         Commands::ExportMarkdown {

@@ -46,7 +46,7 @@ export function BrowseContactList({
   onToggleSelectAll: () => void;
   onNewContact: (anchorEl: HTMLElement) => void;
   vaultReadOnly?: boolean;
-  /** Icon-only GroupsMenu element rendered first in the toolbar cluster. */
+  /** Icon-only LabelsMenu element rendered first in the toolbar cluster. */
   groupsMenu?: ReactNode;
   onEdit?: (anchorEl: HTMLElement) => void;
   editDisabled?: boolean;

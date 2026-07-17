@@ -46,7 +46,7 @@ export function VaultOwnerEditOverlay({
         lastName: owner.last_name,
         phones: owner.phones,
         exclude: false,
-        contactGroups: [],
+        labels: [],
       }),
     );
     setError(null);
@@ -131,10 +131,10 @@ export function VaultOwnerEditOverlay({
       <ContactDetailsCard
         formOpen
         framed={false}
-        hideGroups
+        hideLabels
         draft={draft}
         onDraftChange={setDraft}
-        groups={[]}
+        labels={[]}
         excluded={false}
         phonesView={owner.phones}
       />

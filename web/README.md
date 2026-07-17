@@ -56,7 +56,7 @@ Manage visibility with the `exclude` column in `config/contacts.csv` only:
 | **All** | Every contact with messages, including excluded |
 | **Excluded** | `exclude=true` |
 
-Groups and No group list only non-excluded contacts.
+Labels and No label list only non-excluded contacts.
 
 `contacts.csv` is **phone-only**. SQLite `contact_handles` holds phones plus optional iMessage emails for thread linking; emails are not written to the CSV. Leave unmapped email peers in Unassigned. Older `contact_phones` DBs are not upgraded — wipe `data/vault.db` and re-ingest.
 

@@ -1,6 +1,6 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { GroupMessagesShell } from "@/components/GroupMessagesShell";
-import { listGroupYearRows, listGroups } from "@/lib/db";
+import { listGroupYearRows, listLabels } from "@/lib/db";
 import { currentAccountId } from "@/lib/accountScope";
 import { withServerAccount } from "@/lib/serverAccount";
 import { loadVaultOwner } from "@/lib/vaultOwner";
@@ -20,11 +20,11 @@ export default async function GroupMessagesPage({
 
   return withServerAccount(async () => {
     const groupChats = listGroupYearRows();
-    const contactGroups = listGroups();
+    const labels = listLabels();
     const owner = loadVaultOwner(currentAccountId());
 
     return (
-      <BrowsePageLayout active="/group-messages" groups={contactGroups}>
+      <BrowsePageLayout active="/group-messages" labels={labels}>
         <GroupMessagesShell
           owner={owner}
           groupChats={groupChats}

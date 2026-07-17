@@ -10,7 +10,7 @@ use serde::Deserialize;
 pub struct ContactLoadStats {
     pub contacts: u64,
     pub phones: u64,
-    pub groups: u64,
+    pub labels: u64,
     pub emails_restored: u64,
     pub skipped: bool,
 }
@@ -24,6 +24,17 @@ struct ContactCsvRow {
     last_name: String,
     #[serde(default)]
     exclude: String,
+    #[serde(default)]
+    label_1: String,
+    #[serde(default)]
+    label_2: String,
+    #[serde(default)]
+    label_3: String,
+    #[serde(default)]
+    label_4: String,
+    #[serde(default)]
+    label_5: String,
+    /// Legacy CSV columns (read when label_* empty).
     #[serde(default)]
     group_1: String,
     #[serde(default)]
@@ -227,7 +238,7 @@ pub fn load_contacts_if_needed(
 
 fn delete_account_contacts(conn: &Connection, account_id: &str) -> Result<()> {
     conn.execute(
-        "DELETE FROM contact_group_members WHERE contact_id IN (SELECT id FROM contacts WHERE account_id = ?1)",
+        "DELETE FROM contact_label_members WHERE contact_id IN (SELECT id FROM contacts WHERE account_id = ?1)",
         params![account_id],
     )?;
     conn.execute(
@@ -235,7 +246,7 @@ fn delete_account_contacts(conn: &Connection, account_id: &str) -> Result<()> {
         params![account_id],
     )?;
     conn.execute(
-        "DELETE FROM contact_groups WHERE account_id = ?1",
+        "DELETE FROM contact_labels WHERE account_id = ?1",
         params![account_id],
     )?;
     conn.execute(
@@ -318,12 +329,12 @@ fn load_from_csv(
         }
 
         for group_name in row_groups(&row) {
-            let group_id = ensure_group(&tx, account_id, &group_name)?;
+            let label_id = ensure_label(&tx, account_id, &group_name)?;
             tx.execute(
-                "INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?1, ?2)",
-                params![contact_id, group_id],
+                "INSERT OR IGNORE INTO contact_label_members (contact_id, label_id) VALUES (?1, ?2)",
+                params![contact_id, label_id],
             )?;
-            stats.groups += 1;
+            stats.labels += 1;
         }
     }
 
@@ -331,13 +342,13 @@ fn load_from_csv(
     Ok(stats)
 }
 
-fn ensure_group(conn: &Connection, account_id: &str, name: &str) -> Result<i64> {
+fn ensure_label(conn: &Connection, account_id: &str, name: &str) -> Result<i64> {
     conn.execute(
-        "INSERT OR IGNORE INTO contact_groups (account_id, name) VALUES (?1, ?2)",
+        "INSERT OR IGNORE INTO contact_labels (account_id, name) VALUES (?1, ?2)",
         params![account_id, name],
     )?;
     let id: i64 = conn.query_row(
-        "SELECT id FROM contact_groups WHERE account_id = ?1 AND name = ?2",
+        "SELECT id FROM contact_labels WHERE account_id = ?1 AND name = ?2",
         params![account_id, name],
         |row| row.get(0),
     )?;
@@ -513,24 +524,29 @@ pub fn lookup_by_phone(
 
 fn row_groups(row: &ContactCsvRow) -> Vec<String> {
     // Import is capped at five CSV columns; SQLite may hold more after edits.
+    // Prefer label_* over legacy group_* per slot.
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for raw in [
-        &row.group_1,
-        &row.group_2,
-        &row.group_3,
-        &row.group_4,
-        &row.group_5,
+    for (label, group) in [
+        (&row.label_1, &row.group_1),
+        (&row.label_2, &row.group_2),
+        (&row.label_3, &row.group_3),
+        (&row.label_4, &row.group_4),
+        (&row.label_5, &row.group_5),
     ] {
-        let group = raw.trim();
-        if group.is_empty() {
+        let raw = if !label.trim().is_empty() {
+            label.trim()
+        } else {
+            group.trim()
+        };
+        if raw.is_empty() {
             continue;
         }
-        let key = group.to_ascii_lowercase();
+        let key = raw.to_ascii_lowercase();
         if !seen.insert(key) {
             continue;
         }
-        out.push(group.to_string());
+        out.push(raw.to_string());
     }
     out
 }

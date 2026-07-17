@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import {
   ContactPhoneList,
-  displayGroupNames,
+  displayLabelNames,
   type ContactEditDraft,
 } from "./contactEdit";
 import {
@@ -14,7 +14,7 @@ import {
 
 const ICON_COL = "flex w-5 shrink-0 justify-center pt-[3px]";
 
-function GroupNamesList({ names }: { names: string[] }) {
+function LabelNamesList({ names }: { names: string[] }) {
   if (names.length === 0) {
     return (
       <span className="truncate text-[13px] leading-5 text-muted">None</span>
@@ -42,28 +42,28 @@ export function ContactDetailsCard({
   formOpen,
   draft,
   onDraftChange,
-  groups,
+  labels,
   excluded,
   phonesView,
   framed = true,
-  groupsEditor,
-  hideGroups = false,
+  labelsEditor,
+  hideLabels = false,
 }: {
   formOpen: boolean;
   draft: ContactEditDraft | null;
   onDraftChange?: (draft: ContactEditDraft) => void;
-  groups: string[];
+  labels: string[];
   excluded: boolean;
   /** Phones shown in view mode (when form is closed). */
   phonesView: string[];
   /** When false, skip outer card chrome and "Contact details" heading (for dialogs). */
   framed?: boolean;
-  /** When set and form is open, replaces the static groups list (e.g. GroupsMenu). */
-  groupsEditor?: ReactNode;
-  /** Hide groups column (e.g. vault owner “Me” edit). */
-  hideGroups?: boolean;
+  /** When set and form is open, replaces the static labels list (e.g. LabelsMenu). */
+  labelsEditor?: ReactNode;
+  /** Hide labels column (e.g. vault owner “Me” edit). */
+  hideLabels?: boolean;
 }) {
-  const shownGroups = displayGroupNames(groups, excluded);
+  const shownLabels = displayLabelNames(labels, excluded);
   const phoneCount =
     formOpen && draft
       ? draft.phones.filter((p) => p.trim()).length
@@ -100,17 +100,17 @@ export function ContactDetailsCard({
               placeholder="Last"
               className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
             />
-            {!hideGroups && (
+            {!hideLabels && (
               <div className="flex min-w-0 flex-col gap-1.5">
-                {groupsEditor}
+                {labelsEditor}
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <GroupNamesList names={shownGroups} />
+                  <LabelNamesList names={shownLabels} />
                 </div>
               </div>
             )}
             <div
               className={`flex min-w-0 items-start gap-2 ${
-                hideGroups ? "col-span-2" : ""
+                hideLabels ? "col-span-2" : ""
               }`}
             >
               <div className="flex shrink-0 justify-center pt-[5px]">
@@ -133,12 +133,12 @@ export function ContactDetailsCard({
     <div className={framed ? "mt-3" : undefined}>
       <div
         className={
-          hideGroups
+          hideLabels
             ? "flex min-w-0 gap-3"
             : "grid grid-cols-2 items-start gap-4"
         }
       >
-        {!hideGroups && (
+        {!hideLabels && (
           <div className="flex min-w-0 gap-3">
             <div className={ICON_COL}>
               <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
@@ -148,7 +148,7 @@ export function ContactDetailsCard({
                 Labels
               </div>
               <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
-                <GroupNamesList names={shownGroups} />
+                <LabelNamesList names={shownLabels} />
               </div>
             </div>
           </div>

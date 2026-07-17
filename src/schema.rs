@@ -190,17 +190,17 @@ CREATE TABLE contact_handles (
 CREATE INDEX ix_contact_handles_contact_id
     ON contact_handles (contact_id);
 
-CREATE TABLE contact_groups (
+CREATE TABLE contact_labels (
     id INTEGER PRIMARY KEY,
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     UNIQUE(account_id, name)
 );
 
-CREATE TABLE contact_group_members (
+CREATE TABLE contact_label_members (
     contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-    group_id INTEGER NOT NULL REFERENCES contact_groups(id) ON DELETE CASCADE,
-    PRIMARY KEY (contact_id, group_id)
+    label_id INTEGER NOT NULL REFERENCES contact_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (contact_id, label_id)
 );
 
 CREATE TABLE trashed_handles (
@@ -258,6 +258,8 @@ fn wipe_legacy_vault_tables(conn: &Connection) -> Result<()> {
         DROP TABLE IF EXISTS staging_messages;
         DROP TABLE IF EXISTS staging_participants;
         DROP TABLE IF EXISTS staging_conversations;
+        DROP TABLE IF EXISTS contact_label_members;
+        DROP TABLE IF EXISTS contact_labels;
         DROP TABLE IF EXISTS contact_group_members;
         DROP TABLE IF EXISTS contact_groups;
         DROP TABLE IF EXISTS contact_handles;
@@ -292,6 +294,25 @@ pub fn ensure_vault_schema(conn: &Connection) -> Result<()> {
         conn.execute_batch(CONTACTS_TABLES_DDL)?;
     }
 
+    migrate_contact_groups_to_labels(conn)?;
+
+    Ok(())
+}
+
+/// Rename legacy contact_groups* tables to contact_labels*.
+fn migrate_contact_groups_to_labels(conn: &Connection) -> Result<()> {
+    if !table_exists(conn, "contact_groups")? || table_exists(conn, "contact_labels")? {
+        return Ok(());
+    }
+    conn.execute_batch(
+        r#"
+        PRAGMA foreign_keys = OFF;
+        ALTER TABLE contact_groups RENAME TO contact_labels;
+        ALTER TABLE contact_group_members RENAME TO contact_label_members;
+        ALTER TABLE contact_label_members RENAME COLUMN group_id TO label_id;
+        PRAGMA foreign_keys = ON;
+        "#,
+    )?;
     Ok(())
 }
 
@@ -608,6 +629,8 @@ pub fn recreate_contacts(conn: &Connection) -> Result<()> {
         r#"
         PRAGMA foreign_keys = ON;
 
+        DROP TABLE IF EXISTS contact_label_members;
+        DROP TABLE IF EXISTS contact_labels;
         DROP TABLE IF EXISTS contact_group_members;
         DROP TABLE IF EXISTS contact_groups;
         DROP TABLE IF EXISTS contact_handles;

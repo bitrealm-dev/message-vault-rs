@@ -14,7 +14,7 @@ export function MyContactPane({ owner }: { owner: VaultOwner }) {
 
   const toolbarBtn =
     "flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted";
-  /** Match GroupsMenu trigger used on All contacts (icon + chevron, not square). */
+  /** Match LabelsMenu trigger used on All contacts (icon + chevron, not square). */
   const groupsToolbarBtn =
     "inline-flex h-7 items-center gap-1.5 rounded-md bg-elevated px-2.5 text-muted opacity-40";
 

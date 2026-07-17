@@ -1,15 +1,15 @@
 "use client";
 
-import { isReservedGroupName } from "@/lib/reservedGroups";
+import { isReservedLabelName } from "@/lib/reservedLabels";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconHoverTarget } from "./IconHoverLabel";
 import { EraserIcon, PeopleGroupIcon, SearchIcon } from "./icons";
 import { useDismissible } from "./useDismissible";
 
-export type GroupCheckState = "on" | "off" | "mixed";
+export type LabelCheckState = "on" | "off" | "mixed";
 
-export function GroupsMenu({
-  allGroups,
+export function LabelsMenu({
+  allLabels,
   checks,
   excludedCheck = "off",
   onToggle,
@@ -26,19 +26,19 @@ export function GroupsMenu({
   /** When set, render only the panel at this fixed position (no toolbar trigger). */
   fixedPosition = null,
 }: {
-  allGroups: string[];
-  /** Per-group membership across the current contact or selection. */
-  checks: Record<string, GroupCheckState>;
-  /** Implicit Excluded group (backed by exclude column, not contact groups). */
-  excludedCheck?: GroupCheckState;
+  allLabels: string[];
+  /** Per-label membership across the current contact or selection. */
+  checks: Record<string, LabelCheckState>;
+  /** Implicit Inactive (backed by exclude column, not contact labels). */
+  excludedCheck?: LabelCheckState;
   onToggle?: (name: string) => void;
   onToggleExcluded?: () => void;
-  /** Called when a new group is created; should add it to the current target(s). */
+  /** Called when a new label is created; should add it to the current target(s). */
   onCreate?: (name: string) => void;
-  /** Remove all group memberships (and Inactive) from the current target(s). */
+  /** Remove all label memberships (and Inactive) from the current target(s). */
   onClearAll?: () => void;
   onOpenChange?: (open: boolean) => void;
-  /** Fired when switching between the group list and the create form. */
+  /** Fired when switching between the label list and the create form. */
   onModeChange?: (mode: "list" | "create") => void;
   disabled?: boolean;
   iconOnly?: boolean;
@@ -49,7 +49,7 @@ export function GroupsMenu({
   const [mode, setMode] = useState<"list" | "create">("list");
   const [query, setQuery] = useState("");
   const [newName, setNewName] = useState("");
-  const [localGroups, setLocalGroups] = useState<string[]>(allGroups);
+  const [localLabels, setLocalLabels] = useState<string[]>(allLabels);
   /** Viewport-fixed panel position anchored to the trigger (avoids pane clipping). */
   const [menuPos, setMenuPos] = useState<{
     top: number;
@@ -115,19 +115,19 @@ export function GroupsMenu({
   }, [isFixed, setMenuMode]);
 
   useEffect(() => {
-    setLocalGroups((prev) => {
-      const merged = new Set([...allGroups, ...prev]);
+    setLocalLabels((prev) => {
+      const merged = new Set([...allLabels, ...prev]);
       return [...merged].sort((a, b) =>
         a.localeCompare(b, undefined, { sensitivity: "base" }),
       );
     });
-  }, [allGroups]);
+  }, [allLabels]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return localGroups;
-    return localGroups.filter((g) => g.toLowerCase().includes(q));
-  }, [localGroups, query]);
+    if (!q) return localLabels;
+    return localLabels.filter((g) => g.toLowerCase().includes(q));
+  }, [localLabels, query]);
 
   useDismissible({
     open: open && !isFixed,
@@ -172,7 +172,7 @@ export function GroupsMenu({
   }, [open, mode]);
 
   useEffect(() => {
-    for (const name of localGroups) {
+    for (const name of localLabels) {
       const el = checkRefs.current.get(name);
       if (!el) continue;
       el.indeterminate = checks[name] === "mixed";
@@ -181,7 +181,7 @@ export function GroupsMenu({
     if (excludedEl) {
       excludedEl.indeterminate = excludedCheck === "mixed";
     }
-  }, [checks, excludedCheck, localGroups, open, filtered]);
+  }, [checks, excludedCheck, localLabels, open, filtered]);
 
   const toggle = (name: string) => {
     if (disabled || !onToggle) return;
@@ -192,15 +192,15 @@ export function GroupsMenu({
     if (disabled || !onCreate) return;
     const name = newName.trim();
     if (!name) return;
-    if (isReservedGroupName(name)) return;
+    if (isReservedLabelName(name)) return;
 
-    const existing = localGroups.find(
+    const existing = localLabels.find(
       (g) => g.toLowerCase() === name.toLowerCase(),
     );
     const resolved = existing ?? name;
 
     if (!existing) {
-      setLocalGroups((prev) =>
+      setLocalLabels((prev) =>
         [...prev, resolved].sort((a, b) =>
           a.localeCompare(b, undefined, { sensitivity: "base" }),
         ),

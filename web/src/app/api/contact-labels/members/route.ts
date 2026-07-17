@@ -1,4 +1,4 @@
-import { listGroupMemberContactIds } from "@/lib/db";
+import { listLabelMemberContactIds } from "@/lib/db";
 import {
   unauthorizedResponse,
   withAccountHandler,
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
   try {
     return await withAccountHandler(async () => {
-      const memberContactIds = listGroupMemberContactIds(name);
+      const memberContactIds = listLabelMemberContactIds(name);
       return NextResponse.json({ name, memberContactIds });
     });
   } catch (err) {

@@ -51,7 +51,7 @@ pub struct ImportStats {
     pub assets_missing: u64,
     pub contacts: u64,
     pub contact_handles: u64,
-    pub contact_group_links: u64,
+    pub contact_label_links: u64,
     pub contacts_skipped: bool,
     pub conversations_excluded: u64,
     pub messages_excluded: u64,
@@ -119,7 +119,7 @@ pub fn import_export(
     } else {
         println!(
             "  sql:      contacts={} phones={} groups={}",
-            contact_stats.contacts, contact_stats.phones, contact_stats.groups
+            contact_stats.contacts, contact_stats.phones, contact_stats.labels
         );
     }
     let exclude = ExcludeSet::load(exclude_csv)?;
@@ -167,7 +167,7 @@ pub fn import_export(
     let mut stats = ImportStats {
         contacts: contact_stats.contacts,
         contact_handles: contact_stats.phones,
-        contact_group_links: contact_stats.groups,
+        contact_label_links: contact_stats.labels,
         contacts_skipped: contact_stats.skipped,
         mode: mode.as_str().to_string(),
         ..Default::default()

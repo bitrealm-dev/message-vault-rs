@@ -2,7 +2,7 @@ import { ContactBrowsePage, parseContactId } from "@/components/ContactBrowsePag
 
 export const dynamic = "force-dynamic";
 
-export default async function NoGroupPage({
+export default async function NoLabelPage({
   searchParams,
 }: {
   searchParams: Promise<{ c?: string }>;
@@ -10,9 +10,9 @@ export default async function NoGroupPage({
   const sp = await searchParams;
   return (
     <ContactBrowsePage
-      section="no-group"
+      section="no-label"
       label="No label"
-      nav="/no-group"
+      nav="/no-label"
       contactId={parseContactId(sp.c)}
     />
   );

@@ -1,11 +1,11 @@
 import { ContactBrowsePage, parseContactId } from "@/components/ContactBrowsePage";
-import { groupFromSlug } from "@/lib/db";
+import { labelFromSlug } from "@/lib/db";
 import { withServerAccount } from "@/lib/serverAccount";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function GroupPage({
+export default async function LabelPage({
   params,
   searchParams,
 }: {
@@ -14,14 +14,14 @@ export default async function GroupPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const group = await withServerAccount(() => groupFromSlug(slug));
-  if (!group) notFound();
+  const label = await withServerAccount(() => labelFromSlug(slug));
+  if (!label) notFound();
 
   return (
     <ContactBrowsePage
-      section={{ group }}
-      label={group}
-      nav={`/group/${slug}`}
+      section={{ label }}
+      label={label}
+      nav={`/label/${slug}`}
       contactId={parseContactId(sp.c)}
     />
   );

@@ -30,12 +30,12 @@ export type HistoryCommand =
       label: string;
     }
   | {
-      type: "createGroup";
+      type: "createLabel";
       name: string;
       label: string;
     }
   | {
-      type: "deleteGroup";
+      type: "deleteLabel";
       name: string;
       memberContactIds: number[];
       label: string;
@@ -57,9 +57,9 @@ export function toastTextForCommand(cmd: HistoryCommand): string {
   switch (cmd.type) {
     case "createContact":
       return `Created new contact ${cmd.name.trim() || "contact"}`;
-    case "createGroup":
+    case "createLabel":
       return `Created label ${cmd.name.trim() || "label"}`;
-    case "deleteGroup":
+    case "deleteLabel":
       return `Deleted label ${cmd.name.trim() || "label"}`;
     case "trashContacts": {
       const names = joinSubjects(cmd.names, "contact");

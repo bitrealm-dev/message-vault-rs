@@ -79,9 +79,9 @@ export async function undoCommand(cmd: HistoryCommand): Promise<void> {
         "undo create failed",
       );
       return;
-    case "createGroup": {
+    case "createLabel": {
       const res = await fetch(
-        `/api/contact-groups/members?name=${encodeURIComponent(cmd.name)}`,
+        `/api/contact-labels/members?name=${encodeURIComponent(cmd.name)}`,
       );
       if (!res.ok) throw new Error(await readError(res, "label lookup failed"));
       const data = (await res.json()) as { memberContactIds?: number[] };
@@ -92,15 +92,15 @@ export async function undoCommand(cmd: HistoryCommand): Promise<void> {
         );
       }
       await jsonFetch(
-        "/api/contact-groups",
+        "/api/contact-labels",
         { method: "DELETE", body: JSON.stringify({ name: cmd.name }) },
         "delete label failed",
       );
       return;
     }
-    case "deleteGroup":
+    case "deleteLabel":
       await jsonFetch(
-        "/api/contact-groups/restore",
+        "/api/contact-labels/restore",
         {
           method: "POST",
           body: JSON.stringify({
@@ -157,16 +157,16 @@ export async function redoCommand(cmd: HistoryCommand): Promise<void> {
         "restore failed",
       );
       return;
-    case "createGroup":
+    case "createLabel":
       await jsonFetch(
-        "/api/contact-groups",
+        "/api/contact-labels",
         { method: "POST", body: JSON.stringify({ name: cmd.name }) },
         "create label failed",
       );
       return;
-    case "deleteGroup":
+    case "deleteLabel":
       await jsonFetch(
-        "/api/contact-groups",
+        "/api/contact-labels",
         { method: "DELETE", body: JSON.stringify({ name: cmd.name }) },
         "delete label failed",
       );

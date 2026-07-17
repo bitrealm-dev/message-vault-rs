@@ -32,6 +32,8 @@ function wipeLegacyVaultTables(db: Database.Database): void {
     DROP TABLE IF EXISTS staging_messages;
     DROP TABLE IF EXISTS staging_participants;
     DROP TABLE IF EXISTS staging_conversations;
+    DROP TABLE IF EXISTS contact_label_members;
+    DROP TABLE IF EXISTS contact_labels;
     DROP TABLE IF EXISTS contact_group_members;
     DROP TABLE IF EXISTS contact_groups;
     DROP TABLE IF EXISTS contact_handles;
@@ -274,17 +276,17 @@ export function ensureVaultSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS ix_contact_handles_contact_id
       ON contact_handles (contact_id);
 
-    CREATE TABLE IF NOT EXISTS contact_groups (
+    CREATE TABLE IF NOT EXISTS contact_labels (
       id INTEGER PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       UNIQUE(account_id, name)
     );
 
-    CREATE TABLE IF NOT EXISTS contact_group_members (
+    CREATE TABLE IF NOT EXISTS contact_label_members (
       contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-      group_id INTEGER NOT NULL REFERENCES contact_groups(id) ON DELETE CASCADE,
-      PRIMARY KEY (contact_id, group_id)
+      label_id INTEGER NOT NULL REFERENCES contact_labels(id) ON DELETE CASCADE,
+      PRIMARY KEY (contact_id, label_id)
     );
 
     CREATE TABLE IF NOT EXISTS trashed_handles (
@@ -311,6 +313,22 @@ export function ensureVaultSchema(db: Database.Database): void {
 
   migrateLegacyAccountsEmailColumn(db);
   migrateVaultOwnerNameColumns(db);
+  migrateContactGroupsToLabels(db);
+}
+
+/** Rename legacy contact_groups* tables to contact_labels*. */
+function migrateContactGroupsToLabels(db: Database.Database): void {
+  if (!tableExists(db, "contact_groups") || tableExists(db, "contact_labels")) {
+    return;
+  }
+
+  db.exec(`PRAGMA foreign_keys = OFF;`);
+  db.exec(`
+    ALTER TABLE contact_groups RENAME TO contact_labels;
+    ALTER TABLE contact_group_members RENAME TO contact_label_members;
+    ALTER TABLE contact_label_members RENAME COLUMN group_id TO label_id;
+  `);
+  db.exec(`PRAGMA foreign_keys = ON;`);
 }
 
 /** Rebuild accounts without legacy email column; emails live in account_emails. */

@@ -1,7 +1,7 @@
 import { BrowsePageLayout } from "@/components/BrowsePageLayout";
 import { TrashShell } from "@/components/TrashShell";
 import {
-  listGroups,
+  listLabels,
   listTrashedContactMessages,
   listTrashedContacts,
   listTrashedGroupYearRows,
@@ -28,10 +28,10 @@ export default async function TrashPage({
     const groupChats = listTrashedGroupYearRows();
     const trashedContacts = listTrashedContacts();
     const trashedContactMessages = listTrashedContactMessages();
-    const contactGroups = listGroups();
+    const labels = listLabels();
 
     return (
-      <BrowsePageLayout active="/trash" groups={contactGroups}>
+      <BrowsePageLayout active="/trash" labels={labels}>
         <TrashShell
           handles={handles}
           groupChats={groupChats}

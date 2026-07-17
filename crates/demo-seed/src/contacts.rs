@@ -14,11 +14,11 @@ pub fn write_csvs(config_dir: &Path, roster: &Roster) -> Result<()> {
         "first_name",
         "last_name",
         "exclude",
-        "group_1",
-        "group_2",
-        "group_3",
-        "group_4",
-        "group_5",
+        "label_1",
+        "label_2",
+        "label_3",
+        "label_4",
+        "label_5",
     ])?;
     for c in &roster.contacts {
         wtr.write_record([

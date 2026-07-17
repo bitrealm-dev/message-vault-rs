@@ -1,5 +1,5 @@
-import { createGroup, deleteGroup, renameGroup } from "@/lib/contactsWrite";
-import { listGroups } from "@/lib/db";
+import { createLabel, deleteLabel, renameLabel } from "@/lib/contactsWrite";
+import { listLabels } from "@/lib/db";
 import {
   unauthorizedResponse,
   withAccountHandler,
@@ -18,7 +18,7 @@ function authError(err: unknown): NextResponse | null {
 export async function GET() {
   try {
     return await withAccountHandler(async () => {
-      return NextResponse.json({ groups: listGroups() });
+      return NextResponse.json({ labels: listLabels() });
     });
   } catch (err) {
     const auth = authError(err);
@@ -42,8 +42,8 @@ export async function POST(req: Request) {
 
   try {
     return await withAccountHandler(async () => {
-      const name = createGroup(body.name as string);
-      return NextResponse.json({ name, groups: listGroups() });
+      const name = createLabel(body.name as string);
+      return NextResponse.json({ name, labels: listLabels() });
     });
   } catch (err) {
     const auth = authError(err);
@@ -68,8 +68,8 @@ export async function PATCH(req: Request) {
 
   try {
     return await withAccountHandler(async () => {
-      const name = renameGroup(body.from as string, body.to as string);
-      return NextResponse.json({ name, groups: listGroups() });
+      const name = renameLabel(body.from as string, body.to as string);
+      return NextResponse.json({ name, labels: listLabels() });
     });
   } catch (err) {
     const auth = authError(err);
@@ -98,8 +98,8 @@ export async function DELETE(req: Request) {
 
   try {
     return await withAccountHandler(async () => {
-      deleteGroup(body.name as string);
-      return NextResponse.json({ ok: true, groups: listGroups() });
+      deleteLabel(body.name as string);
+      return NextResponse.json({ ok: true, labels: listLabels() });
     });
   } catch (err) {
     const auth = authError(err);

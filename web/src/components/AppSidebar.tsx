@@ -1,6 +1,6 @@
 "use client";
 
-import { groupSlug } from "@/lib/groupSlug";
+import { labelSlug } from "@/lib/labelSlug";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -15,7 +15,6 @@ import {
 import { createPortal } from "react-dom";
 import {
   AddressBookIcon,
-  ChevronDownIcon,
   EllipsisIcon,
   GroupMessagesOutlineIcon,
   PanelCollapseIcon,
@@ -30,6 +29,7 @@ import { IconHoverTarget } from "./IconHoverLabel";
 import { useHistory } from "./history";
 import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
+import { VaultTitleMenu } from "./VaultTitleMenu";
 
 const navHeadingClass = "px-3 pb-1";
 const navItemPl = "pl-6";
@@ -78,7 +78,7 @@ function NavLink({
   );
 }
 
-function GroupNamePopover({
+function LabelNamePopover({
   title,
   initial = "",
   onSave,
@@ -173,17 +173,17 @@ function GroupNamePopover({
   );
 }
 
-function GroupsNav({
-  groups,
+function LabelsNav({
+  labels,
   compact = false,
   hideItems = false,
-  onExpandGroups,
+  onExpandLabels,
 }: {
-  groups: string[];
+  labels: string[];
   compact?: boolean;
   /** Hide group rows while the drawer is animating/collapsed so they don’t flash in the rail. */
   hideItems?: boolean;
-  onExpandGroups?: () => void;
+  onExpandLabels?: () => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -200,28 +200,28 @@ function GroupsNav({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   /** Names created this session before props catch up via refresh. */
-  const [pendingGroups, setPendingGroups] = useState<string[]>([]);
+  const [pendingLabels, setPendingLabels] = useState<string[]>([]);
   const headerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const openRowRef = useRef<HTMLDivElement>(null);
   const createPanelRef = useRef<HTMLDivElement>(null);
   const renamePanelRef = useRef<HTMLDivElement>(null);
 
-  const displayGroups = useMemo(() => {
-    const names = new Set([...groups, ...pendingGroups]);
+  const displayLabels = useMemo(() => {
+    const names = new Set([...labels, ...pendingLabels]);
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [groups, pendingGroups]);
+  }, [labels, pendingLabels]);
 
   useEffect(() => {
-    setPendingGroups((prev) => {
+    setPendingLabels((prev) => {
       if (prev.length === 0) return prev;
-      const known = new Set(groups.map((g) => g.toLowerCase()));
+      const known = new Set(labels.map((g) => g.toLowerCase()));
       const next = prev.filter((n) => !known.has(n.toLowerCase()));
       return next.length === prev.length ? prev : next;
     });
-  }, [groups]);
+  }, [labels]);
 
   useDismissible({
     open: create != null,
@@ -240,10 +240,10 @@ function GroupsNav({
     refs: [renamePanelRef],
   });
 
-  const createGroup = async (name: string) => {
+  const createLabel = async (name: string) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/contact-groups", {
+      const res = await fetch("/api/contact-labels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -251,18 +251,18 @@ function GroupsNav({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "create failed");
       setCreate(null);
-      setPendingGroups((prev) =>
+      setPendingLabels((prev) =>
         prev.some((n) => n.toLowerCase() === data.name.toLowerCase())
           ? prev
           : [...prev, data.name],
       );
       pushHistory({
-        type: "createGroup",
+        type: "createLabel",
         name: data.name,
         label: `Create label ${data.name}`,
       });
       router.refresh();
-      router.push(`/group/${groupSlug(data.name)}`);
+      router.push(`/label/${labelSlug(data.name)}`);
     } catch (err) {
       console.error(err);
     } finally {
@@ -270,10 +270,10 @@ function GroupsNav({
     }
   };
 
-  const renameGroup = async (from: string, to: string) => {
+  const renameLabel = async (from: string, to: string) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/contact-groups", {
+      const res = await fetch("/api/contact-labels", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from, to }),
@@ -283,8 +283,8 @@ function GroupsNav({
       setRename(null);
       setMenuFor(null);
       router.refresh();
-      if (pathname === `/group/${groupSlug(from)}`) {
-        router.push(`/group/${groupSlug(data.name)}`);
+      if (pathname === `/label/${labelSlug(from)}`) {
+        router.push(`/label/${labelSlug(data.name)}`);
       }
     } catch (err) {
       console.error(err);
@@ -293,11 +293,11 @@ function GroupsNav({
     }
   };
 
-  const deleteGroup = async (name: string) => {
+  const deleteLabel = async (name: string) => {
     setBusy(true);
     try {
       const membersRes = await fetch(
-        `/api/contact-groups/members?name=${encodeURIComponent(name)}`,
+        `/api/contact-labels/members?name=${encodeURIComponent(name)}`,
       );
       const membersData = await membersRes.json();
       if (!membersRes.ok) {
@@ -309,7 +309,7 @@ function GroupsNav({
         ? membersData.memberContactIds
         : [];
 
-      const res = await fetch("/api/contact-groups", {
+      const res = await fetch("/api/contact-labels", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -317,14 +317,14 @@ function GroupsNav({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "delete failed");
       pushHistory({
-        type: "deleteGroup",
+        type: "deleteLabel",
         name,
         memberContactIds,
         label: `Delete label ${name}`,
       });
       setMenuFor(null);
       router.refresh();
-      if (pathname === `/group/${groupSlug(name)}`) {
+      if (pathname === `/label/${labelSlug(name)}`) {
         router.push("/all");
       }
     } catch (err) {
@@ -338,24 +338,24 @@ function GroupsNav({
     <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
   );
 
-  const pathnameGroupActive = pathname.startsWith("/group/");
+  const pathnameLabelActive = pathname.startsWith("/label/");
 
   return (
-    <div id="nav-groups">
+    <div id="nav-labels">
       <div className="relative mt-3" ref={headerRef}>
         {compact ? (
           <IconHoverTarget label="Labels" placement="right" className="block w-full">
             <button
               type="button"
               aria-label="Labels"
-              onClick={onExpandGroups}
+              onClick={onExpandLabels}
               className={`relative flex h-8 w-full items-center gap-2 ${navItemPad} text-[14px] transition-colors ${
-                pathnameGroupActive
+                pathnameLabelActive
                   ? "bg-accent/35 text-text"
                   : "text-muted hover:bg-white/20 hover:text-text"
               }`}
             >
-              {pathnameGroupActive && (
+              {pathnameLabelActive && (
                 <span
                   aria-hidden
                   className="absolute top-0.5 bottom-0.5 left-0 w-1 rounded-full bg-accent"
@@ -391,9 +391,9 @@ function GroupsNav({
       </div>
 
       {!hideItems &&
-        displayGroups.length > 0 &&
-        displayGroups.map((name) => {
-          const href = `/group/${groupSlug(name)}`;
+        displayLabels.length > 0 &&
+        displayLabels.map((name) => {
+          const href = `/label/${labelSlug(name)}`;
           const active = pathname === href;
           const menuOpen = menuFor === name;
 
@@ -479,7 +479,7 @@ function GroupsNav({
                     <button
                       type="button"
                       className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
-                      onClick={() => void deleteGroup(name)}
+                      onClick={() => void deleteLabel(name)}
                     >
                       Delete
                     </button>
@@ -492,30 +492,30 @@ function GroupsNav({
 
       {!hideItems && (
         <NavLink
-          href="/no-group"
+          href="/no-label"
           label="No label"
-          active={pathname === "/no-group"}
+          active={pathname === "/no-label"}
           icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
         />
       )}
 
       {!hideItems && create && (
-        <GroupNamePopover
+        <LabelNamePopover
           title="Create label"
           anchor={{ x: create.x, y: create.y }}
           panelRef={createPanelRef}
-          onSave={createGroup}
+          onSave={createLabel}
           onCancel={() => setCreate(null)}
         />
       )}
 
       {rename && (
-        <GroupNamePopover
+        <LabelNamePopover
           title="Rename"
           initial={rename.name}
           anchor={{ x: rename.x, y: rename.y }}
           panelRef={renamePanelRef}
-          onSave={(to) => renameGroup(rename.name, to)}
+          onSave={(to) => renameLabel(rename.name, to)}
           onCancel={() => setRename(null)}
         />
       )}
@@ -523,150 +523,26 @@ function GroupsNav({
   );
 }
 
-function VaultTitleMenu({
-  demoResetAvailable,
-  resettingDemo,
-  onResetDemo,
-  onLogout,
-}: {
-  demoResetAvailable: boolean;
-  resettingDemo: boolean;
-  onResetDemo: () => void;
-  onLogout: () => void;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
-    null,
-  );
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useDismissible({
-    open,
-    onDismiss: () => {
-      setOpen(false);
-      setMenuPos(null);
-    },
-    refs: [rootRef],
-  });
-
-  const toggle = () => {
-    if (open) {
-      setOpen(false);
-      setMenuPos(null);
-      return;
-    }
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) {
-      setMenuPos({ top: rect.bottom + 4, left: rect.left });
-    }
-    setOpen(true);
-  };
-
-  const close = () => {
-    setOpen(false);
-    setMenuPos(null);
-  };
-
-  const itemClass =
-    "flex w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:pointer-events-none disabled:opacity-40";
-
-  return (
-    <div ref={rootRef} className="relative min-w-0">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={toggle}
-        className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[13px] font-medium transition-colors ${
-          open
-            ? "bg-white/15 text-text"
-            : "text-text hover:bg-white/10 hover:text-accent"
-        }`}
-      >
-        <span className="truncate">Message Vault</span>
-        <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-      </button>
-      {open && menuPos && (
-        <div
-          role="menu"
-          className="fixed z-[100] min-w-[11rem] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => {
-              close();
-              router.push("/");
-            }}
-          >
-            Home
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => {
-              close();
-              router.push("/settings");
-            }}
-          >
-            User Settings
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => {
-              close();
-              onLogout();
-            }}
-          >
-            Logout
-          </button>
-          <div className="my-1 border-t border-border" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            disabled={!demoResetAvailable || resettingDemo}
-            className={itemClass}
-            onClick={() => {
-              close();
-              onResetDemo();
-            }}
-          >
-            {resettingDemo ? "Resetting demo…" : "Reset demo"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function AppSidebar({
   active,
-  groups = [],
+  labels = [],
   collapsed,
   animating = false,
   onHideNav,
   onShowNav,
-  onExpandGroups,
-  focusGroupsToken = 0,
+  onExpandLabels,
+  focusLabelsToken = 0,
 }: {
   active: string;
-  groups?: string[];
+  labels?: string[];
   collapsed: boolean;
   /** True while the drawer width is animating. */
   animating?: boolean;
   onHideNav?: () => void;
   onShowNav?: () => void;
-  onExpandGroups?: () => void;
+  onExpandLabels?: () => void;
   /** Increment to scroll the Labels section into view after expand. */
-  focusGroupsToken?: number;
+  focusLabelsToken?: number;
 }) {
   const [demoResetAvailable, setDemoResetAvailable] = useState(false);
   const [resettingDemo, setResettingDemo] = useState(false);
@@ -690,13 +566,13 @@ export function AppSidebar({
   }, []);
 
   useEffect(() => {
-    if (collapsed || focusGroupsToken === 0) return;
-    const el = document.getElementById("nav-groups");
+    if (collapsed || focusLabelsToken === 0) return;
+    const el = document.getElementById("nav-labels");
     if (!el) return;
     requestAnimationFrame(() => {
       el.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
-  }, [collapsed, focusGroupsToken]);
+  }, [collapsed, focusLabelsToken]);
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -824,11 +700,11 @@ export function AppSidebar({
           icon={<TrashIcon className="size-5 shrink-0 opacity-80" />}
         />
 
-        <GroupsNav
-          groups={groups}
+        <LabelsNav
+          labels={labels}
           compact={collapsed}
           hideItems={collapsed || animating}
-          onExpandGroups={onExpandGroups}
+          onExpandLabels={onExpandLabels}
         />
       </nav>
       {confirmDialog}

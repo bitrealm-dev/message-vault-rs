@@ -19,8 +19,8 @@ erDiagram
     messages ||--o{ tapbacks : "has"
     messages ||--o| messages : "duplicate_of"
     contacts ||--o{ contact_handles : "has"
-    contacts ||--o{ contact_group_members : "in"
-    contact_groups ||--o{ contact_group_members : "has"
+    contacts ||--o{ contact_label_members : "in"
+    contact_labels ||--o{ contact_label_members : "has"
     contact_handles }o--o| participants : "same phone or email text"
 ```
 
@@ -167,26 +167,26 @@ One row = one phone number or email that belongs to one contact.
 
 One contact can have many handles. Each handle points to only one contact per account (`PRIMARY KEY (account_id, handle)`).
 
-### `contact_groups`
+### `contact_labels`
 
-One row = one named group label (for example Family).
+One row = one named contact label (for example Family).
 
 | Column | Plain meaning |
 |--------|----------------|
 | `id` | Internal number |
-| `account_id` | Which vault tenant owns this group |
-| `name` | Group name (unique per account) |
+| `account_id` | Which vault tenant owns this label |
+| `name` | Label name (unique per account) |
 
-### `contact_group_members`
+### `contact_label_members`
 
-One row = “this contact is in this group.”
+One row = “this contact has this label.”
 
 | Column | Plain meaning |
 |--------|----------------|
 | `contact_id` | Points to `contacts.id` |
-| `group_id` | Points to `contact_groups.id` |
+| `label_id` | Points to `contact_labels.id` |
 
-Together those two columns are the primary key, so a contact appears at most once in a given group.
+Together those two columns are the primary key, so a contact appears at most once under a given label.
 
 ---
 
@@ -270,7 +270,7 @@ These tables do not store the chat or contact themselves. They mark an id or han
 | A person you named | `contacts` |
 | Web login account | `accounts` |
 | Their phone numbers / emails | `contact_handles` |
-| Group labels | `contact_groups` + `contact_group_members` |
+| Contact labels | `contact_labels` + `contact_label_members` |
 | Soft-deleted items | `trashed_*` |
 | Import scratch space | `staging_*` |
 
