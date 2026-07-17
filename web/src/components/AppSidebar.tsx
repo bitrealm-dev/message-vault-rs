@@ -17,12 +17,15 @@ import {
   ChevronDownIcon,
   EllipsisIcon,
   GroupMessagesOutlineIcon,
+  PanelCollapseIcon,
+  PanelExpandIcon,
   PeopleGroupIcon,
   PersonDetailIcon,
   PlusIcon,
   ProhibitedIcon,
   TrashIcon,
 } from "./icons";
+import { IconHoverTarget } from "./IconHoverLabel";
 import { useHistory } from "./history";
 import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
@@ -36,30 +39,41 @@ function NavLink({
   label,
   active,
   icon,
+  compact = false,
 }: {
   href: string;
   label: string;
   active: boolean;
   icon?: ReactNode;
+  /** Icon-only rail mode: keep the same box, hide the label. */
+  compact?: boolean;
 }) {
   return (
-    <Link
-      href={href}
-      className={`relative flex items-center gap-2 py-1 ${navItemPad} text-[14px] transition-colors ${
-        active
-          ? "bg-accent/35 text-text hover:bg-accent/40"
-          : "text-muted hover:bg-white/20 hover:text-text"
-      }`}
+    <IconHoverTarget
+      label={label}
+      placement="right"
+      hidden={!compact}
+      className="block w-full"
     >
-      {active && (
-        <span
-          aria-hidden
-          className="absolute top-0.5 bottom-0.5 left-0 w-1 rounded-full bg-accent"
-        />
-      )}
-      {icon}
-      <span className="truncate">{label}</span>
-    </Link>
+      <Link
+        href={href}
+        aria-label={compact ? label : undefined}
+        className={`relative flex h-8 items-center gap-2 ${navItemPad} text-[14px] transition-colors ${
+          active
+            ? "bg-accent/35 text-text hover:bg-accent/40"
+            : "text-muted hover:bg-white/20 hover:text-text"
+        }`}
+      >
+        {active && (
+          <span
+            aria-hidden
+            className="absolute top-0.5 bottom-0.5 left-0 w-1 rounded-full bg-accent"
+          />
+        )}
+        {icon}
+        <span className={compact ? "sr-only" : "truncate"}>{label}</span>
+      </Link>
+    </IconHoverTarget>
   );
 }
 
@@ -158,7 +172,18 @@ function GroupNamePopover({
   );
 }
 
-function GroupsNav({ groups }: { groups: string[] }) {
+function GroupsNav({
+  groups,
+  compact = false,
+  hideItems = false,
+  onExpandGroups,
+}: {
+  groups: string[];
+  compact?: boolean;
+  /** Hide group rows while the drawer is animating/collapsed so they don’t flash in the rail. */
+  hideItems?: boolean;
+  onExpandGroups?: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { push: pushHistory } = useHistory();
@@ -331,32 +356,60 @@ function GroupsNav({ groups }: { groups: string[] }) {
     <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
   );
 
+  const pathnameGroupActive = pathname.startsWith("/group/");
+
   return (
-    <div>
+    <div id="nav-groups">
       <div className="relative mt-3" ref={headerRef}>
-        <div className={`flex items-center justify-between ${navHeadingClass}`}>
-          <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
-            Groups
-          </span>
-          <button
-            type="button"
-            aria-label="Create group"
-            disabled={busy}
-            onClick={(e) => {
-              setMenuFor(null);
-              setRename(null);
-              setCreate((v) =>
-                v ? null : { x: e.clientX, y: e.clientY },
-              );
-            }}
-            className="rounded p-0.5 text-muted hover:bg-elevated hover:text-text disabled:opacity-40"
+        {compact ? (
+          <IconHoverTarget label="Groups" placement="right" className="block w-full">
+            <button
+              type="button"
+              aria-label="Groups"
+              onClick={onExpandGroups}
+              className={`relative flex h-8 w-full items-center gap-2 ${navItemPad} text-[14px] transition-colors ${
+                pathnameGroupActive
+                  ? "bg-accent/35 text-text"
+                  : "text-muted hover:bg-white/20 hover:text-text"
+              }`}
+            >
+              {pathnameGroupActive && (
+                <span
+                  aria-hidden
+                  className="absolute top-0.5 bottom-0.5 left-0 w-1 rounded-full bg-accent"
+                />
+              )}
+              {groupIcon}
+            </button>
+          </IconHoverTarget>
+        ) : (
+          <div
+            className={`flex h-8 items-center justify-between ${navHeadingClass}`}
           >
-            <PlusIcon className="size-4" />
-          </button>
-        </div>
+            <span className="text-[12px] font-semibold tracking-wider text-muted uppercase">
+              Groups
+            </span>
+            <button
+              type="button"
+              aria-label="Create group"
+              disabled={busy}
+              onClick={(e) => {
+                setMenuFor(null);
+                setRename(null);
+                setCreate((v) =>
+                  v ? null : { x: e.clientX, y: e.clientY },
+                );
+              }}
+              className="rounded p-0.5 text-muted hover:bg-elevated hover:text-text disabled:opacity-40"
+            >
+              <PlusIcon className="size-4" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {displayGroups.length > 0 &&
+      {!hideItems &&
+        displayGroups.length > 0 &&
         displayGroups.map((name) => {
           const href = `/group/${groupSlug(name)}`;
           const active = pathname === href;
@@ -388,7 +441,7 @@ function GroupsNav({ groups }: { groups: string[] }) {
                 )}
                 <Link
                   href={href}
-                  className={`flex min-w-0 flex-1 items-center gap-2 py-1 pr-1 ${navItemPl}`}
+                  className={`flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 ${navItemPl}`}
                 >
                   {groupIcon}
                   <span className="truncate">{name}</span>
@@ -454,14 +507,16 @@ function GroupsNav({ groups }: { groups: string[] }) {
           );
         })}
 
-      <NavLink
-        href="/no-group"
-        label="No group"
-        active={pathname === "/no-group"}
-        icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
-      />
+      {!hideItems && (
+        <NavLink
+          href="/no-group"
+          label="No group"
+          active={pathname === "/no-group"}
+          icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
+        />
+      )}
 
-      {create && (
+      {!hideItems && create && (
         <GroupNamePopover
           title="Create group"
           anchor={{ x: create.x, y: create.y }}
@@ -574,10 +629,10 @@ function VaultTitleMenu({
             className={itemClass}
             onClick={() => {
               close();
-              onLogout();
+              router.push("/settings");
             }}
           >
-            Logout
+            User Settings
           </button>
           <button
             type="button"
@@ -585,11 +640,12 @@ function VaultTitleMenu({
             className={itemClass}
             onClick={() => {
               close();
-              router.push("/settings");
+              onLogout();
             }}
           >
-            User Settings
+            Logout
           </button>
+          <div className="my-1 border-t border-border" role="separator" />
           <button
             type="button"
             role="menuitem"
@@ -612,10 +668,22 @@ export function AppSidebar({
   active,
   groups = [],
   collapsed,
+  animating = false,
+  onHideNav,
+  onShowNav,
+  onExpandGroups,
+  focusGroupsToken = 0,
 }: {
   active: string;
   groups?: string[];
   collapsed: boolean;
+  /** True while the drawer width is animating. */
+  animating?: boolean;
+  onHideNav?: () => void;
+  onShowNav?: () => void;
+  onExpandGroups?: () => void;
+  /** Increment to scroll the Groups section into view after expand. */
+  focusGroupsToken?: number;
 }) {
   const [demoResetAvailable, setDemoResetAvailable] = useState(false);
   const [resettingDemo, setResettingDemo] = useState(false);
@@ -637,6 +705,15 @@ export function AppSidebar({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (collapsed || focusGroupsToken === 0) return;
+    const el = document.getElementById("nav-groups");
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, [collapsed, focusGroupsToken]);
 
   const resetDemo = useCallback(async () => {
     const ok = await confirm(
@@ -673,17 +750,45 @@ export function AppSidebar({
   );
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
-      {!collapsed && (
-        <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
-          <VaultTitleMenu
-            demoResetAvailable={demoResetAvailable}
-            resettingDemo={resettingDemo}
-            onResetDemo={() => void resetDemo()}
-            onLogout={() => void logout()}
-          />
-        </div>
-      )}
+    <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-sidebar">
+      <div className="flex h-[45px] shrink-0 items-center gap-1 border-b border-border px-3">
+        {collapsed ? (
+          <IconHoverTarget label="Show navigation" placement="right">
+            <button
+              type="button"
+              aria-label="Show navigation"
+              onClick={onShowNav}
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
+            >
+              <PanelExpandIcon className="size-5" />
+            </button>
+          </IconHoverTarget>
+        ) : (
+          <>
+            {onHideNav && (
+              <IconHoverTarget label="Hide navigation" placement="bottom">
+                <button
+                  type="button"
+                  aria-label="Hide navigation"
+                  onClick={onHideNav}
+                  className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-white/15 hover:text-text"
+                >
+                  <PanelCollapseIcon className="size-5" />
+                </button>
+              </IconHoverTarget>
+            )}
+            <VaultTitleMenu
+              demoResetAvailable={demoResetAvailable}
+              resettingDemo={resettingDemo}
+              onResetDemo={() => void resetDemo()}
+              onLogout={() => void logout()}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Aligns nav with contact-list body (search + toolbar are both 45px). */}
+      <div className="h-[45px] shrink-0 border-b border-border" aria-hidden />
 
       {!collapsed && resetError && (
         <p className="shrink-0 px-3 py-1.5 text-[11px] text-red-400" role="alert">
@@ -691,45 +796,53 @@ export function AppSidebar({
         </p>
       )}
 
-      {!collapsed && (
-        <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-          <NavLink
-            href="/all"
-            label="All"
-            active={active === "/all"}
-            icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
-          />
-          <NavLink
-            href="/contacts"
-            label="Active"
-            active={active === "/contacts"}
-            icon={<AddressBookIcon className="size-5 shrink-0 opacity-80" />}
-          />
-          <NavLink
-            href="/excluded"
-            label="Inactive"
-            active={active === "/excluded"}
-            icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
-          />
-          <NavLink
-            href="/group-messages"
-            label="Group Messages"
-            active={active === "/group-messages"}
-            icon={groupMessagesIcon}
-          />
+      <nav className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pb-2">
+        <NavLink
+          href="/all"
+          label="All"
+          active={active === "/all"}
+          compact={collapsed}
+          icon={<PersonDetailIcon className="size-5 shrink-0 opacity-80" />}
+        />
+        <NavLink
+          href="/contacts"
+          label="Active"
+          active={active === "/contacts"}
+          compact={collapsed}
+          icon={<AddressBookIcon className="size-5 shrink-0 opacity-80" />}
+        />
+        <NavLink
+          href="/excluded"
+          label="Inactive"
+          active={active === "/excluded"}
+          compact={collapsed}
+          icon={<ProhibitedIcon className="size-5 shrink-0 opacity-80" />}
+        />
+        <NavLink
+          href="/group-messages"
+          label="Group Messages"
+          active={active === "/group-messages"}
+          compact={collapsed}
+          icon={groupMessagesIcon}
+        />
 
-          <div className="mt-3" aria-hidden />
+        <div className="mt-3" aria-hidden />
 
-          <NavLink
-            href="/trash"
-            label="Trash"
-            active={active === "/trash"}
-            icon={<TrashIcon className="size-5 shrink-0 opacity-80" />}
-          />
+        <NavLink
+          href="/trash"
+          label="Trash"
+          active={active === "/trash"}
+          compact={collapsed}
+          icon={<TrashIcon className="size-5 shrink-0 opacity-80" />}
+        />
 
-          <GroupsNav groups={groups} />
-        </nav>
-      )}
+        <GroupsNav
+          groups={groups}
+          compact={collapsed}
+          hideItems={collapsed || animating}
+          onExpandGroups={onExpandGroups}
+        />
+      </nav>
       {confirmDialog}
     </aside>
   );

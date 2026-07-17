@@ -5,11 +5,14 @@ import {
   HistoryProvider,
   HistoryToast,
 } from "@/components/history";
-import { NavRail } from "@/components/NavRail";
 import { PaneSeparator } from "@/components/PaneSeparator";
 import { usePanelLayoutStorage } from "@/components/panelLayoutStorage";
 import { SettingsSidebar } from "@/components/SettingsSidebar";
-import { useNavCollapse } from "@/components/useNavCollapse";
+import {
+  NAV_RAIL_PX,
+  useNavCollapse,
+  type NavAnimDirection,
+} from "@/components/useNavCollapse";
 import { usePathname } from "next/navigation";
 import { useCallback, useState, type ReactNode } from "react";
 import {
@@ -19,7 +22,7 @@ import {
   usePanelRef,
 } from "react-resizable-panels";
 
-/** App chrome: fixed nav rail | resizable nav drawer | main content. */
+/** App chrome: resizable nav drawer (compacts to icon rail) | main content. */
 export function AppShell({
   active,
   groups = [],
@@ -31,13 +34,17 @@ export function AppShell({
 }) {
   const navPanelRef = usePanelRef();
   const [navCollapsed, setNavCollapsed] = useState(false);
+  const [navAnim, setNavAnim] = useState<NavAnimDirection>(null);
+  const [focusGroupsToken, setFocusGroupsToken] = useState(0);
   const onCollapsedChange = useCallback((c: boolean) => {
     setNavCollapsed(c);
   }, []);
-  const { collapsed, toggleCollapsed } = useNavCollapse(
+  const { collapsed, collapse, expand } = useNavCollapse(
     navPanelRef,
     onCollapsedChange,
+    setNavAnim,
   );
+  const navAnimating = navAnim != null;
   const storage = usePanelLayoutStorage();
   const pathname = usePathname();
   const settingsMode = pathname.startsWith("/settings");
@@ -48,38 +55,53 @@ export function AppShell({
     storage,
   });
 
+  const onExpandGroups = useCallback(() => {
+    void expand();
+    setFocusGroupsToken((n) => n + 1);
+  }, [expand]);
+
+  const navMinSize = navAnimating ? 0 : 120;
+
   return (
     <HistoryProvider>
       <div className="flex h-full w-full overflow-visible">
-        <NavRail collapsed={collapsed} onToggle={toggleCollapsed} />
         <Group
           id="mv-nav"
           orientation="horizontal"
           className="min-h-0 min-w-0 flex-1"
           defaultLayout={defaultLayout}
-          onLayoutChanged={onLayoutChanged}
+          onLayoutChanged={navAnimating ? undefined : onLayoutChanged}
         >
           <Panel
             id="nav"
             panelRef={navPanelRef}
             defaultSize={200}
-            minSize={120}
+            minSize={navMinSize}
             maxSize={360}
             collapsible
-            collapsedSize={0}
-            className="min-h-0"
+            collapsedSize={NAV_RAIL_PX}
+            className="min-h-0 overflow-hidden"
           >
             {settingsMode ? (
-              <SettingsSidebar collapsed={collapsed} />
+              <SettingsSidebar
+                collapsed={collapsed}
+                onHideNav={() => void collapse()}
+                onShowNav={() => void expand()}
+              />
             ) : (
               <AppSidebar
                 active={active}
                 groups={groups}
                 collapsed={collapsed}
+                animating={navAnim === "collapse"}
+                onHideNav={() => void collapse()}
+                onShowNav={() => void expand()}
+                onExpandGroups={onExpandGroups}
+                focusGroupsToken={focusGroupsToken}
               />
             )}
           </Panel>
-          <PaneSeparator orientation="vertical" disabled={navCollapsed} />
+          <PaneSeparator orientation="vertical" disabled={navCollapsed || navAnimating} />
           <Panel id="main" minSize="30%" className="min-h-0 min-w-0">
             {children}
           </Panel>
