@@ -8,11 +8,7 @@ import type {
   UnassignedHandle,
   YearThread,
 } from "@/lib/types";
-import {
-  GROUP_DATE_ALLOWED,
-  newestYearForConversation,
-} from "@/lib/groupChatList";
-import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
+import { newestYearForConversation } from "@/lib/groupChatList";
 import {
   buildTrashListItems,
   countTrashTabs,
@@ -41,7 +37,6 @@ import { usePanelLayoutStorage } from "./panelLayoutStorage";
 import { useConfirmDialog } from "./useConfirmDialog";
 import { useDismissible } from "./useDismissible";
 import { useListSelection } from "./useListSelection";
-import { usePersistedEnum } from "./usePersistedEnum";
 import { useSourceFilter } from "./SourceFilter";
 import { useThreadMessages } from "./useThreadMessages";
 import { TrashUnifiedList } from "./TrashUnifiedList";
@@ -90,11 +85,6 @@ export function TrashShell({
   const searchParams = useSearchParams();
   const { clear: clearHistory } = useHistory();
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
-  const [groupDateFormat] = usePersistedEnum(
-    GROUP_DATE_FORMAT_KEY,
-    GROUP_DATE_ALLOWED,
-    "md",
-  );
 
   useEffect(() => {
     clearHistory();
@@ -627,7 +617,6 @@ export function TrashShell({
               void runRestoreOrDelete(actionKeys, true)
             }
             onOpenCtxMenu={openCtxMenuAt}
-            groupDateFormat={groupDateFormat}
           />
         </Panel>
 

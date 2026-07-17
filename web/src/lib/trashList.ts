@@ -41,7 +41,7 @@ export const TRASH_CATEGORY_LABEL: Record<TrashCategory, string> = {
   groupMessages: "Group Messages",
 };
 
-/** Compact display for SQLite `datetime('now')` timestamps. */
+/** @deprecated Prefer `useDateTimeFormat().formatDateTime` in UI. */
 export function formatTrashedAt(trashedAt: string): string {
   const m = trashedAt.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
   if (m) return `${m[1]} ${m[2]}`;

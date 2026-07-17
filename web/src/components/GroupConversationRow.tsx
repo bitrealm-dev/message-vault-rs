@@ -1,13 +1,9 @@
 "use client";
 
 import type { CollapsedGroupConversation } from "@/lib/groupChatList";
-import {
-  formatGroupDateTable,
-  type GroupDateFormat,
-} from "@/lib/groupDateFormat";
-import { formatTrashedAt } from "@/lib/trashList";
 import { CountBadge } from "./CountBadge";
 import { PeopleCountIcon, TrashIcon } from "./icons";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
 export const GROUP_NAME_SEP = "  ·  ";
 export const MAX_VISIBLE_GROUP_NAMES = 8;
@@ -41,16 +37,6 @@ export function visibleParticipantLabels(labels: string[]): string[] {
   ];
 }
 
-export function formatCollapsedDateRange(
-  start: string,
-  end: string,
-  style: GroupDateFormat,
-): string {
-  const a = formatGroupDateTable(start, style);
-  if (end === start) return a;
-  return `${a} – ${formatGroupDateTable(end, style)}`;
-}
-
 /** Prefer names, then handles, then parse title (browse fallback). */
 export function collapsedParticipantLabels(
   g: CollapsedGroupConversation,
@@ -69,27 +55,22 @@ export function collapsedParticipantLabels(
 /** Shared names / date / message+people counts for group conversation rows. */
 export function GroupConversationRowBody({
   conversation: g,
-  groupDateFormat,
   variant = "browse",
   trashedAt,
 }: {
   conversation: CollapsedGroupConversation;
-  groupDateFormat: GroupDateFormat;
   variant?: "browse" | "trash";
   /** Soft-trash timestamp (trash variant 4th line). */
   trashedAt?: string;
 }) {
+  const { formatDateRange, formatDateTime } = useDateTimeFormat();
   const allNames = collapsedParticipantLabels(g);
   const names = visibleParticipantLabels(allNames);
   const namesTitle =
     allNames.length > 0
       ? allNames.join(GROUP_NAME_SEP)
       : g.titleFull || g.title;
-  const dateLabel = formatCollapsedDateRange(
-    g.dateStart,
-    g.dateEnd,
-    groupDateFormat,
-  );
+  const dateLabel = formatDateRange(g.dateStart, g.dateEnd, " – ");
 
   if (variant === "trash") {
     return (
@@ -122,7 +103,7 @@ export function GroupConversationRowBody({
           {trashedAt ? (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-muted tabular-nums">
               <TrashIcon className="size-3 shrink-0 opacity-70" />
-              <span>{formatTrashedAt(trashedAt)}</span>
+              <span>{formatDateTime(trashedAt)}</span>
             </div>
           ) : null}
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  formatTrashedAt,
   type TrashListItem,
   type TrashTab,
 } from "@/lib/trashList";
@@ -11,7 +10,7 @@ import { TrashIcon } from "./icons";
 import { TrashListChrome } from "./TrashListChrome";
 import { TrashTabPicker } from "./TrashTabPicker";
 import { GroupConversationRowBody } from "./GroupConversationRow";
-import type { GroupDateFormat } from "@/lib/groupDateFormat";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
 export function TrashUnifiedList({
   tab,
@@ -33,7 +32,6 @@ export function TrashUnifiedList({
   onRestoreHeader,
   onDeleteForeverHeader,
   onOpenCtxMenu,
-  groupDateFormat,
 }: {
   tab: TrashTab;
   contactCount: number;
@@ -54,8 +52,8 @@ export function TrashUnifiedList({
   onRestoreHeader: () => void;
   onDeleteForeverHeader: () => void;
   onOpenCtxMenu: (x: number, y: number, key: string, menuH: number) => void;
-  groupDateFormat: GroupDateFormat;
 }) {
+  const { formatDateTime } = useDateTimeFormat();
   const tabBar: ReactNode = (
     <TrashTabPicker
       tab={tab}
@@ -184,7 +182,7 @@ export function TrashUnifiedList({
                             <TrashIcon className="size-3 shrink-0 opacity-70" />
                             <span>
                               {item.trashedAt
-                                ? formatTrashedAt(item.trashedAt)
+                                ? formatDateTime(item.trashedAt)
                                 : "—"}
                             </span>
                           </span>
@@ -253,7 +251,6 @@ export function TrashUnifiedList({
                       >
                         <GroupConversationRowBody
                           conversation={item.group}
-                          groupDateFormat={groupDateFormat}
                           variant="trash"
                           trashedAt={item.trashedAt}
                         />

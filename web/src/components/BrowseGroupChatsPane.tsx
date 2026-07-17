@@ -1,7 +1,6 @@
 "use client";
 
 import type { CollapsedGroupConversation } from "@/lib/groupChatList";
-import type { GroupDateFormat } from "@/lib/groupDateFormat";
 import type { MouseEvent, RefObject } from "react";
 import { GroupConversationRowBody } from "./GroupConversationRow";
 import { IconHoverTarget } from "./IconHoverLabel";
@@ -35,7 +34,6 @@ export function BrowseGroupChatsPane({
   searchQuery,
   onSearchQueryChange,
   searchDisabled = false,
-  groupDateFormat,
   emptyLabel = "No group messages",
 }: {
   items: CollapsedGroupConversation[];
@@ -64,7 +62,6 @@ export function BrowseGroupChatsPane({
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   searchDisabled?: boolean;
-  groupDateFormat: GroupDateFormat;
   emptyLabel?: string;
 }) {
   const selectionActive = selectedIds.size >= 1;
@@ -216,7 +213,6 @@ export function BrowseGroupChatsPane({
                 >
                   <GroupConversationRowBody
                     conversation={g}
-                    groupDateFormat={groupDateFormat}
                     variant="browse"
                   />
                 </button>

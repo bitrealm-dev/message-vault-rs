@@ -6,12 +6,17 @@ import {
   GroupParticipantChip,
   GroupParticipantNameSep,
 } from "./GroupParticipantChip";
-import { MessageBubble } from "./MessageBubble";
 import { MessageIcon, PaperclipIcon } from "./icons";
+import { MessageList } from "./MessageList";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
-function groupMessageHeader(
-  selectedRow: GroupYearRow,
-  focusYear: number | null,
+function GroupMessageHeader({
+  selectedRow,
+  focusYear,
+  opts,
+}: {
+  selectedRow: GroupYearRow;
+  focusYear: number | null;
   opts: {
     prominent: boolean;
     showYearHint: boolean;
@@ -21,8 +26,9 @@ function groupMessageHeader(
       participant: GroupParticipant,
       anchor: DOMRect,
     ) => void;
-  },
-) {
+  };
+}) {
+  const { formatDateRange } = useDateTimeFormat();
   const participants =
     selectedRow.participants?.length > 0
       ? selectedRow.participants
@@ -32,10 +38,11 @@ function groupMessageHeader(
           contactId: null as number | null,
         }));
   const dateLabel = selectedRow.spansMultipleYears
-    ? `${selectedRow.conversationDateStart} — ${selectedRow.conversationDateEnd}`
-    : selectedRow.dateStart === selectedRow.dateEnd
-      ? selectedRow.dateStart
-      : `${selectedRow.dateStart} — ${selectedRow.dateEnd}`;
+    ? formatDateRange(
+        selectedRow.conversationDateStart,
+        selectedRow.conversationDateEnd,
+      )
+    : formatDateRange(selectedRow.dateStart, selectedRow.dateEnd);
 
   return (
     <div
@@ -175,13 +182,17 @@ export function GroupChatsMessagesPane({
             loading ? "opacity-60" : ""
           }`}
         >
-          {groupMessageHeader(selectedRow, focusYear, {
-            prominent: prominentHeader,
-            showYearHint: !prominentHeader,
-            messageCount: selectedRow.messageCount,
-            attachmentCount,
-            onParticipantClick,
-          })}
+          <GroupMessageHeader
+            selectedRow={selectedRow}
+            focusYear={focusYear}
+            opts={{
+              prominent: prominentHeader,
+              showYearHint: !prominentHeader,
+              messageCount: selectedRow.messageCount,
+              attachmentCount,
+              onParticipantClick,
+            }}
+          />
           {loading && messages.length === 0 && (
             <p className="pt-4 text-center text-[13px] text-muted">
               Loading messages…
@@ -190,9 +201,7 @@ export function GroupChatsMessagesPane({
           {!loading && messages.length === 0 && (
             <p className="pt-4 text-center text-[13px] text-muted">No messages</p>
           )}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
+          <MessageList messages={messages} />
         </div>
       )}
     </section>

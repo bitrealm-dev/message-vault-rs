@@ -12,10 +12,8 @@ import {
   GROUP_CHAT_SORT_ALLOWED,
   GROUP_CHAT_SORT_KEY,
   GROUP_CHAT_SORT_ORDER_KEY,
-  GROUP_DATE_ALLOWED,
   SORT_ORDER_ALLOWED,
 } from "@/lib/groupChatList";
-import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import {
   useCallback,
   useEffect,
@@ -122,11 +120,6 @@ export function BrowseShell({
     all: number;
     bySource: Record<string, number>;
   }>({ all: 0, bySource: {} });
-  const [groupDateFormat] = usePersistedEnum(
-    GROUP_DATE_FORMAT_KEY,
-    GROUP_DATE_ALLOWED,
-    "md",
-  );
   const [threadConversationIds, setThreadConversationIds] = useState<
     number[] | null
   >(null);
@@ -1465,7 +1458,6 @@ export function BrowseShell({
           searchQuery={groupChatQuery}
           onSearchQueryChange={setGroupChatQuery}
           searchDisabled={!hasSelection && !contactId}
-          groupDateFormat={groupDateFormat}
           emptyLabel={
             hasSelection
               ? loadingSelectionGroups

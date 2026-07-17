@@ -1,6 +1,5 @@
 import type { GroupChatThread, GroupParticipant, GroupYearRow } from "./types";
 
-export const GROUP_DATE_ALLOWED = ["md", "mon-d", "d-mon"] as const;
 export const GROUP_CHAT_SORT_ALLOWED = ["date", "messages", "people"] as const;
 export const SORT_ORDER_ALLOWED = ["asc", "desc"] as const;
 

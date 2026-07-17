@@ -1,6 +1,7 @@
 "use client";
 
 import type { YearThread } from "@/lib/types";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
 export function YearThreadPicker({
   years,
@@ -18,6 +19,7 @@ export function YearThreadPicker({
   /** When true, show message counts next to each year (Unassigned). */
   showCounts?: boolean;
 }) {
+  const { formatDateRange } = useDateTimeFormat();
   return (
     <div>
       <h3 className="text-[15px] font-semibold text-text">
@@ -43,9 +45,7 @@ export function YearThreadPicker({
                   title={
                     showCounts
                       ? undefined
-                      : `${y.messageCount} msgs · ${y.dateStart}${
-                          y.dateEnd !== y.dateStart ? ` — ${y.dateEnd}` : ""
-                        }`
+                      : `${y.messageCount} msgs · ${formatDateRange(y.dateStart, y.dateEnd)}`
                   }
                   onClick={() => onSelect(y)}
                   className={`text-[13px] font-medium ${

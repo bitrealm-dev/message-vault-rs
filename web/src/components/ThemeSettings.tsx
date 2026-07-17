@@ -86,7 +86,7 @@ export function ThemeSettings() {
 
   return (
     <section className="max-w-xl">
-      <h3 className="text-[13px] font-semibold tracking-wide text-muted uppercase">
+      <h3 className="text-lg font-semibold tracking-wide text-muted uppercase">
         Theme
       </h3>
       <p className="mt-1 text-[14px] text-muted">
@@ -191,7 +191,7 @@ export function ThemeSettings() {
       </label>
 
       <div className="mt-6 space-y-3">
-        <div className="text-[12px] font-semibold tracking-wide text-muted uppercase">
+        <div className="text-lg font-semibold tracking-wide text-muted uppercase">
           Colors
         </div>
         {SEED_FIELDS.map((field) => (

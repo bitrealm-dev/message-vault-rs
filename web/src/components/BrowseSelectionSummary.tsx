@@ -6,6 +6,7 @@ import {
   collapsedParticipantLabels,
   GroupNameSep,
 } from "./GroupConversationRow";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
 export function browseSelectionSummaryFlags(options: {
   hasSelection: boolean;
@@ -91,10 +92,9 @@ export function BrowseSelectionSummary({
   onClearGroupSelection: () => void;
   onClearContactFocus: () => void;
 }) {
+  const { formatDateRange } = useDateTimeFormat();
   const groupRowDate = (g: CollapsedGroupConversation) =>
-    g.dateStart === g.dateEnd
-      ? g.dateStart
-      : `${g.dateStart} – ${g.dateEnd}`;
+    formatDateRange(g.dateStart, g.dateEnd, " – ");
 
   const contactsCard = (
     <div className="overflow-hidden rounded-xl border border-border bg-popover shadow-[0_8px_24px_rgba(0,0,0,0.35)]">

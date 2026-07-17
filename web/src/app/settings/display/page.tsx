@@ -1,3 +1,4 @@
+import { DateTimeSettings } from "@/components/DateTimeSettings";
 import { StyleGuidePreview } from "@/components/StyleGuidePreview";
 import { ThemeSettings } from "@/components/ThemeSettings";
 
@@ -11,6 +12,7 @@ export default function SettingsDisplayPage() {
       <div className="mt-8">
         <ThemeSettings />
       </div>
+      <DateTimeSettings />
       <StyleGuidePreview />
     </>
   );

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import Script from "next/script";
 import { SourceFilterProvider } from "@/components/SourceFilter";
+import { DateTimeFormatProvider } from "@/components/useDateTimeFormat";
 import { ThemeProvider } from "@/components/useTheme";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
@@ -33,7 +34,9 @@ export default function RootLayout({
           {THEME_BOOT_SCRIPT}
         </Script>
         <ThemeProvider>
-          <SourceFilterProvider>{children}</SourceFilterProvider>
+          <DateTimeFormatProvider>
+            <SourceFilterProvider>{children}</SourceFilterProvider>
+          </DateTimeFormatProvider>
         </ThemeProvider>
       </body>
     </html>

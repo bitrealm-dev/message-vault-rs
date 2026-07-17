@@ -11,12 +11,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GroupParticipantChip,
 } from "./GroupParticipantChip";
-import { MessageBubble } from "./MessageBubble";
+import { MessageList } from "./MessageList";
 import {
   ChevronDownIcon,
   MessageIcon,
   PaperclipIcon,
 } from "./icons";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
 const HEADER_EXPANDED_KEY = "mv-browse-thread-header-expanded";
 
@@ -66,6 +67,7 @@ export function BrowseThreadPane({
     anchor: DOMRect,
   ) => void;
 }) {
+  const { formatDateRange } = useDateTimeFormat();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [headerExpanded, setHeaderExpanded] = useState(true);
   const [activeYear, setActiveYear] = useState<number | null>(null);
@@ -254,9 +256,7 @@ export function BrowseThreadPane({
   }));
 
   const dateLabel = groupThread
-    ? groupThread.dateStart === groupThread.dateEnd
-      ? groupThread.dateStart
-      : `${groupThread.dateStart} — ${groupThread.dateEnd}`
+    ? formatDateRange(groupThread.dateStart, groupThread.dateEnd)
     : null;
 
   // DM name lives in Panel 4's top strip; only group threads keep in-pane identity.
@@ -433,9 +433,7 @@ export function BrowseThreadPane({
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {section.messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} />
-                  ))}
+                  <MessageList messages={section.messages} />
                 </div>
               </div>
             ))}

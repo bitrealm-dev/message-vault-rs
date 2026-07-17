@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageIcon, PaperclipIcon } from "./icons";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 
 /** Shared header above a year / thread message list. */
 export function ThreadMessagesHeader({
@@ -19,8 +20,8 @@ export function ThreadMessagesHeader({
   /** Year headers use a much larger title. */
   largeTitle?: boolean;
 }) {
-  const dateLabel =
-    dateStart === dateEnd ? dateStart : `${dateStart} — ${dateEnd}`;
+  const { formatDateRange } = useDateTimeFormat();
+  const dateLabel = formatDateRange(dateStart, dateEnd);
 
   return (
     <div className="mb-2 border-b border-border/60 pb-3 text-center">

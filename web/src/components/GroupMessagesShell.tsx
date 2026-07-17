@@ -6,13 +6,11 @@ import {
   GROUP_CHAT_SORT_ALLOWED,
   GROUP_CHAT_SORT_KEY,
   GROUP_CHAT_SORT_ORDER_KEY,
-  GROUP_DATE_ALLOWED,
   groupYearRowsToThreads,
   newestYearForConversation,
   SORT_ORDER_ALLOWED,
   type CollapsedGroupConversation,
 } from "@/lib/groupChatList";
-import { GROUP_DATE_FORMAT_KEY } from "@/lib/groupDateFormat";
 import {
   useCallback,
   useEffect,
@@ -80,11 +78,6 @@ export function GroupMessagesShell({
     initialConversationId != null ? `gfull-${initialConversationId}` : null,
   );
 
-  const [groupDateFormat] = usePersistedEnum(
-    GROUP_DATE_FORMAT_KEY,
-    GROUP_DATE_ALLOWED,
-    "md",
-  );
   const [groupChatSortBy, setGroupChatSortBy] = usePersistedEnum(
     GROUP_CHAT_SORT_KEY,
     GROUP_CHAT_SORT_ALLOWED,
@@ -457,7 +450,6 @@ export function GroupMessagesShell({
             onSortChange={setGroupChatSort}
             searchQuery={query}
             onSearchQueryChange={setQuery}
-            groupDateFormat={groupDateFormat}
             emptyLabel={
               query.trim() ? "No matches" : "No group messages"
             }
