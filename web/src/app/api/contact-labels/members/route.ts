@@ -14,7 +14,7 @@ function authError(err: unknown): NextResponse | null {
   return null;
 }
 
-/** Members of a contact group (for undo snapshot / create-group undo guard). */
+/** Members of a contact label (for undo snapshot / create-label undo guard). */
 export async function GET(req: Request) {
   const name = new URL(req.url).searchParams.get("name")?.trim() ?? "";
   if (!name) {

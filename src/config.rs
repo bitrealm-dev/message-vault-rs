@@ -46,7 +46,6 @@ pub struct PathsConfig {
     pub assets_dir: String,
     /// Directory *name* for converted media under each source (default `assets_converted`).
     #[serde(default = "default_assets_converted_dir_name")]
-    #[allow(dead_code)] // used by SourceConfig::resolved_assets_converted_dir / web
     pub assets_converted_dir: String,
     /// Contacts CSV (default: `config/contacts.csv`).
     #[serde(default = "default_contacts_csv")]
@@ -111,17 +110,6 @@ impl SourceConfig {
         }
     }
 
-    pub fn resolved_assets_dir(&self, paths: &PathsConfig) -> PathBuf {
-        if let Some(p) = &self.assets_dir {
-            p.clone()
-        } else {
-            paths
-                .data_dir
-                .join(&self.id)
-                .join(&paths.assets_dir)
-        }
-    }
-
     /// Per-account asset store: `data_dir/<account_id>/<source_id>/<assets_dir>`.
     pub fn resolved_assets_dir_for_account(
         &self,
@@ -136,18 +124,6 @@ impl SourceConfig {
                 .join(account_id)
                 .join(&self.id)
                 .join(&paths.assets_dir)
-        }
-    }
-
-    #[allow(dead_code)] // available for tooling / web parity
-    pub fn resolved_assets_converted_dir(&self, paths: &PathsConfig) -> PathBuf {
-        if let Some(p) = &self.assets_converted_dir {
-            p.clone()
-        } else {
-            paths
-                .data_dir
-                .join(&self.id)
-                .join(&paths.assets_converted_dir)
         }
     }
 

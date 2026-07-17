@@ -30,8 +30,8 @@ export function BrowseContactCtxMenu({
   onNewContact,
   onEdit,
   onMergeInto,
-  onGroupsEnter,
-  onGroupsLeave,
+  onLabelsEnter,
+  onLabelsLeave,
   onDelete,
 }: {
   menuRef: RefObject<HTMLDivElement | null>;
@@ -47,8 +47,8 @@ export function BrowseContactCtxMenu({
   onNewContact: (anchorEl: HTMLElement) => void;
   onEdit: (anchorEl: HTMLElement) => void;
   onMergeInto: () => void;
-  onGroupsEnter: (anchor: DOMRect) => void;
-  onGroupsLeave: () => void;
+  onLabelsEnter: (anchor: DOMRect) => void;
+  onLabelsLeave: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -99,9 +99,9 @@ export function BrowseContactCtxMenu({
         className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20 disabled:opacity-40"
         onMouseEnter={(e) => {
           if (saving || contactCreating || contactEditing) return;
-          onGroupsEnter(e.currentTarget.getBoundingClientRect());
+          onLabelsEnter(e.currentTarget.getBoundingClientRect());
         }}
-        onMouseLeave={onGroupsLeave}
+        onMouseLeave={onLabelsLeave}
       >
         <PeopleGroupIcon className="size-5 shrink-0 opacity-80" />
         <span className="min-w-0 flex-1">Labels</span>

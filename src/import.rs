@@ -118,7 +118,7 @@ pub fn import_export(
         println!("  sql:      contacts skipped (already loaded)");
     } else {
         println!(
-            "  sql:      contacts={} phones={} groups={}",
+            "  sql:      contacts={} phones={} labels={}",
             contact_stats.contacts, contact_stats.phones, contact_stats.labels
         );
     }

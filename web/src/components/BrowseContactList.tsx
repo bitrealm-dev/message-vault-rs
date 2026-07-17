@@ -20,7 +20,7 @@ export function BrowseContactList({
   onToggleSelectAll,
   onNewContact,
   vaultReadOnly = false,
-  groupsMenu,
+  labelsMenu,
   onEdit,
   editDisabled = false,
   onTrashContact,
@@ -47,7 +47,7 @@ export function BrowseContactList({
   onNewContact: (anchorEl: HTMLElement) => void;
   vaultReadOnly?: boolean;
   /** Icon-only LabelsMenu element rendered first in the toolbar cluster. */
-  groupsMenu?: ReactNode;
+  labelsMenu?: ReactNode;
   onEdit?: (anchorEl: HTMLElement) => void;
   editDisabled?: boolean;
   onTrashContact?: () => void;
@@ -128,7 +128,7 @@ export function BrowseContactList({
           </span>
         </label>
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
-          {!vaultReadOnly && groupsMenu}
+          {!vaultReadOnly && labelsMenu}
           <SortByMenu sort={sort} order={sortOrder} onChange={onSortChange} />
           <ListHistoryMenu items={vaultReadOnly ? [] : menuItems} />
         </div>

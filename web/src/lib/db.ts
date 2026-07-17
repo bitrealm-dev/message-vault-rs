@@ -8,7 +8,6 @@ export {
   getContact,
   contactThreadsBundle,
   groupChatsContainingContacts,
-  listContactsForPicker,
   listTrashedContacts,
   listTrashedContactMessages,
 } from "./contactsRead";

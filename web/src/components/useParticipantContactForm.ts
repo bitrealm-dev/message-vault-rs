@@ -33,8 +33,8 @@ export type ParticipantContactSavedResult = {
 export type UseParticipantContactFormOptions = {
   vaultReadOnly: boolean;
   setStatus?: (message: string | null) => void;
-  /** Extra group names always listed in the draft Groups menu (e.g. browse allLabels). */
-  knownGroups?: string[];
+  /** Extra label names always listed in the draft Labels menu (e.g. browse allLabels). */
+  knownLabels?: string[];
   /** Defaults applied when creating a contact from a handle. */
   createDefaults?: { labels: string[]; exclude: boolean };
   /** Return true to ignore Escape (e.g. another modal is open). */
@@ -52,16 +52,16 @@ export type ParticipantContactFormState = {
   editContactId: number | null;
   contactSaving: boolean;
   canSaveForm: boolean;
-  draftMenuGroups: string[];
-  draftGroupChecks: Record<string, LabelCheckState>;
+  draftMenuLabels: string[];
+  draftLabelChecks: Record<string, LabelCheckState>;
   draftExcludedCheck: LabelCheckState;
   cancelContactForm: () => void;
   saveContactEdit: () => Promise<void>;
   saveContactCreate: () => Promise<void>;
-  toggleDraftGroup: (name: string) => void;
+  toggleDraftLabel: (name: string) => void;
   toggleDraftExcluded: () => void;
-  createAndAssignDraftGroup: (name: string) => void;
-  clearDraftGroups: () => void;
+  createAndAssignDraftLabel: (name: string) => void;
+  clearDraftLabels: () => void;
   openEditContact: (id: number, anchor: ContactFormAnchor) => Promise<void>;
   /** Open edit with an already-seeded draft (e.g. browse detail card). */
   openEditFromDraft: (
@@ -85,7 +85,7 @@ export function useParticipantContactForm(
   const {
     vaultReadOnly,
     setStatus,
-    knownGroups = [],
+    knownLabels = [],
     createDefaults,
     shouldIgnoreEscape,
     onSaved,
@@ -96,7 +96,7 @@ export function useParticipantContactForm(
   const [contactCreating, setContactCreating] = useState(false);
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
   const [formAnchor, setFormAnchor] = useState<ContactFormAnchor | null>(null);
-  const [extraDraftGroups, setExtraDraftGroups] = useState<string[]>([]);
+  const [extraDraftLabels, setExtraDraftLabels] = useState<string[]>([]);
   const [contactSaving, setContactSaving] = useState(false);
 
   const formOpen = (editContactId != null || contactCreating) && !!editDraft;
@@ -105,22 +105,22 @@ export function useParticipantContactForm(
     draftHasName(editDraft) &&
     phoneHandlesOnly(phonesForSave(editDraft.phones)).length > 0;
 
-  const draftMenuGroups = useMemo(() => {
-    const names = new Set([...knownGroups, ...extraDraftGroups]);
+  const draftMenuLabels = useMemo(() => {
+    const names = new Set([...knownLabels, ...extraDraftLabels]);
     for (const g of editDraft?.labels ?? []) names.add(g);
     return [...names].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
-  }, [knownGroups, extraDraftGroups, editDraft?.labels]);
+  }, [knownLabels, extraDraftLabels, editDraft?.labels]);
 
-  const draftGroupChecks = useMemo(() => {
+  const draftLabelChecks = useMemo(() => {
     const result: Record<string, LabelCheckState> = {};
     const groups = editDraft?.labels ?? [];
-    for (const name of draftMenuGroups) {
+    for (const name of draftMenuLabels) {
       result[name] = groups.includes(name) ? "on" : "off";
     }
     return result;
-  }, [draftMenuGroups, editDraft?.labels]);
+  }, [draftMenuLabels, editDraft?.labels]);
 
   const draftExcludedCheck = useMemo((): LabelCheckState => {
     return editDraft?.exclude ? "on" : "off";
@@ -131,7 +131,7 @@ export function useParticipantContactForm(
     setContactCreating(false);
     setEditDraft(null);
     setFormAnchor(null);
-    setExtraDraftGroups([]);
+    setExtraDraftLabels([]);
   }, []);
 
   useEffect(() => {
@@ -146,7 +146,7 @@ export function useParticipantContactForm(
     return () => document.removeEventListener("keydown", onKey);
   }, [formOpen, contactSaving, cancelContactForm, shouldIgnoreEscape]);
 
-  const toggleDraftGroup = useCallback((name: string) => {
+  const toggleDraftLabel = useCallback((name: string) => {
     setEditDraft((prev) => {
       if (!prev) return prev;
       const has = prev.labels.includes(name);
@@ -159,8 +159,8 @@ export function useParticipantContactForm(
     });
   }, []);
 
-  const createAndAssignDraftGroup = useCallback((name: string) => {
-    setExtraDraftGroups((prev) =>
+  const createAndAssignDraftLabel = useCallback((name: string) => {
+    setExtraDraftLabels((prev) =>
       prev.includes(name) ? prev : [...prev, name],
     );
     setEditDraft((prev) => {
@@ -181,7 +181,7 @@ export function useParticipantContactForm(
     );
   }, []);
 
-  const clearDraftGroups = useCallback(() => {
+  const clearDraftLabels = useCallback(() => {
     setEditDraft((prev) =>
       prev ? { ...prev, labels: [], exclude: false } : prev,
     );
@@ -204,7 +204,7 @@ export function useParticipantContactForm(
         const res = await fetch(`/api/contacts/${id}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "load failed");
-        setExtraDraftGroups([]);
+        setExtraDraftLabels([]);
         setEditDraft(seedContactEditDraft(data.contact));
         setEditContactId(id);
         setContactCreating(false);
@@ -228,7 +228,7 @@ export function useParticipantContactForm(
       anchor: ContactFormAnchor | null,
     ) => {
       setFormAnchor(anchor);
-      setExtraDraftGroups([]);
+      setExtraDraftLabels([]);
       setEditDraft(draft);
       setEditContactId(id);
       setContactCreating(false);
@@ -239,7 +239,7 @@ export function useParticipantContactForm(
   const openCreateContactWithHandle = useCallback(
     (handle: string, anchor: ContactFormAnchor) => {
       setFormAnchor(anchor);
-      setExtraDraftGroups([]);
+      setExtraDraftLabels([]);
       setEditContactId(null);
       setContactCreating(true);
       const draft = emptyContactEditDraft(createDefaults);
@@ -338,16 +338,16 @@ export function useParticipantContactForm(
     editContactId,
     contactSaving,
     canSaveForm,
-    draftMenuGroups,
-    draftGroupChecks,
+    draftMenuLabels,
+    draftLabelChecks,
     draftExcludedCheck,
     cancelContactForm,
     saveContactEdit,
     saveContactCreate,
-    toggleDraftGroup,
+    toggleDraftLabel,
     toggleDraftExcluded,
-    createAndAssignDraftGroup,
-    clearDraftGroups,
+    createAndAssignDraftLabel,
+    clearDraftLabels,
     openEditContact,
     openEditFromDraft,
     openCreateContactWithHandle,

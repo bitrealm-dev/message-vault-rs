@@ -316,24 +316,6 @@ fn migrate_contact_groups_to_labels(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Drop and recreate production message-related tables. Does not touch contacts or staging.
-#[allow(dead_code)]
-pub fn recreate_messages(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        r#"
-        PRAGMA foreign_keys = ON;
-
-        DROP TABLE IF EXISTS tapbacks;
-        DROP TABLE IF EXISTS attachments;
-        DROP TABLE IF EXISTS messages;
-        DROP TABLE IF EXISTS participants;
-        DROP TABLE IF EXISTS conversations;
-        "#,
-    )?;
-    conn.execute_batch(MESSAGE_TABLES_DDL)?;
-    Ok(())
-}
-
 /// Create production message tables if they do not already exist (for append on a fresh DB).
 /// Migrates older schemas that lack `messages.source` / cross-source dedupe columns.
 pub fn ensure_messages_schema(conn: &Connection) -> Result<()> {

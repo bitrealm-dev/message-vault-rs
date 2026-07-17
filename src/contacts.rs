@@ -47,28 +47,6 @@ struct ContactCsvRow {
     group_5: String,
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct Contact {
-    pub id: i64,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub exclude: bool,
-    pub preferred_handle: Option<String>,
-}
-
-impl Contact {
-    #[allow(dead_code)]
-    pub fn display_name(&self) -> String {
-        [self.first_name.as_deref(), self.last_name.as_deref()]
-            .into_iter()
-            .flatten()
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-}
-
 /// iMessage-style: any handle containing `@` is treated as email.
 fn is_email_handle(handle: &str) -> bool {
     handle.contains('@')
@@ -328,8 +306,8 @@ fn load_from_csv(
             stats.phones += 1;
         }
 
-        for group_name in row_groups(&row) {
-            let label_id = ensure_label(&tx, account_id, &group_name)?;
+        for label_name in row_labels(&row) {
+            let label_id = ensure_label(&tx, account_id, &label_name)?;
             tx.execute(
                 "INSERT OR IGNORE INTO contact_label_members (contact_id, label_id) VALUES (?1, ?2)",
                 params![contact_id, label_id],
@@ -493,36 +471,7 @@ fn append_contact_csv_row(csv_path: &Path, phone: &str) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn lookup_by_phone(
-    conn: &Connection,
-    account_id: &str,
-    handle: &str,
-) -> Result<Option<Contact>> {
-    let contact = conn
-        .query_row(
-            r#"
-            SELECT c.id, c.first_name, c.last_name, c.exclude, c.preferred_handle
-            FROM contact_handles p
-            JOIN contacts c ON c.id = p.contact_id
-            WHERE p.account_id = ?1 AND p.handle = ?2
-            "#,
-            params![account_id, handle],
-            |row| {
-                Ok(Contact {
-                    id: row.get(0)?,
-                    first_name: row.get(1)?,
-                    last_name: row.get(2)?,
-                    exclude: row.get::<_, i64>(3)? != 0,
-                    preferred_handle: row.get(4)?,
-                })
-            },
-        )
-        .optional()?;
-    Ok(contact)
-}
-
-fn row_groups(row: &ContactCsvRow) -> Vec<String> {
+fn row_labels(row: &ContactCsvRow) -> Vec<String> {
     // Import is capped at five CSV columns; SQLite may hold more after edits.
     // Prefer label_* over legacy group_* per slot.
     let mut out = Vec::new();

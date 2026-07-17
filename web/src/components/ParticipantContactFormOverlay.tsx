@@ -18,16 +18,16 @@ export type ParticipantContactFormView = {
   contactCreating: boolean;
   contactSaving: boolean;
   canSaveForm: boolean;
-  draftMenuGroups: string[];
-  draftGroupChecks: Record<string, LabelCheckState>;
+  draftMenuLabels: string[];
+  draftLabelChecks: Record<string, LabelCheckState>;
   draftExcludedCheck: LabelCheckState;
   cancelContactForm: () => void;
   saveContactEdit: () => Promise<void>;
   saveContactCreate: () => Promise<void>;
-  toggleDraftGroup: (name: string) => void;
+  toggleDraftLabel: (name: string) => void;
   toggleDraftExcluded: () => void;
-  createAndAssignDraftGroup: (name: string) => void;
-  clearDraftGroups: () => void;
+  createAndAssignDraftLabel: (name: string) => void;
+  clearDraftLabels: () => void;
 };
 
 export function ParticipantContactFormOverlay({
@@ -47,16 +47,16 @@ export function ParticipantContactFormOverlay({
     contactCreating,
     contactSaving,
     canSaveForm,
-    draftMenuGroups,
-    draftGroupChecks,
+    draftMenuLabels,
+    draftLabelChecks,
     draftExcludedCheck,
     cancelContactForm,
     saveContactCreate,
     saveContactEdit,
-    toggleDraftGroup,
+    toggleDraftLabel,
     toggleDraftExcluded,
-    createAndAssignDraftGroup,
-    clearDraftGroups,
+    createAndAssignDraftLabel,
+    clearDraftLabels,
   } = form;
 
   if (!formOpen || !editDraft) return null;
@@ -102,14 +102,14 @@ export function ParticipantContactFormOverlay({
         labelsEditor={
           <LabelsMenu
             labeled
-            allLabels={draftMenuGroups}
-            checks={draftGroupChecks}
+            allLabels={draftMenuLabels}
+            checks={draftLabelChecks}
             excludedCheck={draftExcludedCheck}
             disabled={contactSaving}
-            onToggle={toggleDraftGroup}
+            onToggle={toggleDraftLabel}
             onToggleExcluded={toggleDraftExcluded}
-            onCreate={createAndAssignDraftGroup}
-            onClearAll={clearDraftGroups}
+            onCreate={createAndAssignDraftLabel}
+            onClearAll={clearDraftLabels}
           />
         }
       />

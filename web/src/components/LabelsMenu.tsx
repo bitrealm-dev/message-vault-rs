@@ -3,7 +3,12 @@
 import { isReservedLabelName } from "@/lib/reservedLabels";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconHoverTarget } from "./IconHoverLabel";
-import { EraserIcon, PeopleGroupIcon, SearchIcon } from "./icons";
+import {
+  ChevronDownIcon,
+  EraserIcon,
+  PeopleGroupIcon,
+  SearchIcon,
+} from "./icons";
 import { useDismissible } from "./useDismissible";
 
 export type LabelCheckState = "on" | "off" | "mixed";
@@ -288,7 +293,7 @@ export function LabelsMenu({
             }`}
           >
             <span>Labels</span>
-            <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
+            <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
           </button>
         ) : (
           <IconHoverTarget label="Labels" placement="bottom" hidden={open}>
@@ -310,7 +315,7 @@ export function LabelsMenu({
               }`}
             >
               <PeopleGroupIcon className="size-4 shrink-0" />
-              <ChevronIcon className="size-3.5 shrink-0 opacity-70" />
+              <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
             </button>
           </IconHoverTarget>
         ))}
@@ -445,21 +450,6 @@ export function LabelsMenu({
         </div>
       )}
     </div>
-  );
-}
-
-function ChevronIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden
-    >
-      <path d="M3 4.5 6 7.5 9 4.5" />
-    </svg>
   );
 }
 

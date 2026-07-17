@@ -43,7 +43,7 @@ import {
   createGroupChatTrashOptions,
   groupChatToastTitle,
 } from "./groupChatTrash";
-import { LabelsMenu, type LabelCheckState } from "./LabelsMenu";
+import { LabelsMenu } from "./LabelsMenu";
 import { useHistory } from "./history";
 import { trashContactsLabel } from "./history/historyTypes";
 import { ParticipantContactFormOverlay } from "./ParticipantContactFormOverlay";
@@ -57,6 +57,7 @@ import {
   useBrowseContactListBase,
   useBrowseContactListView,
 } from "./useBrowseContactList";
+import { useBrowseLabelMembership } from "./useBrowseLabelMembership";
 import { useCollapsedGroupChatList } from "./useCollapsedGroupChatList";
 import { useListSelection } from "./useListSelection";
 import { useParticipantContactForm } from "./useParticipantContactForm";
@@ -143,16 +144,14 @@ export function BrowseShell({
   const cancelContactFormRef = useRef<() => void>(() => {});
 
   const [saving, setSaving] = useState(false);
-  const [groupOverrides, setGroupOverrides] = useState<Map<number, string[]>>(
+  const [labelOverrides, setLabelOverrides] = useState<Map<number, string[]>>(
     () => new Map(),
   );
   const [excludeOverrides, setExcludeOverrides] = useState<Map<number, boolean>>(
     () => new Map(),
   );
-  const groupOverridesRef = useRef(groupOverrides);
-  groupOverridesRef.current = groupOverrides;
-  const excludeOverridesRef = useRef(excludeOverrides);
-  excludeOverridesRef.current = excludeOverrides;
+  const labelOverridesRef = useRef(labelOverrides);
+  labelOverridesRef.current = labelOverrides;
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [threadsEpoch, setThreadsEpoch] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<{
@@ -167,21 +166,7 @@ export function BrowseShell({
   );
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const mergePanelRef = useRef<HTMLDivElement>(null);
-  const groupsPanelWrapRef = useRef<HTMLDivElement>(null);
-  const groupsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  /** Keep the groups flyout open while the create form is showing. */
-  const groupsCreatePinnedRef = useRef(false);
   const pendingEditIdRef = useRef<number | null>(null);
-  const [groupTargetOverrideIds, setGroupTargetOverrideIds] = useState<
-    number[] | null
-  >(null);
-  const [groupsPanelPos, setGroupsPanelPos] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const selectionDirtyRef = useRef(false);
   const statusShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storage = usePanelLayoutStorage();
@@ -376,15 +361,6 @@ export function BrowseShell({
   }, [selectedIds, contactId, clearContactFocus]);
 
   useEffect(() => {
-    setSelectedIds(new Set());
-    setGroupOverrides(new Map());
-    setExcludeOverrides(new Map());
-    selectionDirtyRef.current = false;
-    cancelContactFormRef.current();
-    setGroupChatQuery("");
-  }, [paneStorageKey, setSelectedIds]);
-
-  useEffect(() => {
     return () => {
       if (statusShowTimerRef.current) clearTimeout(statusShowTimerRef.current);
       if (statusClearTimerRef.current) clearTimeout(statusClearTimerRef.current);
@@ -454,7 +430,7 @@ export function BrowseShell({
         // so the top card shell/content don't flash on source filter updates.
         if (switchingContact) {
           const contact = data.contact as ContactDetail;
-          const ov = groupOverridesRef.current.get(contact.id);
+          const ov = labelOverridesRef.current.get(contact.id);
           setDetail(ov ? { ...contact, labels: ov } : contact);
         }
         const nextYearly: YearThread[] = data.yearly ?? [];
@@ -582,6 +558,16 @@ export function BrowseShell({
     }
     return [...fromSorted, ...extras];
   }, [sorted, selectedIds, contacts]);
+
+  const trashIdsForContext = useCallback(
+    (ctxId: number): number[] => {
+      if (hasSelection && selectedIds.has(ctxId)) {
+        return selectedContacts.map((c) => c.id);
+      }
+      return [ctxId];
+    },
+    [hasSelection, selectedIds, selectedContacts],
+  );
 
   const selectionIdsKey = useMemo(
     () =>
@@ -752,16 +738,16 @@ export function BrowseShell({
     if (contactSection === "excluded") {
       return { labels: [] as string[], exclude: true };
     }
-    // all, no-group
+    // all, no-label
     return { labels: [] as string[], exclude: false };
   }, [contactSection]);
 
   const participantForm = useParticipantContactForm({
     vaultReadOnly,
-    knownGroups: allLabels,
+    knownLabels: allLabels,
     createDefaults,
     setStatus: setStatusMsg,
-    shouldIgnoreEscape: () => ctxMenu != null || groupsPanelPos != null,
+    shouldIgnoreEscape: () => ctxMenu != null || labelsPanelPos != null,
     onSaved: (result) => {
       if (result.kind === "edit") {
         if (result.contact && result.contactId === contactId) {
@@ -799,33 +785,77 @@ export function BrowseShell({
   } = participantForm;
   const contactEditing = editContactId != null;
 
-  const canEditGroups =
-    !formOpen && (hasSelection || !!detail);
+  const {
+    labelsPanelWrapRef,
+    labelsCreatePinnedRef,
+    labelsPanelPos,
+    selectionDirtyRef,
+    canEditLabels,
+    menuLabels,
+    labelChecks,
+    excludedCheck,
+    toggleLabel,
+    createAndAssignLabel,
+    clearAllLabelsForSelection,
+    toggleExcludedForSelection,
+    onSelectionMenuOpenChange,
+    openCtxLabels,
+    closeLabelsPanel,
+    scheduleCloseLabelsPanel,
+    cancelCloseLabelsPanel,
+    flushSelectionDirty,
+  } = useBrowseLabelMembership({
+    allLabels,
+    contacts,
+    selectedContacts,
+    hasSelection,
+    detail,
+    setDetail,
+    contactId,
+    setThreadsEpoch,
+    formOpen,
+    labelOverrides,
+    setLabelOverrides,
+    excludeOverrides,
+    setExcludeOverrides,
+    ctxMenu,
+    trashIdsForContext,
+    queueStatusMessage,
+  });
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setLabelOverrides(new Map());
+    setExcludeOverrides(new Map());
+    selectionDirtyRef.current = false;
+    cancelContactFormRef.current();
+    setGroupChatQuery("");
+  }, [paneStorageKey, setSelectedIds, selectionDirtyRef]);
 
   const clearSelection = useCallback(() => {
     clearSelectionBase();
     if (selectionDirtyRef.current) {
       selectionDirtyRef.current = false;
-      setGroupOverrides(new Map());
+      setLabelOverrides(new Map());
       setExcludeOverrides(new Map());
       router.refresh();
     } else {
-      setGroupOverrides(new Map());
+      setLabelOverrides(new Map());
       setExcludeOverrides(new Map());
     }
-  }, [clearSelectionBase, router]);
+  }, [clearSelectionBase, router, selectionDirtyRef]);
 
   useEffect(() => {
     if (!hasSelection) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (ctxMenu != null || groupsPanelPos != null) return;
+      if (ctxMenu != null || labelsPanelPos != null) return;
       e.preventDefault();
       clearSelection();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [hasSelection, clearSelection, ctxMenu, groupsPanelPos]);
+  }, [hasSelection, clearSelection, ctxMenu, labelsPanelPos]);
 
   useEffect(() => {
     if (!hasSelection) return;
@@ -841,7 +871,7 @@ export function BrowseShell({
         seedContactEditDraft({
           ...detail,
           labels:
-            groupOverrides.get(detail.id) ?? detail.labels,
+            labelOverrides.get(detail.id) ?? detail.labels,
           exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
         }),
         anchor ?? null,
@@ -851,7 +881,7 @@ export function BrowseShell({
       detail,
       hasSelection,
       contactCreating,
-      groupOverrides,
+      labelOverrides,
       excludeOverrides,
       participantForm.openEditFromDraft,
     ],
@@ -882,7 +912,7 @@ export function BrowseShell({
       seedContactEditDraft({
         ...detail,
         labels:
-          groupOverrides.get(detail.id) ?? detail.labels,
+          labelOverrides.get(detail.id) ?? detail.labels,
         exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
       }),
       null,
@@ -891,7 +921,7 @@ export function BrowseShell({
     detail,
     hasSelection,
     contactCreating,
-    groupOverrides,
+    labelOverrides,
     excludeOverrides,
     participantForm.openEditFromDraft,
   ]);
@@ -946,7 +976,7 @@ export function BrowseShell({
 
         setSelectedIds(new Set());
         setSelectedGroupIds(new Set());
-        setGroupOverrides(new Map());
+        setLabelOverrides(new Map());
         setExcludeOverrides(new Map());
         selectionDirtyRef.current = false;
         cancelContactFormRef.current();
@@ -1002,28 +1032,12 @@ export function BrowseShell({
     ],
   );
 
-  const trashIdsForContext = useCallback(
-    (ctxId: number): number[] => {
-      if (hasSelection && selectedIds.has(ctxId)) {
-        return selectedContacts.map((c) => c.id);
-      }
-      return [ctxId];
-    },
-    [hasSelection, selectedIds, selectedContacts],
-  );
-
   const openContactCtxMenu = useCallback(
     (id: number, x: number, y: number) => {
-      if (groupsCloseTimerRef.current) {
-        clearTimeout(groupsCloseTimerRef.current);
-        groupsCloseTimerRef.current = null;
-      }
-      groupsCreatePinnedRef.current = false;
-      setGroupsPanelPos(null);
-      setGroupTargetOverrideIds(null);
+      closeLabelsPanel();
       setCtxMenu({ id, x, y });
     },
-    [],
+    [closeLabelsPanel],
   );
 
   const onCtxEdit = useCallback(
@@ -1056,81 +1070,6 @@ export function BrowseShell({
     requestTrash(trashIdsForContext(ctxMenu.id));
   }, [ctxMenu, trashIdsForContext, requestTrash]);
 
-  const closeGroupsPanel = useCallback(() => {
-    if (groupsCloseTimerRef.current) {
-      clearTimeout(groupsCloseTimerRef.current);
-      groupsCloseTimerRef.current = null;
-    }
-    groupsCreatePinnedRef.current = false;
-    setGroupsPanelPos(null);
-    setGroupTargetOverrideIds(null);
-  }, []);
-
-  const flushSelectionDirty = useCallback(() => {
-    if (!selectionDirtyRef.current) return;
-    selectionDirtyRef.current = false;
-    const groupOv = groupOverridesRef.current;
-    const excludeOv = excludeOverridesRef.current;
-    // Keep the open contact card in sync — overrides are cleared next, and
-    // router.refresh() only updates the list props, not client `detail`.
-    setDetail((prev) => {
-      if (!prev) return prev;
-      const groups = groupOv.get(prev.id);
-      const hasExclude = excludeOv.has(prev.id);
-      if (!groups && !hasExclude) return prev;
-      return {
-        ...prev,
-        ...(groups ? { labels: groups } : {}),
-        ...(hasExclude ? { exclude: excludeOv.get(prev.id)! } : {}),
-      };
-    });
-    setGroupOverrides(new Map());
-    setExcludeOverrides(new Map());
-    router.refresh();
-  }, [router]);
-
-  const cancelCloseGroupsPanel = useCallback(() => {
-    if (groupsCloseTimerRef.current) {
-      clearTimeout(groupsCloseTimerRef.current);
-      groupsCloseTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleCloseGroupsPanel = useCallback(() => {
-    if (groupsCreatePinnedRef.current) return;
-    cancelCloseGroupsPanel();
-    groupsCloseTimerRef.current = setTimeout(() => {
-      groupsCloseTimerRef.current = null;
-      setGroupsPanelPos(null);
-      setGroupTargetOverrideIds(null);
-    }, 400);
-  }, [cancelCloseGroupsPanel]);
-
-  const openCtxGroups = useCallback(
-    (anchor: DOMRect) => {
-      if (!ctxMenu || formOpen) return;
-      const ids = trashIdsForContext(ctxMenu.id);
-      if (ids.length === 0) return;
-      cancelCloseGroupsPanel();
-      const x = Math.max(
-        8,
-        Math.min(anchor.right - 4, window.innerWidth - 272),
-      );
-      const y = Math.max(
-        8,
-        Math.min(anchor.top, window.innerHeight - 320),
-      );
-      setGroupTargetOverrideIds(ids);
-      setGroupsPanelPos({ x, y });
-    },
-    [
-      ctxMenu,
-      formOpen,
-      trashIdsForContext,
-      cancelCloseGroupsPanel,
-    ],
-  );
-
   useDismissible({
     open: ctxMenu != null || mergeFromId != null,
     onDismiss: () => {
@@ -1138,10 +1077,10 @@ export function BrowseShell({
       setMergeFromId(null);
       setMergeQuery("");
       setMergePos(null);
-      closeGroupsPanel();
+      closeLabelsPanel();
       flushSelectionDirty();
     },
-    refs: [ctxMenuRef, groupsPanelWrapRef, mergePanelRef],
+    refs: [ctxMenuRef, labelsPanelWrapRef, mergePanelRef],
     onEscape: (e) => {
       if (mergeFromId != null) {
         e.preventDefault();
@@ -1150,9 +1089,9 @@ export function BrowseShell({
         setMergePos(null);
         return false;
       }
-      if (groupsPanelPos != null) {
+      if (labelsPanelPos != null) {
         e.preventDefault();
-        closeGroupsPanel();
+        closeLabelsPanel();
         return false;
       }
     },
@@ -1233,7 +1172,7 @@ export function BrowseShell({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (ctxMenu != null || groupsPanelPos != null) {
+      if (ctxMenu != null || labelsPanelPos != null) {
         return;
       }
       if (formOpen) return;
@@ -1259,384 +1198,12 @@ export function BrowseShell({
     return () => document.removeEventListener("keydown", onKey);
   }, [
     ctxMenu,
-    groupsPanelPos,
+    labelsPanelPos,
     formOpen,
     canDelete,
     deleteTargetIds,
     requestTrash,
   ]);
-  const groupsFor = useCallback(
-    (id: number, fallback: string[]) => groupOverrides.get(id) ?? fallback,
-    [groupOverrides],
-  );
-
-  const groupTargets = useMemo(() => {
-    if (groupTargetOverrideIds?.length) {
-      return groupTargetOverrideIds.flatMap((id) => {
-        const c =
-          contacts.find((x) => x.id === id) ??
-          selectedContacts.find((x) => x.id === id) ??
-          (detail?.id === id ? detail : null);
-        if (!c) return [];
-        return [
-          {
-            id: c.id,
-            labels: groupsFor(c.id, c.labels),
-          },
-        ];
-      });
-    }
-    if (hasSelection) {
-      return selectedContacts.map((c) => ({
-        id: c.id,
-        labels: groupsFor(c.id, c.labels),
-      }));
-    }
-    if (detail) {
-      return [{ id: detail.id, labels: groupsFor(detail.id, detail.labels) }];
-    }
-    return [] as Array<{ id: number; labels: string[] }>;
-  }, [
-    groupTargetOverrideIds,
-    contacts,
-    hasSelection,
-    selectedContacts,
-    detail,
-    groupsFor,
-  ]);
-  const menuGroups = useMemo(() => {
-    const names = new Set(allLabels);
-    for (const person of groupTargets) {
-      for (const group of person.labels) names.add(group);
-    }
-    return [...names].sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    );
-  }, [allLabels, groupTargets]);
-
-  const groupChecks = useMemo(() => {
-    const result: Record<string, LabelCheckState> = {};
-    const n = groupTargets.length;
-    for (const name of menuGroups) {
-      if (n === 0) {
-        result[name] = "off";
-        continue;
-      }
-      let count = 0;
-      for (const person of groupTargets) {
-        if (person.labels.includes(name)) count++;
-      }
-      result[name] =
-        count === 0 ? "off" : count === n ? "on" : "mixed";
-    }
-    return result;
-  }, [menuGroups, groupTargets]);
-
-  const applyGroupMembership = useCallback(
-    async (name: string, enable: boolean) => {
-      const targets = groupTargets;
-      if (targets.length === 0) return;
-
-      let changed = 0;
-      for (const person of targets) {
-        if (person.labels.includes(name) !== enable) changed++;
-      }
-      if (changed === 0) return;
-
-      const nextGroupsById = new Map<number, string[]>();
-      for (const person of targets) {
-        const current =
-          groupOverridesRef.current.get(person.id) ?? person.labels;
-        const has = current.includes(name);
-        if (enable === has) {
-          nextGroupsById.set(person.id, current);
-          continue;
-        }
-        const groups = enable
-          ? [...current, name].sort((a, b) =>
-              a.localeCompare(b, undefined, { sensitivity: "base" }),
-            )
-          : current.filter((g) => g !== name);
-        nextGroupsById.set(person.id, groups);
-      }
-
-      // Optimistic UI so the menu can stay open across multiple toggles.
-      setGroupOverrides((prev) => {
-        const next = new Map(prev);
-        for (const [id, groups] of nextGroupsById) {
-          next.set(id, groups);
-        }
-        return next;
-      });
-      // Contact card reads `detail` after overrides flush — update it now.
-      setDetail((prev) => {
-        if (!prev) return prev;
-        const groups = nextGroupsById.get(prev.id);
-        if (!groups) return prev;
-        return { ...prev, labels: groups };
-      });
-      selectionDirtyRef.current = true;
-
-      const noun = changed === 1 ? "contact" : "contacts";
-      queueStatusMessage(
-        enable
-          ? `Added ${changed} ${noun} to ${name}`
-          : `Removed ${changed} ${noun} from ${name}`,
-      );
-
-      try {
-        for (const person of targets) {
-          const has = person.labels.includes(name);
-          if (enable === has) continue;
-          const groups =
-            nextGroupsById.get(person.id) ??
-            (enable
-              ? [...person.labels, name].sort((a, b) =>
-                  a.localeCompare(b, undefined, { sensitivity: "base" }),
-                )
-              : person.labels.filter((g) => g !== name));
-
-          const res = await fetch(`/api/contacts/${person.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ labels: groups }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error ?? "save failed");
-          if (data.contact) {
-            setDetail((prev) =>
-              prev && prev.id === data.contact.id ? data.contact : prev,
-            );
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        // Re-sync from server on failure.
-        selectionDirtyRef.current = true;
-        router.refresh();
-        setGroupOverrides(new Map());
-        setThreadsEpoch((n) => n + 1);
-      }
-    },
-    [groupTargets, router, queueStatusMessage],
-  );
-
-  const toggleGroup = useCallback(
-    (name: string) => {
-      const state = groupChecks[name] ?? "off";
-      const enable = state !== "on";
-      void applyGroupMembership(name, enable);
-    },
-    [groupChecks, applyGroupMembership],
-  );
-
-  const createAndAssignGroup = useCallback(
-    (name: string) => {
-      void (async () => {
-        await applyGroupMembership(name, true);
-        // Fixed context-menu flyout unmounts without onOpenChange(false), so
-        // refresh here so the left Groups nav picks up the new name.
-        router.refresh();
-      })();
-    },
-    [applyGroupMembership, router],
-  );
-
-  const onSelectionMenuOpenChange = useCallback(
-    (open: boolean) => {
-      if (open) return;
-      flushSelectionDirty();
-    },
-    [flushSelectionDirty],
-  );
-
-  const selectionFieldTargets = useMemo(() => {
-    if (groupTargetOverrideIds?.length) {
-      return groupTargetOverrideIds.flatMap((id) => {
-        const c =
-          contacts.find((x) => x.id === id) ??
-          selectedContacts.find((x) => x.id === id) ??
-          (detail?.id === id ? detail : null);
-        if (!c) return [];
-        return [
-          {
-            id: c.id,
-            exclude: excludeOverrides.get(c.id) ?? c.exclude,
-          },
-        ];
-      });
-    }
-    if (hasSelection) {
-      return selectedContacts.map((c) => ({
-        id: c.id,
-        exclude: excludeOverrides.get(c.id) ?? c.exclude,
-      }));
-    }
-    if (detail) {
-      return [
-        {
-          id: detail.id,
-          exclude: excludeOverrides.get(detail.id) ?? detail.exclude,
-        },
-      ];
-    }
-    return [] as Array<{ id: number; exclude: boolean }>;
-  }, [
-    groupTargetOverrideIds,
-    contacts,
-    hasSelection,
-    selectedContacts,
-    detail,
-    excludeOverrides,
-  ]);
-
-  const excludedCheck = useMemo((): LabelCheckState => {
-    const n = selectionFieldTargets.length;
-    if (n === 0) return "off";
-    let excluded = 0;
-    for (const p of selectionFieldTargets) {
-      if (p.exclude) excluded++;
-    }
-    if (excluded === 0) return "off";
-    if (excluded === n) return "on";
-    return "mixed";
-  }, [selectionFieldTargets]);
-
-  const patchContactFields = useCallback(
-    async (id: number, patch: { exclude?: boolean }) => {
-      const res = await fetch(`/api/contacts/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "save failed");
-      if (data.contact && id === contactId) setDetail(data.contact);
-    },
-    [contactId],
-  );
-
-  const toggleExcludedForSelection = useCallback(async () => {
-    const targets = selectionFieldTargets;
-    if (targets.length === 0) return;
-    const excludeAll = excludedCheck !== "on";
-    let changed = 0;
-    for (const p of targets) {
-      if (p.exclude !== excludeAll) changed++;
-    }
-    if (changed === 0) return;
-
-    setExcludeOverrides((prev) => {
-      const next = new Map(prev);
-      for (const p of targets) {
-        next.set(p.id, excludeAll);
-      }
-      return next;
-    });
-    selectionDirtyRef.current = true;
-
-    const noun = changed === 1 ? "contact" : "contacts";
-    queueStatusMessage(
-      excludeAll
-        ? `Made ${changed} ${noun} inactive`
-        : `Made ${changed} ${noun} active`,
-    );
-
-    try {
-      for (const p of targets) {
-        if (p.exclude === excludeAll) continue;
-        await patchContactFields(p.id, { exclude: excludeAll });
-      }
-    } catch (err) {
-      console.error(err);
-      selectionDirtyRef.current = true;
-      router.refresh();
-      setExcludeOverrides(new Map());
-    }
-  }, [
-    selectionFieldTargets,
-    excludedCheck,
-    queueStatusMessage,
-    patchContactFields,
-    router,
-  ]);
-
-  const clearAllGroupsForSelection = useCallback(async () => {
-    const targets = groupTargets;
-    if (targets.length === 0) return;
-
-    const nextGroupsById = new Map<number, string[]>();
-    for (const person of targets) {
-      nextGroupsById.set(person.id, []);
-    }
-
-    setGroupOverrides((prev) => {
-      const next = new Map(prev);
-      for (const [id, groups] of nextGroupsById) {
-        next.set(id, groups);
-      }
-      return next;
-    });
-    setDetail((prev) => {
-      if (!prev) return prev;
-      if (!nextGroupsById.has(prev.id)) return prev;
-      return { ...prev, labels: [], exclude: false };
-    });
-
-    const excludeTargets = selectionFieldTargets.filter((p) => p.exclude);
-    if (excludeTargets.length > 0) {
-      setExcludeOverrides((prev) => {
-        const next = new Map(prev);
-        for (const p of excludeTargets) {
-          next.set(p.id, false);
-        }
-        return next;
-      });
-    }
-
-    selectionDirtyRef.current = true;
-    const noun = targets.length === 1 ? "contact" : "contacts";
-    queueStatusMessage(`Cleared groups for ${targets.length} ${noun}`);
-
-    try {
-      for (const person of targets) {
-        const body: { labels: string[]; exclude?: boolean } = {
-          labels: [],
-        };
-        const wasExcluded =
-          excludeOverrides.get(person.id) ??
-          selectionFieldTargets.find((p) => p.id === person.id)?.exclude;
-        if (wasExcluded) body.exclude = false;
-
-        const res = await fetch(`/api/contacts/${person.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "save failed");
-        if (data.contact) {
-          setDetail((prev) =>
-            prev && prev.id === data.contact.id ? data.contact : prev,
-          );
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      selectionDirtyRef.current = true;
-      router.refresh();
-      setGroupOverrides(new Map());
-      setExcludeOverrides(new Map());
-      setThreadsEpoch((n) => n + 1);
-    }
-  }, [
-    groupTargets,
-    selectionFieldTargets,
-    excludeOverrides,
-    queueStatusMessage,
-    router,
-  ]);
-
   const injectSelectedParticipants = useCallback(
     (participants: GroupParticipant[]) => {
       const next = [...participants];
@@ -1834,16 +1401,16 @@ export function BrowseShell({
             )
           }
           vaultReadOnly={vaultReadOnly}
-          groupsMenu={
+          labelsMenu={
             <LabelsMenu
-              allLabels={menuGroups}
-              checks={groupChecks}
+              allLabels={menuLabels}
+              checks={labelChecks}
               excludedCheck={excludedCheck}
-              disabled={!canEditGroups}
-              onToggle={toggleGroup}
+              disabled={!canEditLabels}
+              onToggle={toggleLabel}
               onToggleExcluded={() => void toggleExcludedForSelection()}
-              onCreate={createAndAssignGroup}
-              onClearAll={() => void clearAllGroupsForSelection()}
+              onCreate={createAndAssignLabel}
+              onClearAll={() => void clearAllLabelsForSelection()}
               onOpenChange={onSelectionMenuOpenChange}
             />
           }
@@ -1964,7 +1531,7 @@ export function BrowseShell({
         contactCreating={contactCreating}
         contactEditing={contactEditing}
         isNameless={ctxMenuIsNameless}
-        onMouseEnterItem={scheduleCloseGroupsPanel}
+        onMouseEnterItem={scheduleCloseLabelsPanel}
         onNewContact={(el) => {
           setCtxMenu(null);
           openCreateContactInPlace(
@@ -1979,8 +1546,8 @@ export function BrowseShell({
           setMergeQuery("");
           setCtxMenu(null);
         }}
-        onGroupsEnter={openCtxGroups}
-        onGroupsLeave={scheduleCloseGroupsPanel}
+        onLabelsEnter={openCtxLabels}
+        onLabelsLeave={scheduleCloseLabelsPanel}
         onDelete={onCtxDelete}
       />
     )}
@@ -1996,28 +1563,28 @@ export function BrowseShell({
         onSelect={(id) => void runMergeInto(id)}
       />
     )}
-    {groupsPanelPos && (
+    {labelsPanelPos && (
       <div
-        ref={groupsPanelWrapRef}
-        onMouseEnter={cancelCloseGroupsPanel}
-        onMouseLeave={scheduleCloseGroupsPanel}
+        ref={labelsPanelWrapRef}
+        onMouseEnter={cancelCloseLabelsPanel}
+        onMouseLeave={scheduleCloseLabelsPanel}
       >
         <LabelsMenu
-          fixedPosition={groupsPanelPos}
-          allLabels={menuGroups}
-          checks={groupChecks}
+          fixedPosition={labelsPanelPos}
+          allLabels={menuLabels}
+          checks={labelChecks}
           excludedCheck={excludedCheck}
           disabled={formOpen}
-          onToggle={toggleGroup}
+          onToggle={toggleLabel}
           onToggleExcluded={() => void toggleExcludedForSelection()}
-          onCreate={createAndAssignGroup}
-          onClearAll={() => void clearAllGroupsForSelection()}
+          onCreate={createAndAssignLabel}
+          onClearAll={() => void clearAllLabelsForSelection()}
           onModeChange={(mode) => {
-            groupsCreatePinnedRef.current = mode === "create";
-            if (mode === "create") cancelCloseGroupsPanel();
+            labelsCreatePinnedRef.current = mode === "create";
+            if (mode === "create") cancelCloseLabelsPanel();
           }}
           onOpenChange={(open) => {
-            if (!open) closeGroupsPanel();
+            if (!open) closeLabelsPanel();
             else onSelectionMenuOpenChange(true);
           }}
         />
