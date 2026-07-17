@@ -1,11 +1,20 @@
 "use client";
 
+import {
+  contactAvatarColor,
+  contactInitials,
+} from "@/lib/contactInitials";
 import type { ContactListItem } from "@/lib/types";
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import { CountBadge } from "./CountBadge";
 import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
-import { GroupMessagesOutlineIcon, PencilIcon, XIcon } from "./icons";
+import {
+  GroupMessagesOutlineIcon,
+  MessageIcon,
+  PencilIcon,
+  XIcon,
+} from "./icons";
 import { PaneSearchField } from "./PaneSearchField";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
 
@@ -181,7 +190,7 @@ export function BrowseContactList({
                   onMouseDown={(e) => {
                     if (e.shiftKey) e.preventDefault();
                   }}
-                  className={`relative flex w-full items-start gap-1.5 py-2 pr-3 pl-0 select-none ${
+                  className={`group relative flex w-full items-start gap-1.5 py-2 pr-3 pl-0 select-none outline-none focus:outline-none focus-visible:outline-none ${
                     selectionActive ? "cursor-pointer" : ""
                   } ${
                     checked
@@ -212,16 +221,40 @@ export function BrowseContactList({
                       e.stopPropagation();
                       if (e.shiftKey) e.preventDefault();
                     }}
-                    className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2"
+                    className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2 outline-none focus:outline-none focus-visible:outline-none"
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      readOnly
-                      tabIndex={-1}
+                    <span
                       aria-hidden
-                      className="checkbox-list pointer-events-none"
-                    />
+                      className={`flex size-7 items-center justify-center rounded-full text-[11px] font-semibold text-white ${
+                        checked ? "hidden" : "group-hover:hidden"
+                      }`}
+                      style={{
+                        backgroundColor: contactAvatarColor({
+                          displayName: c.displayName,
+                          preferredHandle: c.preferredHandle,
+                          firstName: c.firstName,
+                          lastName: c.lastName,
+                        }),
+                      }}
+                    >
+                      {contactInitials(c)}
+                    </span>
+                    <span
+                      className={
+                        checked
+                          ? "inline-flex"
+                          : "hidden group-hover:inline-flex"
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden
+                        className="checkbox-list pointer-events-none"
+                      />
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -232,7 +265,7 @@ export function BrowseContactList({
                     onMouseDown={(e) => {
                       if (e.shiftKey) e.preventDefault();
                     }}
-                    className="flex min-w-0 flex-1 items-stretch justify-between gap-2 self-stretch text-left"
+                    className="flex min-w-0 flex-1 items-stretch justify-between gap-2 self-stretch text-left outline-none focus:outline-none focus-visible:outline-none"
                   >
                     <span className="min-w-0 self-start">
                       <span className="block truncate text-[13px] font-semibold text-text">
@@ -255,18 +288,21 @@ export function BrowseContactList({
                     {(c.messageCount > 0 || c.groupMessageCount > 0) && (
                       <span className="flex shrink-0 flex-col items-end self-stretch pt-0.5">
                         {c.messageCount > 0 && (
-                          <CountBadge
-                            count={c.messageCount}
-                            title="1:1 messages"
-                          />
+                          <span className="inline-flex items-center gap-1">
+                            <CountBadge
+                              count={c.messageCount}
+                              title="1:1 messages"
+                            />
+                            <MessageIcon className="size-3.5 shrink-0 text-muted opacity-80" />
+                          </span>
                         )}
                         {c.groupMessageCount > 0 && (
-                          <span
-                            title="Group messages"
-                            className="mt-auto inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted"
-                          >
-                            <GroupMessagesOutlineIcon className="size-3.5 shrink-0 opacity-80" />
-                            {c.groupMessageCount.toLocaleString()}
+                          <span className="mt-auto inline-flex items-center gap-1">
+                            <CountBadge
+                              count={c.groupMessageCount}
+                              title="Group messages"
+                            />
+                            <GroupMessagesOutlineIcon className="size-3.5 shrink-0 text-muted opacity-80" />
                           </span>
                         )}
                       </span>

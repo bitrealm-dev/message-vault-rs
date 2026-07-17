@@ -362,6 +362,9 @@ export function useListSelection<TId>(
       if (escapeBlockedRef.current?.()) return;
       if (escapePreventDefault) e.preventDefault();
       clearSelection();
+      // Escape switches keyboard modality; blur so list buttons don't flash a focus ring.
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.blur();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

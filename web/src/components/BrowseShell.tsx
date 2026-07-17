@@ -845,6 +845,8 @@ export function BrowseShell({
       if (ctxMenu != null || labelsPanelPos != null) return;
       e.preventDefault();
       clearSelection();
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.blur();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

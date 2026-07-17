@@ -158,7 +158,7 @@ export function BrowseGroupChatsPane({
                 onMouseDown={(e) => {
                   if (e.shiftKey) e.preventDefault();
                 }}
-                className={`group relative flex w-full items-start gap-1.5 py-2.5 pr-3 pl-0 text-left select-none ${
+                className={`group relative flex w-full items-start gap-1.5 py-2.5 pr-3 pl-0 text-left select-none outline-none focus:outline-none focus-visible:outline-none ${
                   selectionActive ? "cursor-pointer" : ""
                 } ${
                   checked
@@ -189,16 +189,24 @@ export function BrowseGroupChatsPane({
                     e.stopPropagation();
                     if (e.shiftKey) e.preventDefault();
                   }}
-                  className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2.5"
+                  className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2.5 outline-none focus:outline-none focus-visible:outline-none"
                 >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    readOnly
-                    tabIndex={-1}
-                    aria-hidden
-                    className="checkbox-list pointer-events-none"
-                  />
+                  <span
+                    className={
+                      checked
+                        ? "inline-flex"
+                        : "hidden group-hover:inline-flex"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      readOnly
+                      tabIndex={-1}
+                      aria-hidden
+                      className="checkbox-list pointer-events-none"
+                    />
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -209,7 +217,7 @@ export function BrowseGroupChatsPane({
                   onMouseDown={(e) => {
                     if (e.shiftKey) e.preventDefault();
                   }}
-                  className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                  className="flex min-w-0 flex-1 items-start gap-2 text-left outline-none focus:outline-none focus-visible:outline-none"
                 >
                   <GroupConversationRowBody
                     conversation={g}
