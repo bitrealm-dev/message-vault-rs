@@ -39,9 +39,13 @@ import {
   contactFormAnchorFromRect,
   type ContactFormAnchor,
 } from "./ContactFormOverlay";
-import { createGroupChatTrashOptions } from "./groupChatTrash";
+import {
+  createGroupChatTrashOptions,
+  groupChatToastTitle,
+} from "./groupChatTrash";
 import { GroupsMenu, type GroupCheckState } from "./GroupsMenu";
 import { useHistory } from "./history";
+import { trashContactsLabel } from "./history/historyTypes";
 import { ParticipantContactFormOverlay } from "./ParticipantContactFormOverlay";
 import {
   type BrowseGroupChatSortBy,
@@ -768,10 +772,12 @@ export function BrowseShell({
         return;
       }
       if (result.contact) {
+        const name = result.contact.displayName ?? "contact";
         pushHistory({
           type: "createContact",
           contactId: result.contact.id,
-          label: `Create contact ${result.contact.displayName ?? "contact"}`,
+          name,
+          label: `Create contact ${name}`,
         });
         if (contactId == null) {
           setDetail(result.contact);
@@ -922,14 +928,20 @@ export function BrowseShell({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "delete failed");
 
+        const byId = new Map(contacts.map((c) => [c.id, c]));
+        const names = ids.map((id) => {
+          const c =
+            byId.get(id) ??
+            selectedContacts.find((x) => x.id === id) ??
+            (detail?.id === id ? detail : null);
+          return c?.displayName?.trim() || "contact";
+        });
         pushHistory({
           type: "trashContacts",
           contactIds: ids,
           mode: "contact_and_messages",
-          label:
-            ids.length === 1
-              ? "Delete contact & messages"
-              : `Delete ${ids.length} contacts & messages`,
+          names,
+          label: trashContactsLabel(names),
         });
 
         setSelectedIds(new Set());
@@ -977,6 +989,9 @@ export function BrowseShell({
     },
     [
       deleteTargetIds,
+      contacts,
+      selectedContacts,
+      detail,
       queueStatusMessage,
       router,
       setSelectedIds,
@@ -1775,7 +1790,11 @@ export function BrowseShell({
       );
     },
     onTrashed: (ids) => {
-      pushHistory(browseGroupTrash.historyEntry(ids));
+      const titles = ids.map((id) => {
+        const g = collapsedById.get(id);
+        return g ? groupChatToastTitle(g) : "group message";
+      });
+      pushHistory(browseGroupTrash.historyEntry(ids, titles));
     },
     afterTrash: () => {
       setThreadsEpoch((n) => n + 1);

@@ -1,4 +1,8 @@
-import type { HistoryCommand } from "./history/historyTypes";
+import type { CollapsedGroupConversation } from "@/lib/groupChatList";
+import {
+  trashGroupThreadLabel,
+  type HistoryCommand,
+} from "./history/historyTypes";
 
 type TrashStatusMessages = {
   trashedOne: string;
@@ -27,16 +31,28 @@ const BROWSE_STATUS: TrashStatusMessages = {
   deletedMany: () => "",
 };
 
+/** Short display title for history toast / undo label. */
+export function groupChatToastTitle(g: CollapsedGroupConversation): string {
+  if (g.namedTitle?.trim()) return g.namedTitle.trim();
+  if (g.participantNames.length > 0) {
+    return g.participantNames.join(" · ");
+  }
+  return g.title?.trim() || "group message";
+}
+
 export function groupChatTrashHistoryEntry(
   ids: number[],
+  titles: string[],
 ): Extract<HistoryCommand, { type: "trashGroupThread" }> {
+  const resolved =
+    titles.length === ids.length
+      ? titles
+      : ids.map((_, i) => titles[i]?.trim() || "group message");
   return {
     type: "trashGroupThread",
     conversationIds: ids,
-    label:
-      ids.length === 1
-        ? "Delete group message"
-        : `Delete ${ids.length} group messages`,
+    titles: resolved,
+    label: trashGroupThreadLabel(resolved),
   };
 }
 
@@ -53,10 +69,10 @@ export function createGroupChatTrashOptions(options?: {
   idField: string;
   confirmPermanent: (targets: number[]) => string;
   status: TrashStatusMessages;
-  historyEntry: (ids: number[]) => Extract<
-    HistoryCommand,
-    { type: "trashGroupThread" }
-  >;
+  historyEntry: (
+    ids: number[],
+    titles: string[],
+  ) => Extract<HistoryCommand, { type: "trashGroupThread" }>;
 } {
   const variant = options?.variant ?? "default";
 

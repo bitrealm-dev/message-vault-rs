@@ -80,6 +80,8 @@ export type GroupYearRow = {
   conversationDateStart: string;
   conversationDateEnd: string;
   spansMultipleYears: boolean;
+  /** Present on trashed group rows (`trashed_conversations.trashed_at`). */
+  trashedAt?: string;
 };
 
 export type AttachmentRow = {
@@ -124,6 +126,8 @@ export type UnassignedHandle = {
   sortLast?: string;
   firstName?: string | null;
   lastName?: string | null;
+  /** Soft-trash timestamp when listed from Trash. */
+  trashedAt?: string;
 };
 
 /** Soft-trashed contact (contact + 1:1 messages). */
@@ -140,6 +144,7 @@ export type TrashedContactItem = {
   sortLast: string;
   firstName: string | null;
   lastName: string | null;
+  trashedAt: string;
 };
 
 /** Soft-trashed 1:1 handle still linked to a live contact. */
@@ -155,6 +160,7 @@ export type TrashedContactMessagesItem = {
   sortLast: string;
   firstName: string | null;
   lastName: string | null;
+  trashedAt: string;
 };
 
 export type HomeStats = {

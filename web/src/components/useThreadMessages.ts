@@ -46,7 +46,7 @@ export function useThreadMessages(options: {
   enabled?: boolean;
   /**
    * When true, fetch the full conversation without a year query param
-   * (year may be null/omitted). GroupChatsShell keeps the default (year-scoped).
+   * (year may be null/omitted). Year-scoped loads keep the default.
    */
   fullConversation?: boolean;
   /**

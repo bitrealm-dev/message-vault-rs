@@ -45,6 +45,15 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
            WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
          )`;
 
+  const trashedAtSelect =
+    section === "trash" && hasTrash
+      ? `, (
+           SELECT th.trashed_at FROM trashed_handles th
+           WHERE th.handle = c.chat_identifier AND th.account_id = c.account_id
+           LIMIT 1
+         ) AS trashed_at`
+      : `, NULL AS trashed_at`;
+
   const rows = db
     .prepare(
       `SELECT c.chat_identifier AS handle,
@@ -52,6 +61,7 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
               COUNT(m.id) AS message_count,
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
               MAX(substr(m.timestamp, 1, 10)) AS date_end
+              ${trashedAtSelect}
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id
        LEFT JOIN participants p
@@ -65,7 +75,7 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
          ${trashFilter}${hideDupes}
        GROUP BY c.id
        HAVING message_count > 0
-       ORDER BY handle COLLATE NOCASE`,
+       ORDER BY ${section === "trash" ? "trashed_at DESC, " : ""}handle COLLATE NOCASE`,
     )
     .all(accountId) as Array<{
     handle: string;
@@ -73,6 +83,7 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
     message_count: number;
     date_start: string | null;
     date_end: string | null;
+    trashed_at: string | null;
   }>;
 
   return rows
@@ -92,11 +103,18 @@ function listHandleSection(section: "unassigned" | "trash"): UnassignedHandle[] 
         sortKey,
         letter,
         unverified: Boolean(hintUseful),
+        ...(r.trashed_at ? { trashedAt: r.trashed_at } : {}),
       };
     })
-    .sort((a, b) =>
-      a.sortKey.localeCompare(b.sortKey, undefined, { sensitivity: "base" }),
-    );
+    .sort((a, b) => {
+      if (section === "trash") {
+        const at = (b.trashedAt ?? "").localeCompare(a.trashedAt ?? "");
+        if (at !== 0) return at;
+      }
+      return a.sortKey.localeCompare(b.sortKey, undefined, {
+        sensitivity: "base",
+      });
+    });
 }
 
 export function unassignedThreadsBundle(

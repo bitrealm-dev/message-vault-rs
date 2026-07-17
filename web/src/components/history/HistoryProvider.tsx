@@ -15,7 +15,9 @@ import { redoCommand, undoCommand } from "./historyRunner";
 import {
   HISTORY_MAX_DEPTH,
   HISTORY_TOAST_MS,
+  redoToastTextForCommand,
   toastTextForCommand,
+  undoToastTextForCommand,
   type HistoryCommand,
   type HistoryToast,
 } from "./historyTypes";
@@ -119,6 +121,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       setFuture((prev) => [...prev, cmd]);
       setRevision((n) => n + 1);
       router.refresh();
+      showToast(undoToastTextForCommand(cmd), false);
     } catch (err) {
       console.error(err);
       showToast(
@@ -150,6 +153,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       });
       setRevision((n) => n + 1);
       router.refresh();
+      showToast(redoToastTextForCommand(cmd), false);
     } catch (err) {
       console.error(err);
       showToast(

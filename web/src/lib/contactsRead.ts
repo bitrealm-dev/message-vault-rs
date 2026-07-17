@@ -714,6 +714,7 @@ export function listTrashedContacts(): TrashedContactItem[] {
               c.first_name AS first_name,
               c.last_name AS last_name,
               c.preferred_handle AS preferred_handle,
+              tc.trashed_at AS trashed_at,
               (SELECT COUNT(*) FROM contact_handles cp
                WHERE cp.contact_id = c.id AND cp.account_id = c.account_id) AS handle_count,
               (
@@ -729,13 +730,14 @@ export function listTrashedContacts(): TrashedContactItem[] {
        FROM contacts c
        JOIN trashed_contacts tc ON tc.contact_id = c.id AND tc.account_id = c.account_id
        WHERE c.account_id = ?
-       ORDER BY c.last_name COLLATE NOCASE, c.first_name COLLATE NOCASE`,
+       ORDER BY tc.trashed_at DESC, c.last_name COLLATE NOCASE, c.first_name COLLATE NOCASE`,
     )
     .all(accountId) as Array<{
     id: number;
     first_name: string | null;
     last_name: string | null;
     preferred_handle: string | null;
+    trashed_at: string;
     handle_count: number;
     message_count: number;
   }>;
@@ -766,6 +768,7 @@ export function listTrashedContacts(): TrashedContactItem[] {
       sortLast: sorts.sortLast,
       firstName: row.first_name,
       lastName: row.last_name,
+      trashedAt: row.trashed_at,
     };
   });
 }
@@ -792,6 +795,7 @@ export function listTrashedContactMessages(): TrashedContactMessagesItem[] {
               c.first_name AS first_name,
               c.last_name AS last_name,
               c.preferred_handle AS preferred_handle,
+              MAX(th.trashed_at) AS trashed_at,
               COUNT(m.id) AS message_count
        FROM trashed_handles th
        JOIN contact_handles cp ON cp.handle = th.handle AND cp.account_id = th.account_id
@@ -804,7 +808,7 @@ export function listTrashedContactMessages(): TrashedContactMessagesItem[] {
        WHERE th.account_id = ? ${notTrashedContact}${hideDupes}
        GROUP BY cp.contact_id, cp.handle, c.first_name, c.last_name, c.preferred_handle
        HAVING message_count > 0
-       ORDER BY cp.handle COLLATE NOCASE`,
+       ORDER BY trashed_at DESC, cp.handle COLLATE NOCASE`,
     )
     .all(accountId) as Array<{
     contact_id: number;
@@ -812,6 +816,7 @@ export function listTrashedContactMessages(): TrashedContactMessagesItem[] {
     first_name: string | null;
     last_name: string | null;
     preferred_handle: string | null;
+    trashed_at: string;
     message_count: number;
   }>;
 
@@ -830,6 +835,7 @@ export function listTrashedContactMessages(): TrashedContactMessagesItem[] {
       sortLast: sorts.sortLast,
       firstName: row.first_name,
       lastName: row.last_name,
+      trashedAt: row.trashed_at,
     };
   });
 }

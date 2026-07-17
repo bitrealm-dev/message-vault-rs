@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function TrashPage({
   searchParams,
 }: {
-  searchParams: Promise<{ h?: string; g?: string; y?: string; tab?: string }>;
+  searchParams: Promise<{ h?: string; g?: string; y?: string }>;
 }) {
   const sp = await searchParams;
   const initialHandle = sp.h?.trim() || null;

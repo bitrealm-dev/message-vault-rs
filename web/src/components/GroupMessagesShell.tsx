@@ -25,7 +25,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
 import { BrowseGroupChatsPane } from "./BrowseGroupChatsPane";
 import { BrowseThreadPane } from "./BrowseThreadPane";
-import { createGroupChatTrashOptions } from "./groupChatTrash";
+import {
+  createGroupChatTrashOptions,
+  groupChatToastTitle,
+} from "./groupChatTrash";
 import { MyContactPane } from "./MyContactPane";
 import { PaneSeparator } from "./PaneSeparator";
 import { ParticipantContactFormOverlay } from "./ParticipantContactFormOverlay";
@@ -322,7 +325,11 @@ export function GroupMessagesShell({
       router.refresh();
     },
     onTrashed: (ids) => {
-      pushHistory(groupTrash.historyEntry(ids));
+      const titles = ids.map((id) => {
+        const g = collapsedById.get(id);
+        return g ? groupChatToastTitle(g) : "group message";
+      });
+      pushHistory(groupTrash.historyEntry(ids, titles));
     },
   });
 

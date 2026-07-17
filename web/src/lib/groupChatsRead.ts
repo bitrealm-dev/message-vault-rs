@@ -464,6 +464,15 @@ function listGroupYearRowsSection(
            WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
          )`;
 
+  const trashedAtSelect =
+    section === "trash" && hasTrash
+      ? `, (
+           SELECT tc.trashed_at FROM trashed_conversations tc
+           WHERE tc.conversation_id = c.id AND tc.account_id = c.account_id
+           LIMIT 1
+         ) AS trashed_at`
+      : `, NULL AS trashed_at`;
+
   const rows = db
     .prepare(
       `SELECT c.id,
@@ -471,6 +480,7 @@ function listGroupYearRowsSection(
               COUNT(m.id) AS message_count,
               MIN(substr(m.timestamp, 1, 10)) AS date_start,
               MAX(substr(m.timestamp, 1, 10)) AS date_end
+              ${trashedAtSelect}
        FROM conversations c
        JOIN messages m ON m.conversation_id = c.id${joinDupes}
        WHERE c.account_id = ?
@@ -485,6 +495,7 @@ function listGroupYearRowsSection(
     message_count: number;
     date_start: string;
     date_end: string;
+    trashed_at: string | null;
   }>;
 
   if (!rows.length) return [];
@@ -544,6 +555,7 @@ function listGroupYearRowsSection(
       conversationDateStart: range.dateStart,
       conversationDateEnd: range.dateEnd,
       spansMultipleYears: yearCount > 1,
+      ...(r.trashed_at ? { trashedAt: r.trashed_at } : {}),
     };
   });
 
