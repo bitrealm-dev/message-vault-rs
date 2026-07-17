@@ -43,16 +43,14 @@ export function groupChatTrashHistoryEntry(
 /**
  * Shared useTrashActions option pieces for group-chat trash across shells.
  * Shells still supply getTargets, canTrash, onRemoved, setStatus, etc.
+ * Soft trash skips confirm (undoable); permanent delete still confirms.
  */
 export function createGroupChatTrashOptions(options?: {
-  /** Group year-row shells: enables multi-year confirm wording. */
-  conversationSpansMultipleYears?: (id: number) => boolean;
-  /** Browse uses shorter confirm copy and browse-specific status strings. */
+  /** Browse uses browse-specific status strings. */
   variant?: "default" | "browse";
 }): {
   endpoint: string;
   idField: string;
-  confirmTrash: (targets: number[]) => string;
   confirmPermanent: (targets: number[]) => string;
   status: TrashStatusMessages;
   historyEntry: (ids: number[]) => Extract<
@@ -61,28 +59,10 @@ export function createGroupChatTrashOptions(options?: {
   >;
 } {
   const variant = options?.variant ?? "default";
-  const spansMultipleYears = options?.conversationSpansMultipleYears;
 
   return {
     endpoint: "/api/group-chats/trash",
     idField: "conversationId",
-    confirmTrash: (targets) => {
-      if (variant === "browse") {
-        if (targets.length === 1) {
-          return "Move this group message to Trash?";
-        }
-        return `Move ${targets.length} group messages to Trash?`;
-      }
-      const multiYear =
-        targets.length === 1 &&
-        spansMultipleYears?.(targets[0]!) === true;
-      if (targets.length === 1) {
-        return multiYear
-          ? "Move this group message to Trash? It appears under multiple years and will be removed from all of them."
-          : "Move this group message to Trash?";
-      }
-      return `Move ${targets.length} group messages to Trash? Each chat will be removed from every year it appears under.`;
-    },
     confirmPermanent: (targets) => {
       if (targets.length === 1) return "Delete forever?";
       return `Delete ${targets.length} group messages forever?`;

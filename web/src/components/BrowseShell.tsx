@@ -35,7 +35,6 @@ import { BrowseContactList } from "./BrowseContactList";
 import type { CollapsedGroupConversation } from "@/lib/groupChatList";
 import { BrowseGroupChatsPane } from "./BrowseGroupChatsPane";
 import { BrowseThreadColumn } from "./BrowseThreadColumn";
-import { BrowseTrashConfirmDialog } from "./BrowseTrashConfirmDialog";
 import {
   contactFormAnchorFromRect,
   type ContactFormAnchor,
@@ -151,9 +150,6 @@ export function BrowseShell({
   const excludeOverridesRef = useRef(excludeOverrides);
   excludeOverridesRef.current = excludeOverrides;
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [trashConfirm, setTrashConfirm] = useState<{
-    ids: number[];
-  } | null>(null);
   const [threadsEpoch, setThreadsEpoch] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<{
     id: number;
@@ -761,8 +757,7 @@ export function BrowseShell({
     knownGroups: allGroups,
     createDefaults,
     setStatus: setStatusMsg,
-    shouldIgnoreEscape: () =>
-      trashConfirm != null || ctxMenu != null || groupsPanelPos != null,
+    shouldIgnoreEscape: () => ctxMenu != null || groupsPanelPos != null,
     onSaved: (result) => {
       if (result.kind === "edit") {
         if (result.contact && result.contactId === contactId) {
@@ -912,11 +907,10 @@ export function BrowseShell({
     return [];
   }, [hasSelection, selectedContacts, contactId]);
 
-  const confirmTrashMode = useCallback(
+  const executeTrash = useCallback(
     async (idsOverride?: number[]) => {
       const ids = idsOverride ?? deleteTargetIds();
       if (ids.length === 0) return;
-      setTrashConfirm(null);
       setCtxMenu(null);
       setSaving(true);
       try {
@@ -1037,12 +1031,9 @@ export function BrowseShell({
 
   const requestTrash = useCallback(
     (idsOverride?: number[]) => {
-      const ids = idsOverride ?? deleteTargetIds();
-      if (ids.length === 0) return;
-      setCtxMenu(null);
-      setTrashConfirm({ ids });
+      void executeTrash(idsOverride);
     },
-    [deleteTargetIds],
+    [executeTrash],
   );
 
   const onCtxDelete = useCallback(() => {
@@ -1097,7 +1088,7 @@ export function BrowseShell({
       groupsCloseTimerRef.current = null;
       setGroupsPanelPos(null);
       setGroupTargetOverrideIds(null);
-    }, 160);
+    }, 400);
   }, [cancelCloseGroupsPanel]);
 
   const openCtxGroups = useCallback(
@@ -1108,7 +1099,7 @@ export function BrowseShell({
       cancelCloseGroupsPanel();
       const x = Math.max(
         8,
-        Math.min(anchor.right + 2, window.innerWidth - 272),
+        Math.min(anchor.right - 4, window.innerWidth - 272),
       );
       const y = Math.max(
         8,
@@ -1136,7 +1127,6 @@ export function BrowseShell({
       flushSelectionDirty();
     },
     refs: [ctxMenuRef, groupsPanelWrapRef, mergePanelRef],
-    dismissOnPointerLeave: 0,
     onEscape: (e) => {
       if (mergeFromId != null) {
         e.preventDefault();
@@ -1228,11 +1218,7 @@ export function BrowseShell({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (
-        trashConfirm != null ||
-        ctxMenu != null ||
-        groupsPanelPos != null
-      ) {
+      if (ctxMenu != null || groupsPanelPos != null) {
         return;
       }
       if (formOpen) return;
@@ -1252,17 +1238,17 @@ export function BrowseShell({
       const ids = deleteTargetIds();
       if (ids.length === 0) return;
       e.preventDefault();
-      setTrashConfirm({ ids });
+      requestTrash(ids);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [
-    trashConfirm,
     ctxMenu,
     groupsPanelPos,
     formOpen,
     canDelete,
     deleteTargetIds,
+    requestTrash,
   ]);
   const groupsFor = useCallback(
     (id: number, fallback: string[]) => groupOverrides.get(id) ?? fallback,
@@ -1712,17 +1698,6 @@ export function BrowseShell({
     ],
   );
 
-  const trashConfirmCopy = useMemo(() => {
-    if (!trashConfirm) return null;
-    const n = trashConfirm.ids.length;
-    return {
-      title:
-        n === 1
-          ? "Delete contact and messages?"
-          : `Delete ${n} contacts and messages?`,
-    };
-  }, [trashConfirm]);
-
   const groupTrashTargets = useCallback(
     (forId?: number) => {
       const primaryIds =
@@ -1770,7 +1745,6 @@ export function BrowseShell({
     getTargets: groupTrashTargets,
     canTrash: canTrashGroups,
     canRestoreOrDelete: false,
-    confirmTrash: browseGroupTrash.confirmTrash,
     status: browseGroupTrash.status,
     setStatus: (s) => {
       if (s) queueStatusMessage(s);
@@ -2040,14 +2014,6 @@ export function BrowseShell({
       phonesView={detail?.phones ?? []}
       form={participantForm}
     />
-    {trashConfirm && trashConfirmCopy && (
-      <BrowseTrashConfirmDialog
-        title={trashConfirmCopy.title}
-        saving={saving}
-        onCancel={() => setTrashConfirm(null)}
-        onConfirm={() => void confirmTrashMode(trashConfirm.ids)}
-      />
-    )}
     {groupTrashConfirmDialog}
     </>
   );

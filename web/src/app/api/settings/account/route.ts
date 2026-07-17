@@ -4,7 +4,8 @@ import {
   withAccountHandler,
 } from "@/lib/accountContext";
 import { isDemoAccount } from "@/lib/demoAccount";
-import { loadVaultOwner } from "@/lib/vaultOwner";
+import { assertVaultWritable } from "@/lib/owner";
+import { loadVaultOwner, saveVaultOwner } from "@/lib/vaultOwner";
 import { clearAccountCookieOptions } from "@/lib/session";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -106,15 +107,66 @@ export async function PATCH(req: Request) {
         );
       }
 
+      const vaultOwnerBody =
+        body.vaultOwner && typeof body.vaultOwner === "object"
+          ? (body.vaultOwner as Record<string, unknown>)
+          : null;
+      const hasVaultOwnerPatch =
+        vaultOwnerBody != null &&
+        (typeof vaultOwnerBody.firstName === "string" ||
+          typeof vaultOwnerBody.lastName === "string" ||
+          Array.isArray(vaultOwnerBody.phones));
+
       if (
         patch.username === undefined &&
         patch.read_only === undefined &&
-        patch.emails === undefined
+        patch.emails === undefined &&
+        !hasVaultOwnerPatch
       ) {
         return NextResponse.json({ error: "no valid fields to update" }, { status: 400 });
       }
 
-      const account = saveAccount(accountId, patch);
+      if (hasVaultOwnerPatch) {
+        assertVaultWritable();
+        const current = loadVaultOwner(accountId);
+        const phones = Array.isArray(vaultOwnerBody!.phones)
+          ? vaultOwnerBody!.phones
+              .filter((p): p is string => typeof p === "string")
+              .map((p) => p.trim())
+              .filter(Boolean)
+          : current.phones;
+        if (phones.length === 0) {
+          return NextResponse.json(
+            { error: "at least one phone is required" },
+            { status: 400 },
+          );
+        }
+        const firstName =
+          typeof vaultOwnerBody!.firstName === "string"
+            ? vaultOwnerBody!.firstName
+            : current.first_name;
+        if (!firstName.trim()) {
+          return NextResponse.json(
+            { error: "first name is required" },
+            { status: 400 },
+          );
+        }
+        saveVaultOwner(accountId, {
+          first_name: firstName,
+          last_name:
+            typeof vaultOwnerBody!.lastName === "string"
+              ? vaultOwnerBody!.lastName
+              : current.last_name,
+          phones,
+        });
+      }
+
+      const account =
+        patch.username !== undefined ||
+        patch.read_only !== undefined ||
+        patch.emails !== undefined
+          ? saveAccount(accountId, patch)
+          : loadAccount(accountId);
       const owner = loadVaultOwner(accountId);
       return NextResponse.json({
         ...accountJson(account, accountId),
@@ -130,7 +182,8 @@ export async function PATCH(req: Request) {
     const auth = authError(err);
     if (auth) return auth;
     const message = err instanceof Error ? err.message : "update failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message.includes("read-only") ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 

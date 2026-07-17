@@ -43,6 +43,11 @@ import { useSourceFilter } from "./SourceFilter";
 import { useThreadMessages } from "./useThreadMessages";
 import { useTrashActions } from "./useTrashActions";
 import { useVaultReadOnly } from "./useVaultReadOnly";
+import {
+  VaultOwnerEditOverlay,
+  contactFormAnchorFromRect,
+  type ContactFormAnchor,
+} from "./VaultOwnerEditOverlay";
 
 export function GroupMessagesShell({
   owner,
@@ -63,6 +68,10 @@ export function GroupMessagesShell({
   const { sources, source, setSource, sourceQuery } = useSourceFilter();
 
   const [groupChats, setGroupChats] = useState(initialGroupChats);
+  const [ownerState, setOwnerState] = useState(owner);
+  const [ownerEditOpen, setOwnerEditOpen] = useState(false);
+  const [ownerEditAnchor, setOwnerEditAnchor] =
+    useState<ContactFormAnchor | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(
     initialConversationId,
   );
@@ -108,6 +117,10 @@ export function GroupMessagesShell({
   });
 
   const pendingScrollYearRef = useRef<number | null>(initialYear);
+
+  useEffect(() => {
+    setOwnerState(owner);
+  }, [owner]);
 
   useEffect(() => {
     setGroupChats(initialGroupChats);
@@ -274,12 +287,6 @@ export function GroupMessagesShell({
     [conversationId, setSelectedIds, syncUrl],
   );
 
-  const conversationSpansMultipleYears = useCallback(
-    (id: number) =>
-      groupChats.some((g) => g.id === id && g.spansMultipleYears),
-    [groupChats],
-  );
-
   const actionTargets = useMemo(() => {
     if (hasGroupSelection) return [...selectedIds];
     if (conversationId != null) return [conversationId];
@@ -295,13 +302,7 @@ export function GroupMessagesShell({
     [actionTargets, hasGroupSelection],
   );
 
-  const groupTrash = useMemo(
-    () =>
-      createGroupChatTrashOptions({
-        conversationSpansMultipleYears,
-      }),
-    [conversationSpansMultipleYears],
-  );
+  const groupTrash = useMemo(() => createGroupChatTrashOptions(), []);
 
   const {
     saving,
@@ -313,7 +314,6 @@ export function GroupMessagesShell({
     getTargets: getTrashTargets,
     canTrash: true,
     canRestoreOrDelete: false,
-    confirmTrash: groupTrash.confirmTrash,
     confirmPermanent: groupTrash.confirmPermanent,
     status: groupTrash.status,
     setStatus,
@@ -430,10 +430,17 @@ export function GroupMessagesShell({
           className="min-h-0"
         >
           <MyContactPane
-            owner={owner}
+            owner={ownerState}
             groupMessageCount={
               new Set(groupChats.map((g) => g.id)).size
             }
+            vaultReadOnly={vaultReadOnly}
+            onEdit={(el) => {
+              setOwnerEditAnchor(
+                contactFormAnchorFromRect(el.getBoundingClientRect()),
+              );
+              setOwnerEditOpen(true);
+            }}
           />
         </Panel>
 
@@ -537,6 +544,19 @@ export function GroupMessagesShell({
       <ParticipantContactFormOverlay
         form={participantForm}
         titleId="mv-group-messages-contact-form-title"
+      />
+      <VaultOwnerEditOverlay
+        open={ownerEditOpen}
+        owner={ownerState}
+        anchor={ownerEditAnchor}
+        onDismiss={() => {
+          setOwnerEditOpen(false);
+          setOwnerEditAnchor(null);
+        }}
+        onSaved={(next) => {
+          setOwnerState(next);
+          router.refresh();
+        }}
       />
     </>
   );

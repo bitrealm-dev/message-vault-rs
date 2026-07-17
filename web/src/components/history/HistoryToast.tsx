@@ -3,7 +3,7 @@
 import { XIcon } from "../icons";
 import { useHistory } from "./HistoryProvider";
 
-/** Fixed bottom-left snackbar after undoable actions (15s). Escape does not dismiss. */
+/** Fixed bottom-center snackbar after undoable actions (15s). Escape does not dismiss. */
 export function HistoryToast() {
   const { toast, undo, busy, dismissToast } = useHistory();
   if (!toast) return null;
@@ -11,7 +11,7 @@ export function HistoryToast() {
   return (
     <div
       role="status"
-      className="pointer-events-none fixed bottom-4 left-4 z-[100] max-w-[min(100vw-2rem,28rem)]"
+      className="pointer-events-none fixed bottom-4 left-1/2 z-[100] w-max max-w-[min(100vw-2rem,28rem)] -translate-x-1/2"
     >
       <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border bg-[#2c2c2e] py-2 pr-2 pl-3.5 text-[13px] text-text shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
         <span className="min-w-0 flex-1 truncate">{toast.text}</span>

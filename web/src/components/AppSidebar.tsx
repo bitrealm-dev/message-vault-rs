@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   AddressBookIcon,
   ChevronDownIcon,
@@ -202,28 +203,9 @@ function GroupsNav({
   const [pendingGroups, setPendingGroups] = useState<string[]>([]);
   const headerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const openRowRef = useRef<HTMLDivElement>(null);
   const createPanelRef = useRef<HTMLDivElement>(null);
   const renamePanelRef = useRef<HTMLDivElement>(null);
-  const menuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelCloseGroupMenu = useCallback(() => {
-    if (menuCloseTimerRef.current) {
-      clearTimeout(menuCloseTimerRef.current);
-      menuCloseTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleCloseGroupMenu = useCallback(() => {
-    cancelCloseGroupMenu();
-    menuCloseTimerRef.current = setTimeout(() => {
-      menuCloseTimerRef.current = null;
-      setMenuFor(null);
-    }, 120);
-  }, [cancelCloseGroupMenu]);
-
-  useEffect(() => {
-    return () => cancelCloseGroupMenu();
-  }, [cancelCloseGroupMenu]);
 
   const displayGroups = useMemo(() => {
     const names = new Set([...groups, ...pendingGroups]);
@@ -249,8 +231,8 @@ function GroupsNav({
   useDismissible({
     open: menuFor != null,
     onDismiss: () => setMenuFor(null),
-    refs: [menuRef],
-    dismissOnPointerLeave: 0,
+    // Click-opened menu: close on outside click / Escape only (not pointer leave).
+    refs: [menuRef, openRowRef],
   });
   useDismissible({
     open: rename != null,
@@ -418,13 +400,8 @@ function GroupsNav({
           return (
             <div
               key={name}
+              ref={menuOpen ? openRowRef : undefined}
               className="relative"
-              onMouseEnter={() => {
-                if (menuFor === name) cancelCloseGroupMenu();
-              }}
-              onMouseLeave={() => {
-                if (menuFor === name) scheduleCloseGroupMenu();
-              }}
             >
               <div
                 className={`group relative flex items-center text-[14px] transition-colors ${
@@ -454,15 +431,18 @@ function GroupsNav({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    cancelCloseGroupMenu();
                     setCreate(null);
                     setRename(null);
+                    if (menuFor === name) {
+                      setMenuFor(null);
+                      return;
+                    }
                     const rect = e.currentTarget.getBoundingClientRect();
                     setMenuPos({
-                      top: rect.bottom + 2,
+                      top: rect.bottom + 4,
                       right: window.innerWidth - rect.right,
                     });
-                    setMenuFor((v) => (v === name ? null : name));
+                    setMenuFor(name);
                   }}
                   className={`mr-1.5 shrink-0 rounded p-0.5 text-muted hover:bg-white/10 hover:text-text ${
                     active || menuOpen
@@ -474,35 +454,38 @@ function GroupsNav({
                 </button>
               </div>
 
-              {menuOpen && menuPos && (
-                <div
-                  ref={menuRef}
-                  className="fixed z-[100] min-w-[120px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
-                  style={{ top: menuPos.top, right: menuPos.right }}
-                >
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
-                    onClick={(e) => {
-                      setMenuFor(null);
-                      setRename({
-                        name,
-                        x: e.clientX,
-                        y: e.clientY,
-                      });
-                    }}
+              {menuOpen &&
+                menuPos &&
+                createPortal(
+                  <div
+                    ref={menuRef}
+                    className="fixed z-[100] min-w-[120px] rounded-lg border border-border bg-[#2c2c2e] py-1 shadow-xl"
+                    style={{ top: menuPos.top, right: menuPos.right }}
                   >
-                    Rename…
-                  </button>
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
-                    onClick={() => void deleteGroup(name)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
+                    <button
+                      type="button"
+                      className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+                      onClick={(e) => {
+                        setMenuFor(null);
+                        setRename({
+                          name,
+                          x: e.clientX,
+                          y: e.clientY,
+                        });
+                      }}
+                    >
+                      Rename…
+                    </button>
+                    <button
+                      type="button"
+                      className="block w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-white/20"
+                      onClick={() => void deleteGroup(name)}
+                    >
+                      Delete
+                    </button>
+                  </div>,
+                  document.body,
+                )}
             </div>
           );
         })}
@@ -715,6 +698,12 @@ export function AppSidebar({
     });
   }, [collapsed, focusGroupsToken]);
 
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }, [router]);
+
   const resetDemo = useCallback(async () => {
     const ok = await confirm(
       "Restore all messages, contacts, groups, and trash to the committed demo dataset. Your edits will be lost.",
@@ -730,20 +719,12 @@ export function AppSidebar({
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? "Reset failed");
       }
-      router.push("/");
-      router.refresh();
+      await logout();
     } catch (e) {
       setResetError(e instanceof Error ? e.message : "Reset failed");
-    } finally {
       setResettingDemo(false);
     }
-  }, [confirm, router]);
-
-  const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
-  }, [router]);
+  }, [confirm, logout]);
 
   const groupMessagesIcon = (
     <GroupMessagesOutlineIcon className="size-5 shrink-0 opacity-80" />

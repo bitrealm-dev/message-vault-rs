@@ -1,31 +1,34 @@
 "use client";
 
 import type { VaultOwner } from "@/lib/vaultOwner";
+import { CountBadge } from "./CountBadge";
 import { IconHoverTarget } from "./IconHoverLabel";
+import { ListHistoryMenu } from "./history";
 import {
   ChevronDownIcon,
-  EllipsisIcon,
-  GroupMessagesOutlineIcon,
-  MessageIcon,
   PencilIcon,
   PeopleGroupIcon,
 } from "./icons";
 
-/** Contact-list chrome for vault owner — visual match to Panel 2, fully read-only. */
+/** Contact-list chrome for vault owner — matches Panel 2; most controls inert. */
 export function MyContactPane({
   owner,
   groupMessageCount = 0,
+  vaultReadOnly = false,
+  onEdit,
 }: {
   owner: VaultOwner;
   /** Distinct group chats (shown like contacts list counts). */
   groupMessageCount?: number;
+  vaultReadOnly?: boolean;
+  onEdit?: (anchorEl: HTMLElement) => void;
 }) {
   const displayName = owner.display_name || "Me";
   const preferredHandle = owner.phones[0] ?? "";
   const letter = (displayName.trim().charAt(0) || "#").toUpperCase();
 
   const toolbarBtn =
-    "flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted opacity-40";
+    "flex h-7 w-7 items-center justify-center rounded-md border border-border bg-elevated text-muted";
   /** Match GroupsMenu trigger used on All contacts (icon + chevron, not square). */
   const groupsToolbarBtn =
     "inline-flex h-7 items-center gap-1.5 rounded-md bg-elevated px-2.5 text-muted opacity-40";
@@ -60,36 +63,36 @@ export function MyContactPane({
               <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
             </span>
           </IconHoverTarget>
-          <IconHoverTarget label="Edit (unavailable)" placement="bottom">
-            <span className={toolbarBtn} aria-hidden>
-              <PencilIcon className="size-4" />
-            </span>
-          </IconHoverTarget>
+          {!vaultReadOnly && onEdit ? (
+            <IconHoverTarget label="Edit contact" placement="bottom">
+              <button
+                type="button"
+                aria-label="Edit contact"
+                onClick={(e) => onEdit(e.currentTarget)}
+                className={`${toolbarBtn} hover:text-text`}
+              >
+                <PencilIcon className="size-4" />
+              </button>
+            </IconHoverTarget>
+          ) : (
+            <IconHoverTarget label="Edit (unavailable)" placement="bottom">
+              <span className={`${toolbarBtn} opacity-40`} aria-hidden>
+                <PencilIcon className="size-4" />
+              </span>
+            </IconHoverTarget>
+          )}
           <IconHoverTarget label="Sort (unavailable)" placement="bottom">
-            <span className={toolbarBtn} aria-hidden>
+            <span className={`${toolbarBtn} opacity-40`} aria-hidden>
               <SortArrowsIcon />
             </span>
           </IconHoverTarget>
-          <IconHoverTarget label="Actions (unavailable)" placement="bottom">
-            <span className={toolbarBtn} aria-hidden>
-              <EllipsisIcon className="size-5" />
-            </span>
-          </IconHoverTarget>
+          <ListHistoryMenu />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <div>
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
-            <span>{letter}</span>
-            <span
-              className="inline-flex items-center gap-1 font-normal"
-              title="Group chats | 1:1 messages"
-              aria-label="Group chats | 1:1 messages"
-            >
-              <GroupMessagesOutlineIcon className="size-3.5 opacity-80" />
-              <span className="opacity-50">|</span>
-              <MessageIcon className="size-3.5 opacity-80" />
-            </span>
+          <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
+            {letter}
           </div>
           <div
             className="relative flex w-full items-start gap-1.5 bg-accent/20 py-2 pr-3 pl-0 select-none"
@@ -123,11 +126,8 @@ export function MyContactPane({
                 )}
               </span>
               {groupMessageCount > 0 && (
-                <span
-                  className="shrink-0 pt-0.5 text-[12px] text-muted"
-                  title="Group chats"
-                >
-                  {groupMessageCount.toLocaleString()}
+                <span className="shrink-0 pt-0.5">
+                  <CountBadge count={groupMessageCount} title="Group chats" />
                 </span>
               )}
             </span>

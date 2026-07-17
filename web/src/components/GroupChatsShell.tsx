@@ -327,12 +327,6 @@ export function GroupChatsShell({
     [conversationId, pathname, router, searchParams, setMessages, setSelectedIds],
   );
 
-  const conversationSpansMultipleYears = useCallback(
-    (id: number) =>
-      groupChats.some((g) => g.id === id && g.spansMultipleYears),
-    [groupChats],
-  );
-
   const getTrashTargets = useCallback(
     (forId?: number) => {
       const raw =
@@ -342,13 +336,7 @@ export function GroupChatsShell({
     [actionTargets, multiSelected],
   );
 
-  const groupTrash = useMemo(
-    () =>
-      createGroupChatTrashOptions({
-        conversationSpansMultipleYears,
-      }),
-    [conversationSpansMultipleYears],
-  );
+  const groupTrash = useMemo(() => createGroupChatTrashOptions(), []);
 
   const {
     saving,
@@ -361,7 +349,6 @@ export function GroupChatsShell({
     getTargets: getTrashTargets,
     canTrash: false,
     canRestoreOrDelete: true,
-    confirmTrash: groupTrash.confirmTrash,
     confirmPermanent: groupTrash.confirmPermanent,
     status: groupTrash.status,
     setStatus,

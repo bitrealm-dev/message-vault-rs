@@ -47,6 +47,7 @@ export function ContactDetailsCard({
   phonesView,
   framed = true,
   groupsEditor,
+  hideGroups = false,
 }: {
   formOpen: boolean;
   draft: ContactEditDraft | null;
@@ -59,6 +60,8 @@ export function ContactDetailsCard({
   framed?: boolean;
   /** When set and form is open, replaces the static groups list (e.g. GroupsMenu). */
   groupsEditor?: ReactNode;
+  /** Hide groups column (e.g. vault owner “Me” edit). */
+  hideGroups?: boolean;
 }) {
   const shownGroups = displayGroupNames(groups, excluded);
   const phoneCount =
@@ -97,13 +100,19 @@ export function ContactDetailsCard({
               placeholder="Last"
               className="rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/60"
             />
-            <div className="flex min-w-0 flex-col gap-1.5">
-              {groupsEditor}
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <GroupNamesList names={shownGroups} />
+            {!hideGroups && (
+              <div className="flex min-w-0 flex-col gap-1.5">
+                {groupsEditor}
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <GroupNamesList names={shownGroups} />
+                </div>
               </div>
-            </div>
-            <div className="flex min-w-0 items-start gap-2">
+            )}
+            <div
+              className={`flex min-w-0 items-start gap-2 ${
+                hideGroups ? "col-span-2" : ""
+              }`}
+            >
               <div className="flex shrink-0 justify-center pt-[5px]">
                 <PhoneIcon className="size-5 shrink-0 text-muted" />
               </div>
@@ -122,20 +131,28 @@ export function ContactDetailsCard({
     </div>
   ) : (
     <div className={framed ? "mt-3" : undefined}>
-      <div className="grid grid-cols-2 items-start gap-4">
-        <div className="flex min-w-0 gap-3">
-          <div className={ICON_COL}>
-            <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] leading-4 tracking-wide text-muted">
-              Groups
+      <div
+        className={
+          hideGroups
+            ? "flex min-w-0 gap-3"
+            : "grid grid-cols-2 items-start gap-4"
+        }
+      >
+        {!hideGroups && (
+          <div className="flex min-w-0 gap-3">
+            <div className={ICON_COL}>
+              <PeopleGroupIcon className="size-5 shrink-0 text-muted" />
             </div>
-            <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
-              <GroupNamesList names={shownGroups} />
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] leading-4 tracking-wide text-muted">
+                Groups
+              </div>
+              <div className="mt-0.5 flex min-h-5 min-w-0 flex-col gap-0.5">
+                <GroupNamesList names={shownGroups} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex min-w-0 gap-3">
           <div className={ICON_COL}>
