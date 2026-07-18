@@ -17,6 +17,7 @@ import {
 } from "./icons";
 import { PaneSearchField } from "./PaneSearchField";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
+import { useMessageBadgePrefs } from "./useMessageBadgePrefs";
 
 export function BrowseContactList({
   sectionLabel,
@@ -73,6 +74,11 @@ export function BrowseContactList({
   onNamePhoneClick: (id: number, e: MouseEvent | { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
   onContextMenu: (id: number, x: number, y: number) => void;
 }) {
+  const {
+    showMessageBadge,
+    showGroupMessageBadge,
+    showContactInitials,
+  } = useMessageBadgePrefs();
   const menuItems: ListHistoryMenuItem[] = [
     {
       key: "new-contact",
@@ -190,7 +196,7 @@ export function BrowseContactList({
                   onMouseDown={(e) => {
                     if (e.shiftKey) e.preventDefault();
                   }}
-                  className={`group relative flex w-full items-start gap-1.5 py-2 pr-3 pl-0 select-none outline-none focus:outline-none focus-visible:outline-none ${
+                  className={`group relative flex w-full items-start gap-1.5 py-3 pr-3 pl-0 select-none outline-none focus:outline-none focus-visible:outline-none ${
                     selectionActive ? "cursor-pointer" : ""
                   } ${
                     checked
@@ -221,29 +227,37 @@ export function BrowseContactList({
                       e.stopPropagation();
                       if (e.shiftKey) e.preventDefault();
                     }}
-                    className="flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-2 outline-none focus:outline-none focus-visible:outline-none"
+                    className="group/select flex w-10 shrink-0 cursor-pointer items-center justify-center self-stretch -my-3 outline-none focus:outline-none focus-visible:outline-none"
                   >
-                    <span
-                      aria-hidden
-                      className={`flex size-7 items-center justify-center rounded-full text-[11px] font-semibold text-white ${
-                        checked ? "hidden" : "group-hover:hidden"
-                      }`}
-                      style={{
-                        backgroundColor: contactAvatarColor({
-                          displayName: c.displayName,
-                          preferredHandle: c.preferredHandle,
-                          firstName: c.firstName,
-                          lastName: c.lastName,
-                        }),
-                      }}
-                    >
-                      {contactInitials(c)}
-                    </span>
+                    {showContactInitials ? (
+                      <span
+                        aria-hidden
+                        className={`flex size-7 items-center justify-center rounded-full text-[11px] font-semibold text-white ${
+                          checked
+                            ? "hidden"
+                            : selectionActive
+                              ? "group-hover:hidden"
+                              : "group-hover/select:hidden"
+                        }`}
+                        style={{
+                          backgroundColor: contactAvatarColor({
+                            displayName: c.displayName,
+                            preferredHandle: c.preferredHandle,
+                            firstName: c.firstName,
+                            lastName: c.lastName,
+                          }),
+                        }}
+                      >
+                        {contactInitials(c)}
+                      </span>
+                    ) : null}
                     <span
                       className={
-                        checked
+                        !showContactInitials || checked
                           ? "inline-flex"
-                          : "hidden group-hover:inline-flex"
+                          : selectionActive
+                            ? "hidden group-hover:inline-flex"
+                            : "hidden group-hover/select:inline-flex"
                       }
                     >
                       <input
@@ -285,9 +299,10 @@ export function BrowseContactList({
                           />
                         )}
                     </span>
-                    {(c.messageCount > 0 || c.groupMessageCount > 0) && (
-                      <span className="flex shrink-0 flex-col items-end self-stretch pt-0.5">
-                        {c.messageCount > 0 && (
+                    {((showMessageBadge && c.messageCount > 0) ||
+                      (showGroupMessageBadge && c.groupMessageCount > 0)) && (
+                      <span className="flex shrink-0 flex-col items-end justify-between gap-1.5 self-stretch">
+                        {showMessageBadge && c.messageCount > 0 && (
                           <span className="inline-flex items-center gap-1">
                             <CountBadge
                               count={c.messageCount}
@@ -296,8 +311,8 @@ export function BrowseContactList({
                             <MessageIcon className="size-3.5 shrink-0 text-muted opacity-80" />
                           </span>
                         )}
-                        {c.groupMessageCount > 0 && (
-                          <span className="mt-auto inline-flex items-center gap-1">
+                        {showGroupMessageBadge && c.groupMessageCount > 0 && (
+                          <span className="inline-flex items-center gap-1">
                             <CountBadge
                               count={c.groupMessageCount}
                               title="Group messages"

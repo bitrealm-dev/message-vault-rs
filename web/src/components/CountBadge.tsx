@@ -1,4 +1,4 @@
-/** Tall rounded count chip (contact / group list chrome). */
+/** Compact rounded count chip (contact / group list chrome). */
 export function CountBadge({
   count,
   title,
@@ -9,7 +9,7 @@ export function CountBadge({
   return (
     <span
       title={title}
-      className="inline-flex min-h-[1.375rem] min-w-[1.25rem] items-center justify-center rounded-md bg-elevated px-1.5 py-0.5 text-[12px] leading-none font-medium text-text tabular-nums"
+      className="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded px-1 text-[11px] leading-none font-medium text-text tabular-nums bg-elevated"
     >
       {count.toLocaleString()}
     </span>

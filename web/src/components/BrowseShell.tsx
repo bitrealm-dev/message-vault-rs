@@ -65,11 +65,20 @@ import { useDismissible } from "./useDismissible";
 import { usePersistedEnum } from "./usePersistedEnum";
 import { PaneSeparator } from "./PaneSeparator";
 import { usePanelLayoutStorage } from "./panelLayoutStorage";
-import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
+import { usePanelCollapse } from "./usePanelCollapse";
+import { Group, Panel, useDefaultLayout, usePanelRef } from "react-resizable-panels";
+
+const GROUPS_PANEL_COLLAPSED_KEY = "mv-groups-panel-collapsed";
 
 const SORT_MODE_KEY = "mv-contact-sort";
 const SORT_ORDER_KEY = "mv-contact-sort-order";
-const SORT_MODE_ALLOWED = ["first", "last", "messages", "phone"] as const;
+const SORT_MODE_ALLOWED = [
+  "first",
+  "last",
+  "messages",
+  "group-messages",
+  "phone",
+] as const;
 
 export function BrowseShell({
   paneStorageKey,
@@ -168,6 +177,16 @@ export function BrowseShell({
     panelIds: ["list", "groups", "thread"],
     storage,
   });
+  const listPanelRef = usePanelRef();
+  const groupsPanelRef = usePanelRef();
+  const {
+    onGroupsResize: onGroupsPanelResize,
+    onListResize: onListPanelResize,
+  } = usePanelCollapse(
+    groupsPanelRef,
+    listPanelRef,
+    GROUPS_PANEL_COLLAPSED_KEY,
+  );
   const [groupChatSortBy, setGroupChatSortBy] = usePersistedEnum(
     GROUP_CHAT_SORT_KEY,
     GROUP_CHAT_SORT_ALLOWED,
@@ -1375,9 +1394,12 @@ export function BrowseShell({
     >
       <Panel
         id="list"
+        panelRef={listPanelRef}
         defaultSize={240}
         minSize={100}
         maxSize={480}
+        groupResizeBehavior="preserve-pixel-size"
+        onResize={onListPanelResize}
         className="min-h-0"
       >
         <BrowseContactList
@@ -1434,10 +1456,14 @@ export function BrowseShell({
 
       <Panel
         id="groups"
+        panelRef={groupsPanelRef}
         defaultSize={360}
         minSize={180}
         maxSize={520}
-        className="min-h-0"
+        collapsible
+        collapsedSize={0}
+        onResize={onGroupsPanelResize}
+        className="min-h-0 overflow-hidden"
       >
         <BrowseGroupChatsPane
           items={collapsedGroupChats}

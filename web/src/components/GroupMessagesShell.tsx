@@ -20,7 +20,7 @@ import {
   type MouseEvent,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Group, Panel, useDefaultLayout } from "react-resizable-panels";
+import { Group, Panel, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { BrowseGroupChatsPane } from "./BrowseGroupChatsPane";
 import { BrowseThreadPane } from "./BrowseThreadPane";
 import {
@@ -31,6 +31,9 @@ import { MyContactPane } from "./MyContactPane";
 import { PaneSeparator } from "./PaneSeparator";
 import { ParticipantContactFormOverlay } from "./ParticipantContactFormOverlay";
 import { usePanelLayoutStorage } from "./panelLayoutStorage";
+import { usePanelCollapse } from "./usePanelCollapse";
+
+const GROUPS_PANEL_COLLAPSED_KEY = "mv-groups-panel-collapsed";
 import {
   type BrowseGroupChatSortBy,
   type SortOrder,
@@ -102,6 +105,16 @@ export function GroupMessagesShell({
     panelIds: ["list", "groups", "thread"],
     storage,
   });
+  const listPanelRef = usePanelRef();
+  const groupsPanelRef = usePanelRef();
+  const {
+    onGroupsResize: onGroupsPanelResize,
+    onListResize: onListPanelResize,
+  } = usePanelCollapse(
+    groupsPanelRef,
+    listPanelRef,
+    GROUPS_PANEL_COLLAPSED_KEY,
+  );
 
   const pendingScrollYearRef = useRef<number | null>(initialYear);
 
@@ -411,9 +424,12 @@ export function GroupMessagesShell({
       >
         <Panel
           id="list"
+          panelRef={listPanelRef}
           defaultSize={280}
           minSize={200}
           maxSize={420}
+          groupResizeBehavior="preserve-pixel-size"
+          onResize={onListPanelResize}
           className="min-h-0"
         >
           <MyContactPane owner={owner} />
@@ -423,10 +439,14 @@ export function GroupMessagesShell({
 
         <Panel
           id="groups"
+          panelRef={groupsPanelRef}
           defaultSize={360}
           minSize={180}
           maxSize={520}
-          className="min-h-0"
+          collapsible
+          collapsedSize={0}
+          onResize={onGroupsPanelResize}
+          className="min-h-0 overflow-hidden"
         >
           <BrowseGroupChatsPane
             items={collapsedGroupChats}

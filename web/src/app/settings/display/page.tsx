@@ -1,4 +1,5 @@
 import { DateTimeSettings } from "@/components/DateTimeSettings";
+import { MessageBadgeSettings } from "@/components/MessageBadgeSettings";
 import { StyleGuidePreview } from "@/components/StyleGuidePreview";
 import { ThemeSettings } from "@/components/ThemeSettings";
 
@@ -10,6 +11,9 @@ export default function SettingsDisplayPage() {
         Customize how Message Vault looks and feels.
       </p>
       <div className="mt-8">
+        <MessageBadgeSettings />
+      </div>
+      <div className="mt-10">
         <ThemeSettings />
       </div>
       <DateTimeSettings />

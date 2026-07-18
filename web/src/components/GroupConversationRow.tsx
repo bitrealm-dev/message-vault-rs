@@ -2,7 +2,7 @@
 
 import type { CollapsedGroupConversation } from "@/lib/groupChatList";
 import { CountBadge } from "./CountBadge";
-import { PeopleCountIcon, TrashIcon } from "./icons";
+import { MessageIcon, PeopleCountIcon, TrashIcon } from "./icons";
 import { useDateTimeFormat } from "./useDateTimeFormat";
 
 export const GROUP_NAME_SEP = "  ·  ";
@@ -108,7 +108,10 @@ export function GroupConversationRowBody({
           ) : null}
         </div>
         <div className="flex w-[4.5rem] shrink-0 flex-col items-end justify-between pt-0.5">
-          <CountBadge count={g.messageCount} title="Messages" />
+          <span className="inline-flex items-center gap-1">
+            <CountBadge count={g.messageCount} title="Messages" />
+            <MessageIcon className="size-3.5 shrink-0 text-muted opacity-80" />
+          </span>
           <span className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
             <PeopleCountIcon className="size-3.5 opacity-80" />
             {g.participantCount.toLocaleString()}
@@ -148,7 +151,10 @@ export function GroupConversationRowBody({
         </span>
       </span>
       <span className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch py-0.5 text-[11px] text-muted">
-        <CountBadge count={g.messageCount} title="Messages" />
+        <span className="inline-flex items-center gap-1">
+          <CountBadge count={g.messageCount} title="Messages" />
+          <MessageIcon className="size-3.5 shrink-0 text-muted opacity-80" />
+        </span>
         <span className="inline-flex items-center gap-0.5 tabular-nums">
           <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
           {g.participantCount.toLocaleString()}

@@ -4,7 +4,12 @@ import { useRef, useState } from "react";
 import { IconHoverTarget } from "./IconHoverLabel";
 import { useDismissible } from "./useDismissible";
 
-export type SortMode = "first" | "last" | "messages" | "phone";
+export type SortMode =
+  | "first"
+  | "last"
+  | "messages"
+  | "group-messages"
+  | "phone";
 export type SortOrder = "asc" | "desc";
 
 type SortField<T extends string> = { id: T; label: string };
@@ -128,7 +133,8 @@ const CONTACT_SORT_FIELDS: SortField<SortMode>[] = [
   { id: "first", label: "First Name" },
   { id: "last", label: "Last Name" },
   { id: "phone", label: "Phone number" },
-  { id: "messages", label: "Message Count" },
+  { id: "messages", label: "1:1 Messages" },
+  { id: "group-messages", label: "Group Messages" },
 ];
 
 export function SortByMenu({

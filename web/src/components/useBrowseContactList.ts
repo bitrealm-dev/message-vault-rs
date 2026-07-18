@@ -59,6 +59,17 @@ export function useBrowseContactListBase(options: {
               sensitivity: "base",
             });
         }
+      } else if (sort === "group-messages") {
+        cmp = a.groupMessageCount - b.groupMessageCount;
+        if (cmp === 0) {
+          cmp =
+            a.sortLast.localeCompare(b.sortLast, undefined, {
+              sensitivity: "base",
+            }) ||
+            a.sortFirst.localeCompare(b.sortFirst, undefined, {
+              sensitivity: "base",
+            });
+        }
       } else if (sort === "phone") {
         const aHandle = a.preferredHandle ?? "";
         const bHandle = b.preferredHandle ?? "";
@@ -151,7 +162,12 @@ export function useBrowseContactListView(options: {
 
   const grouped = useMemo(() => {
     // Flat list while searching so pinned checked contacts stay at the top.
-    if (sort === "messages" || sort === "phone" || query.trim()) {
+    if (
+      sort === "messages" ||
+      sort === "group-messages" ||
+      sort === "phone" ||
+      query.trim()
+    ) {
       return [["", sorted]] as [string, ContactListItem[]][];
     }
     const map = new Map<string, ContactListItem[]>();

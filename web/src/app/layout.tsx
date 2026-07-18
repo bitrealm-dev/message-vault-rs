@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import Script from "next/script";
 import { SourceFilterProvider } from "@/components/SourceFilter";
 import { DateTimeFormatProvider } from "@/components/useDateTimeFormat";
+import { MessageBadgePrefsProvider } from "@/components/useMessageBadgePrefs";
 import { ThemeProvider } from "@/components/useTheme";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
@@ -35,7 +36,9 @@ export default function RootLayout({
         </Script>
         <ThemeProvider>
           <DateTimeFormatProvider>
-            <SourceFilterProvider>{children}</SourceFilterProvider>
+            <MessageBadgePrefsProvider>
+              <SourceFilterProvider>{children}</SourceFilterProvider>
+            </MessageBadgePrefsProvider>
           </DateTimeFormatProvider>
         </ThemeProvider>
       </body>
