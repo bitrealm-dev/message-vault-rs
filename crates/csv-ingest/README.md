@@ -1,43 +1,53 @@
 # csv-ingest
 
-Convert per-conversation **CSV** (from workspace exporters) into **vault NDJSON** using a per-source mapping file.
+Convert per-conversation **CSV** into **vault NDJSON** using Python converters. Rust provides the CLI and a thin dispatcher that shells out to `python3`.
 
 Ingest contract: [`../message-json/docs/CSV_INGEST.md`](../message-json/docs/CSV_INGEST.md).
+
+## Why CSV exists
+
+CSV is the **human checkpoint**: open it in a spreadsheet, spot bad phones / wrong chats / junk rows, edit or re-export, then convert. That is why the pipeline is not backup → vault JSON in one opaque step.
+
+## What this tool does *not* do
+
+**No contact or phone-number lookup.** Resolving names → handles and normalizing phones happens when the CSV is produced (e.g. [message-exporters](https://github.com/bitrealm-dev/message-exporters)), or when the user edits the CSV. CSV → JSON only reshapes fields already on the sheet. Do not add VCF, contacts.csv, or fuzzy name matching here — that would hide problems the CSV stage is meant to surface.
 
 ## Usage
 
 ```bash
-# Explicit mapping
+# Detect source from CSV (export_source column or iMazing headers)
 cargo run -p csv-ingest -- \
-  --input ./staging/sms-backup-plus-csv \
-  --output ./staging/sms-backup-plus-csv \
-  --mapping crates/csv-ingest/mappings/sms-backup-plus.toml
+  --input ./staging/go-sms-pro \
+  --output ./staging/go-sms-pro
 
-# Or by source id / export_source column
+# Or pass --source-id explicitly
 cargo run -p csv-ingest -- \
-  --input crates/go-sms-pro-exporter-csv/samples \
-  --source-id go-sms-pro
+  --input crates/csv-ingest/samples/csv/imessage.csv \
+  --output /tmp/vault-out \
+  --source-id imessage
 ```
 
 Writes one `{stem}.json` NDJSON file per `{stem}.csv` (conversation header + message lines). Attachment paths in CSV are left as relative strings.
 
-## Mappings
+Requires **Python 3.9+** (`zoneinfo` for iMazing). No third-party packages.
 
-| File | Source |
-|------|--------|
-| [`mappings/imessage.toml`](mappings/imessage.toml) | `imessage-exporter-csv` (Rust mapper) |
-| [`mappings/imazing.toml`](mappings/imazing.toml) | iMazing Messages CSV (**Python** adapter) |
-| [`mappings/sms-backup-plus.toml`](mappings/sms-backup-plus.toml) | `sms-backup-plus-exporter-csv` (Rust mapper) |
-| [`mappings/sms-backup-restore.toml`](mappings/sms-backup-restore.toml) | `sms-backup-restore-exporter-csv` (Rust mapper) |
-| [`mappings/go-sms-pro.toml`](mappings/go-sms-pro.toml) | `go-sms-pro-exporter-csv` (Rust mapper) |
+## Converters
 
-Each mapping sets `schema = "vault"`. Simple sources use the Rust column mapper; sources that need computed fields set `backend = "python"` and a script under [`python/`](python/).
+| Source id | Script |
+|-----------|--------|
+| `go-sms-pro` | [`python/exporter_csv_to_vault.py`](python/exporter_csv_to_vault.py) |
+| `sms-backup-plus` | same |
+| `sms-backup-restore` | same |
+| `imessage` | same |
+| `imazing` | [`python/imazing_to_vault.py`](python/imazing_to_vault.py) |
+
+Shared helpers: [`python/vault_common.py`](python/vault_common.py).
 
 ## Samples
 
 - [`samples/csv/`](samples/csv/) — one CSV from each exporter (side-by-side column sets)
-- [`samples/vault/`](samples/vault/) — hand-written vault NDJSON per message shape, plus minimum-field tables
-- [`samples/converted/`](samples/converted/) — example output from converting an exporter CSV sample
+- [`samples/vault/`](samples/vault/) — hand-written vault NDJSON per message shape
+- [`samples/converted/`](samples/converted/) — example conversion output
 
 ## Future HTTP ingest
 

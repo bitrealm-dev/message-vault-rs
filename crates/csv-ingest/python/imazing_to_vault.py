@@ -8,15 +8,15 @@ Usage:
 Message Date has no offset. By default the script uses this computer's local
 timezone. Pass --timezone only if the phone lived in a different zone than this machine.
 
-Writes one {stem}.json NDJSON file per input CSV (conversation header + messages).
+Does not look up contacts (no VCF / contacts.csv). Chat ids and senders come
+from phones already present in the iMazing CSV (Sender ID / Chat Session).
+Name→number resolution belongs in a backup→CSV step that writes correct handles.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
-import json
 import re
 import sys
 from datetime import datetime, timezone
@@ -24,8 +24,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-SCHEMA = "vault"
-SCHEMA_VERSION = 1
+from vault_common import (
+    SCHEMA,
+    SCHEMA_VERSION,
+    collect_csvs,
+    stable_guid,
+    utc_now,
+    write_ndjson,
+)
 
 PHONE_RE = re.compile(r"^\+\d{7,15}$")
 PHONE_IN_TEXT_RE = re.compile(r"\+\d{7,15}")
@@ -35,27 +41,6 @@ REACTION_YOU_RE = re.compile(
 REACTION_HANDLE_RE = re.compile(
     r"(\+\d{7,15})\s+reacted with\s+(.+?)\s+on\s+(.+)$", re.IGNORECASE | re.DOTALL
 )
-
-
-def stable_guid(
-    chat_id: str,
-    timestamp: str,
-    is_from_me: bool,
-    text: str,
-    attachment_paths: list[str],
-) -> str:
-    h = hashlib.sha256()
-    h.update(chat_id.encode())
-    h.update(b"|")
-    h.update(timestamp.encode())
-    h.update(b"|")
-    h.update(b"1" if is_from_me else b"0")
-    h.update(b"|")
-    h.update(text.encode())
-    for p in attachment_paths:
-        h.update(b"|")
-        h.update(p.encode())
-    return h.hexdigest()
 
 
 def parse_local_time(raw: str, tz: ZoneInfo) -> tuple[str, str] | None:
@@ -108,15 +93,13 @@ def resolve_chat_identifier(
         if peer_handles:
             return ",".join(peer_handles)
         return chat_session.strip()
-    if len(peer_handles) == 1:
-        return peer_handles[0]
     if peer_handles:
         return peer_handles[0]
     return chat_session.strip()
 
 
 def build_participants(
-    chat_session: str, rows: list[dict[str, str]], peer_handles: list[str]
+    rows: list[dict[str, str]], peer_handles: list[str], chat_session: str
 ) -> list[dict[str, Any]]:
     name_by_handle: dict[str, str] = {}
     for row in rows:
@@ -124,18 +107,6 @@ def build_participants(
         name = (row.get("Sender Name") or "").strip()
         if sid and name and sid not in name_by_handle:
             name_by_handle[sid] = name
-
-    # Attach session name tokens to matching sender names when possible.
-    session_names = [
-        p for p in split_session_parts(chat_session) if not PHONE_RE.match(p)
-    ]
-    for name in session_names:
-        for handle, hint in list(name_by_handle.items()):
-            if hint == name:
-                break
-        else:
-            # Name with no handle yet — skip (no phone to store).
-            pass
 
     participants: list[dict[str, Any]] = []
     for handle in peer_handles:
@@ -145,7 +116,6 @@ def build_participants(
         participants.append(entry)
 
     if not participants and chat_session.strip():
-        # Fallback: display-only session title as handle.
         participants.append({"handle": chat_session.strip()})
     return participants
 
@@ -160,7 +130,7 @@ def parse_reactions(raw: str) -> list[dict[str, Any]]:
             continue
         m = REACTION_HANDLE_RE.match(line)
         if m:
-            handle, emoji, _when = m.group(1), m.group(2).strip(), m.group(3)
+            handle, emoji = m.group(1), m.group(2).strip()
             tapbacks.append(
                 {
                     "part_index": 0,
@@ -173,12 +143,11 @@ def parse_reactions(raw: str) -> list[dict[str, Any]]:
             continue
         m = REACTION_YOU_RE.match(line)
         if m:
-            emoji = m.group(1).strip()
             tapbacks.append(
                 {
                     "part_index": 0,
                     "kind": "emoji",
-                    "emoji": emoji,
+                    "emoji": m.group(1).strip(),
                     "is_from_me": True,
                 }
             )
@@ -197,14 +166,6 @@ def attachment_records(row: dict[str, str]) -> list[dict[str, Any]]:
     return [att]
 
 
-def row_has_body(row: dict[str, str], attachments: list[dict[str, Any]]) -> bool:
-    if (row.get("Text") or "").strip():
-        return True
-    if attachments:
-        return True
-    return False
-
-
 def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[dict]]:
     with path.open(newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
@@ -216,9 +177,8 @@ def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[
     peer_handles = collect_peer_handles(rows)
     group = is_group(chat_session, peer_handles)
     chat_id = resolve_chat_identifier(chat_session, peer_handles, group)
-    participants = build_participants(chat_session, rows, peer_handles)
+    participants = build_participants(rows, peer_handles, chat_session)
 
-    # Prefer first non-empty Service; default iMessage/SMS later per row.
     default_service = "SMS"
     for row in rows:
         svc = (row.get("Service") or "").strip()
@@ -244,7 +204,8 @@ def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[
         msg_type = (row.get("Type") or "").strip()
         is_from_me = msg_type.lower() == "outgoing"
         attachments = attachment_records(row)
-        if not row_has_body(row, attachments):
+        text = (row.get("Text") or "").strip()
+        if not text and not attachments:
             continue
 
         parsed = parse_local_time(row.get("Message Date") or "", tz)
@@ -252,7 +213,6 @@ def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[
             continue
         ts_local, ts_utc = parsed
 
-        text = (row.get("Text") or "").strip()
         sender = (row.get("Sender ID") or "").strip()
         service = (row.get("Service") or "").strip() or default_service
         subject = (row.get("Subject") or "").strip()
@@ -285,7 +245,6 @@ def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[
             msg["tapbacks"] = tapbacks
         if replying:
             msg["is_reply"] = True
-            # No originator guid in iMazing CSV; keep prose out of vault fields for now.
 
         messages.append(msg)
 
@@ -294,19 +253,7 @@ def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[
     return header, messages
 
 
-def collect_csvs(input_path: Path) -> list[Path]:
-    if input_path.is_file():
-        if input_path.suffix.lower() != ".csv":
-            raise ValueError(f"not a .csv file: {input_path}")
-        return [input_path]
-    if not input_path.is_dir():
-        raise ValueError(f"input does not exist: {input_path}")
-    return sorted(input_path.rglob("*.csv"))
-
-
 def default_local_timezone() -> tuple[Any, str]:
-    """Timezone of this machine (what most home users want). Prefers an IANA name for DST."""
-    # Linux: /etc/localtime → .../zoneinfo/America/New_York
     try:
         link = Path("/etc/localtime").resolve()
         parts = link.parts
@@ -317,7 +264,6 @@ def default_local_timezone() -> tuple[Any, str]:
                 return ZoneInfo(name), name
     except Exception:
         pass
-    # /etc/timezone (Debian/Ubuntu)
     try:
         name = Path("/etc/timezone").read_text(encoding="utf-8").strip()
         if name:
@@ -345,12 +291,22 @@ def resolve_timezone(name: str | None) -> tuple[Any, str]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--input", required=True, type=Path, help="CSV file or directory")
-    p.add_argument("--output", required=True, type=Path, help="Output directory for .json")
+    p.add_argument("--input", required=True, type=Path)
+    p.add_argument("--output", required=True, type=Path)
     p.add_argument(
         "--timezone",
         default=None,
         help="Override timezone for Message Date (default: this computer's local zone)",
+    )
+    p.add_argument(
+        "--source-id",
+        default=None,
+        help="Ignored (accepted for a uniform Rust dispatcher CLI)",
+    )
+    p.add_argument(
+        "--default-service",
+        default=None,
+        help="Ignored (accepted for a uniform Rust dispatcher CLI)",
     )
     args = p.parse_args(argv)
 
@@ -360,13 +316,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: invalid --timezone {args.timezone!r}: {e}", file=sys.stderr)
         return 2
 
-    csvs = collect_csvs(args.input)
+    try:
+        csvs = collect_csvs(args.input, recursive=True)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     if not csvs:
         print(f"error: no .csv under {args.input}", file=sys.stderr)
         return 2
 
     args.output.mkdir(parents=True, exist_ok=True)
-    exported_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    exported_at = utc_now()
     print(f"using timezone={tz_label}", file=sys.stderr)
 
     conversations = 0
@@ -377,12 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             header, msgs = convert_csv(csv_path, tz, exported_at)
             out_path = args.output / f"{csv_path.stem}.json"
-            with out_path.open("w", encoding="utf-8") as out:
-                out.write(json.dumps(header, ensure_ascii=False, separators=(",", ":")))
-                out.write("\n")
-                for msg in msgs:
-                    out.write(json.dumps(msg, ensure_ascii=False, separators=(",", ":")))
-                    out.write("\n")
+            write_ndjson(out_path, header, msgs)
             conversations += 1
             messages += len(msgs)
             print(f"wrote {out_path} ({len(msgs)} messages)")

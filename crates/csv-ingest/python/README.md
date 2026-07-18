@@ -1,25 +1,32 @@
 # Python CSV → vault converters
 
-Adapters that need real transforms (timezones, chat ids, reaction prose) live here.
-Rust `csv-ingest` shells out to `python3` when a mapping sets `backend = "python"`.
+All CSV → vault NDJSON conversion lives here. Rust `csv-ingest` shells out to `python3`.
 
-## iMazing
+**CSV is for humans.** Open it, check phones/chats, edit or re-export — then convert. These scripts only reshape columns into vault NDJSON; they do not look up contacts or “fix” handles.
 
-[`imazing_to_vault.py`](imazing_to_vault.py) — iMazing Messages CSV → vault NDJSON.
+| Script | Sources |
+|--------|---------|
+| [`exporter_csv_to_vault.py`](exporter_csv_to_vault.py) | go-sms-pro, sms-backup-plus, sms-backup-restore, imessage |
+| [`imazing_to_vault.py`](imazing_to_vault.py) | iMazing Messages CSV |
+| [`vault_common.py`](vault_common.py) | Shared helpers (GUID, NDJSON write, …) |
 
 ```bash
-# Direct (uses this computer's local timezone for Message Date)
+# Exporter-style CSV (near-vault columns)
+python3 crates/csv-ingest/python/exporter_csv_to_vault.py \
+  --input crates/csv-ingest/samples/csv/go-sms-pro.csv \
+  --output /tmp/out \
+  --source-id go-sms-pro
+
+# iMazing (local timezone for Message Date)
 python3 crates/csv-ingest/python/imazing_to_vault.py \
   --input crates/csv-ingest/samples/csv/imazing.csv \
   --output /tmp/imazing-out
 
-# Via csv-ingest (reads mappings/imazing.toml)
+# Via Rust dispatcher
 cargo run -p csv-ingest -- \
   --input crates/csv-ingest/samples/csv/imazing.csv \
   --output /tmp/imazing-out \
   --source-id imazing
 ```
-
-Timezone is usually automatic. Set `timezone = "…"` in `imazing.toml` or pass `--timezone` only if the phone lived in a different zone than this machine.
 
 Requires Python 3.9+ (`zoneinfo`). No third-party packages.

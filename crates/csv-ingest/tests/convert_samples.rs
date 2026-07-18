@@ -1,23 +1,16 @@
-use csv_ingest::{convert_directory, Mapping};
+use csv_ingest::convert_directory;
 use message_json::vault::ExportRecord;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-fn mapping(name: &str) -> Mapping {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("mappings")
-        .join(format!("{name}.toml"));
-    Mapping::load(&path).unwrap_or_else(|e| panic!("load {name}: {e:#}"))
-}
-
-fn convert_sample_csv(sample_name: &str, mapping_name: &str) -> (u64, PathBuf) {
+fn convert_sample_csv(sample_name: &str, source_id: &str) -> (u64, PathBuf) {
     let input = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("samples/csv")
         .join(sample_name);
     assert!(input.is_file(), "missing sample {}", input.display());
     let out = tempfile::tempdir().unwrap();
-    let report = convert_directory(&input, out.path(), &mapping(mapping_name)).unwrap();
+    let report = convert_directory(&input, out.path(), source_id).unwrap();
     assert!(report.conversations >= 1);
     assert!(report.messages >= 1);
     (report.messages, out.keep())
@@ -93,14 +86,13 @@ fn converts_sms_backup_restore_sample() {
 fn converts_imazing_sample() {
     let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("samples/csv/imazing.csv");
     let out = tempfile::tempdir().unwrap();
-    let report = convert_directory(&input, out.path(), &mapping("imazing")).unwrap();
+    let report = convert_directory(&input, out.path(), "imazing").unwrap();
     assert!(report.messages >= 3);
     let records = read_first_json(out.path());
     match &records[0] {
         ExportRecord::Conversation(c) => {
             assert_eq!(c.schema, "vault");
             assert_eq!(c.conversation_type, "individual");
-            // Peer phone from Sender ID, not the Chat Session display name.
             assert_eq!(c.chat_identifier, "+14072438732");
         }
         _ => panic!("expected conversation"),
@@ -125,14 +117,13 @@ fn converts_imazing_sample() {
 fn converts_imazing_group_sample() {
     let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("samples/csv/imazing-group.csv");
     let out = tempfile::tempdir().unwrap();
-    let report = convert_directory(&input, out.path(), &mapping("imazing")).unwrap();
+    let report = convert_directory(&input, out.path(), "imazing").unwrap();
     assert!(report.messages >= 1);
     let records = read_first_json(out.path());
     match &records[0] {
         ExportRecord::Conversation(c) => {
             assert_eq!(c.conversation_type, "group");
             assert!(c.group_title.as_deref().unwrap_or("").contains("Karen"));
-            // Sorted peer phones.
             assert_eq!(
                 c.chat_identifier,
                 "+18635143256,+19546008720,+19546550193"
@@ -158,7 +149,6 @@ fn converts_imessage_sample() {
     });
     assert!(tapback_msg.is_some(), "expected a message with tapbacks");
 
-    // Empty parts/edits from sample CSV must not appear on the wire.
     let file = fs::read_dir(&out)
         .unwrap()
         .filter_map(|e| e.ok())
@@ -181,9 +171,10 @@ fn rejects_csv_missing_timestamp() {
     )
     .unwrap();
     let out = tempfile::tempdir().unwrap();
-    let err = convert_directory(dir.path(), out.path(), &mapping("go-sms-pro")).unwrap_err();
+    let err = convert_directory(dir.path(), out.path(), "go-sms-pro").unwrap_err();
     assert!(
-        err.to_string().contains("no conversations"),
+        err.to_string().contains("no conversations")
+            || err.to_string().contains("python converter failed"),
         "unexpected: {err:#}"
     );
 }

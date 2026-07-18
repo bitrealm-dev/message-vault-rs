@@ -1,22 +1,20 @@
 # Exporter CSV samples
 
-One per-conversation CSV from each workspace CSV exporter (copied for side-by-side comparison). Column sets differ by source; convert with the matching mapping under [`../../mappings/`](../../mappings/).
+One per-conversation CSV from each workspace CSV exporter (copied for side-by-side comparison). Column sets differ by source; convert with the matching Python converter under [`../../python/`](../../python/).
 
-| File | Exporter / source | Mapping |
-|------|-------------------|---------|
-| [`go-sms-pro.csv`](go-sms-pro.csv) | `go-sms-pro-exporter-csv` | `go-sms-pro.toml` |
-| [`imessage.csv`](imessage.csv) | `imessage-exporter-csv` | `imessage.toml` |
-| [`imazing.csv`](imazing.csv) | iMazing 1:1 Messages CSV | `imazing.toml` (Python) |
-| [`imazing-group.csv`](imazing-group.csv) | iMazing group Messages CSV | `imazing.toml` (Python) |
-| [`sms-backup-plus.csv`](sms-backup-plus.csv) | `sms-backup-plus-exporter-csv` | `sms-backup-plus.toml` |
-| [`sms-backup-restore.csv`](sms-backup-restore.csv) | `sms-backup-restore-exporter-csv` | `sms-backup-restore.toml` |
+| File | Exporter / source | Converter |
+|------|-------------------|-----------|
+| [`go-sms-pro.csv`](go-sms-pro.csv) | `go-sms-pro-exporter-csv` | `exporter_csv_to_vault.py` |
+| [`imessage.csv`](imessage.csv) | `imessage-exporter-csv` | `exporter_csv_to_vault.py` |
+| [`imazing.csv`](imazing.csv) | iMazing 1:1 Messages CSV | `imazing_to_vault.py` |
+| [`imazing-group.csv`](imazing-group.csv) | iMazing group Messages CSV | `imazing_to_vault.py` |
+| [`sms-backup-plus.csv`](sms-backup-plus.csv) | `sms-backup-plus-exporter-csv` | `exporter_csv_to_vault.py` |
+| [`sms-backup-restore.csv`](sms-backup-restore.csv) | `sms-backup-restore-exporter-csv` | `exporter_csv_to_vault.py` |
 
 ```bash
 # Example: convert the GO SMS Pro sample
 cargo run -p csv-ingest -- \
   --input crates/csv-ingest/samples/csv/go-sms-pro.csv \
   --output /tmp/vault-out \
-  --mapping crates/csv-ingest/mappings/go-sms-pro.toml
+  --source-id go-sms-pro
 ```
-
-Canonical copies also live under each exporter’s own `samples/` directory.

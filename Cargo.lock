@@ -237,16 +237,11 @@ name = "csv-ingest"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "csv",
- "hex",
  "message_json",
- "serde",
  "serde_json",
- "sha2",
  "tempfile",
- "toml",
 ]
 
 [[package]]

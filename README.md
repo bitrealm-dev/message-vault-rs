@@ -7,7 +7,7 @@ Import message archives into SQLite and browse them in a local web UI.
 ```text
 crates/
   message-json/                 # vault (+ legacy sms/imessage) NDJSON schemas
-  csv-ingest/                   # CSV + mapping → vault NDJSON (Rust + Python adapters)
+  csv-ingest/                   # CSV → vault NDJSON (Python converters, Rust CLI)
   demo-seed/                    # demo data generator
 config/                         # local machine config (examples committed)
 sources/                        # optional placeholder for raw backups (gitignored)
@@ -28,12 +28,13 @@ cargo build --workspace --release
 ### Pipeline
 
 ```text
-message-exporters   backup  →  staging/<source>/  (CSV or NDJSON)
-message-vault-rs    staging →  optional csv-ingest →  SQLite + UI
+message-exporters   backup  →  staging CSV  (lookup + human-visible / editable)
+message-vault-rs    staging →  optional csv-ingest (shape only)  →  SQLite + UI
 ```
 
 - **Vault NDJSON** (`message_json::vault`) — standard ingest shape; see [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md)
 - Vault **never** runs exporters. Fill each source’s `export_dir` first, then `ingest`.
+- **CSV is the checkpoint** — inspect and correct bad handles/rows (or re-export) before csv-ingest. Converters do not look up contacts; the vault imports what the CSV says.
 
 ## Multi-source layout
 

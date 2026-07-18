@@ -105,30 +105,24 @@ pub fn ingest(cfg: &Config, opts: &IngestOptions) -> Result<IngestStats> {
     })
 }
 
-/// Convert staging CSVs to vault NDJSON when a mapping exists for `source_id`.
+/// Convert staging CSVs to vault NDJSON when a Python converter exists for `source_id`.
 fn csv_to_ndjson_if_mapped(staging: &Path, source_id: &str) -> Result<()> {
-    let mapping_path = match csv_ingest::resolve_mapping_path(None, Some(source_id)) {
-        Ok(p) => p,
-        Err(_) => {
-            if staging_has_ext(staging, "json")? {
-                println!(
-                    "  csv→json: skipped (no mapping for '{source_id}'; .json already present)"
-                );
-                return Ok(());
-            }
-            bail!(
-                "staging has .csv but no csv-ingest mapping for '{source_id}' \
-                 and no .json to import"
+    if !csv_ingest::has_converter(source_id) {
+        if staging_has_ext(staging, "json")? {
+            println!(
+                "  csv→json: skipped (no converter for '{source_id}'; .json already present)"
             );
+            return Ok(());
         }
-    };
-    let mapping = csv_ingest::Mapping::load(&mapping_path)?;
-    let report = csv_ingest::convert_directory(staging, staging, &mapping)?;
+        bail!(
+            "staging has .csv but no csv-ingest converter for '{source_id}' \
+             and no .json to import"
+        );
+    }
+    let report = csv_ingest::convert_directory(staging, staging, source_id)?;
     println!(
-        "  csv→json: conversations={} messages={} (mapping {})",
-        report.conversations,
-        report.messages,
-        mapping_path.display()
+        "  csv→json: conversations={} messages={} (source {source_id})",
+        report.conversations, report.messages
     );
     if report.rows_skipped > 0 {
         println!("  csv→json: rows skipped={}", report.rows_skipped);
