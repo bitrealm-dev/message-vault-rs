@@ -214,7 +214,7 @@ run_go_sms_pro() {
   echo "==> go-sms-pro"
   rotate_staging "${out}"
   echo "  exporting → ${out}"
-  (cd "${REPO_ROOT}" && cargo run --release -p go-sms-pro-exporter -- \
+  (cd "${REPO_ROOT}" && cargo run --release -p go-sms-pro-exporter-csv -- \
     --input "${input}" \
     --output "${out}" \
     --owner-phone "${OWNER_PHONE}")

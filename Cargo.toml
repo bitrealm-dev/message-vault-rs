@@ -4,7 +4,7 @@ members = [
     ".",
     "crates/demo-seed",
     "crates/message-json",
-  "crates/go-sms-pro-exporter",
+  "crates/go-sms-pro-exporter-csv",
   "crates/sms-backup-restore-exporter",
   "crates/sms-backup-plus-exporter",
   "crates/imessage-exporter",
@@ -23,7 +23,7 @@ anyhow = "1.0.103"
 chrono = "0.4.44"
 clap = { version = "4.6.1", features = ["derive"] }
 csv = "1.4.0"
-go-sms-pro-exporter = { path = "crates/go-sms-pro-exporter" }
+go-sms-pro-exporter-csv = { path = "crates/go-sms-pro-exporter-csv" }
 message_json = { workspace = true }
 rusqlite = { version = "0.40.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }

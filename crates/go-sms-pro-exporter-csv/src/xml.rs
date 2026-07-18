@@ -4,24 +4,14 @@ use crate::emoji::decode_gosms_emojis;
 use crate::phone::{parse_google_voice_voicemail_caller, sanitize_number};
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename = "GoSms")]
 struct GoSmsFile {
     #[serde(rename = "SMS", default)]
-    sms: Vec<SmsElement>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SmsElement {
-    address: Option<String>,
-    #[serde(rename = "contactName")]
-    contact_name: Option<String>,
-    date: Option<String>,
-    #[serde(rename = "type")]
-    msg_type: Option<String>,
-    body: Option<String>,
+    sms: Vec<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +24,14 @@ pub struct XmlMessage {
     /// Sender digits when not from me.
     pub sender_digits: Option<String>,
     pub text: String,
+    /// Raw Android `<type>` (`1` received, `2` sent).
+    pub android_type: String,
+    /// Raw `<date>` milliseconds string.
+    pub date_ms: String,
+    /// Raw `<contactName>`.
+    pub contact_name: String,
+    /// Every `<SMS>` child element name → text.
+    pub xml_fields: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Default)]
@@ -56,12 +54,16 @@ pub fn parse_xml_str(text: &str, owner_digits: &str) -> Result<(Vec<XmlMessage>,
     let mut stats = XmlParseStats::default();
     let mut out = Vec::new();
 
-    for sms in file.sms {
+    for fields in file.sms {
         stats.messages += 1;
-        let addr = sanitize_number(sms.address.as_deref().unwrap_or(""));
-        let contact = sms.contact_name.unwrap_or_default();
-        let body = decode_gosms_emojis(sms.body.as_deref().unwrap_or(""));
-        let date_ms = sms.date.as_deref().unwrap_or("0");
+        let addr = sanitize_number(fields.get("address").map(String::as_str).unwrap_or(""));
+        let contact = fields
+            .get("contactName")
+            .cloned()
+            .unwrap_or_default();
+        let body_raw = fields.get("body").map(String::as_str).unwrap_or("");
+        let body = decode_gosms_emojis(body_raw);
+        let date_ms = fields.get("date").cloned().unwrap_or_else(|| "0".into());
         let timestamp_secs = match date_ms.parse::<f64>() {
             Ok(ms) => ms / 1000.0,
             Err(_) => {
@@ -69,9 +71,12 @@ pub fn parse_xml_str(text: &str, owner_digits: &str) -> Result<(Vec<XmlMessage>,
                 continue;
             }
         };
-        let typ = sms.msg_type.as_deref().unwrap_or("").trim();
+        let typ = fields
+            .get("type")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
 
-        let msg = match typ {
+        let msg = match typ.as_str() {
             "2" => {
                 stats.sent += 1;
                 XmlMessage {
@@ -81,6 +86,10 @@ pub fn parse_xml_str(text: &str, owner_digits: &str) -> Result<(Vec<XmlMessage>,
                     is_from_me: true,
                     sender_digits: None,
                     text: body,
+                    android_type: typ.clone(),
+                    date_ms: date_ms.clone(),
+                    contact_name: contact.clone(),
+                    xml_fields: fields,
                 }
             }
             "1" => {
@@ -93,12 +102,16 @@ pub fn parse_xml_str(text: &str, owner_digits: &str) -> Result<(Vec<XmlMessage>,
                         is_from_me: false,
                         sender_digits: Some(caller),
                         text: body,
+                        android_type: typ.clone(),
+                        date_ms: date_ms.clone(),
+                        contact_name: contact.clone(),
+                        xml_fields: fields,
                     }
                 } else {
                     let hint = if contact.is_empty() {
                         None
                     } else {
-                        Some(contact)
+                        Some(contact.clone())
                     };
                     XmlMessage {
                         other_digits: addr.clone(),
@@ -107,6 +120,10 @@ pub fn parse_xml_str(text: &str, owner_digits: &str) -> Result<(Vec<XmlMessage>,
                         is_from_me: false,
                         sender_digits: Some(addr),
                         text: body,
+                        android_type: typ.clone(),
+                        date_ms: date_ms.clone(),
+                        contact_name: contact,
+                        xml_fields: fields,
                     }
                 }
             }
@@ -170,5 +187,31 @@ mod tests {
         assert_eq!(msgs[0].text, "hello 😂");
         assert_eq!(msgs[0].other_digits, "4075551234");
         assert!(msgs[1].is_from_me);
+    }
+
+    #[test]
+    fn preserves_extra_xml_fields() {
+        let xml = r#"<?xml version="1.0"?>
+<GoSms>
+  <SMS>
+    <address>+14075551234</address>
+    <contactName>Alice</contactName>
+    <date>1400773261000</date>
+    <type>1</type>
+    <body>hello</body>
+    <read>1</read>
+    <status>-1</status>
+  </SMS>
+</GoSms>"#;
+        let (msgs, _) = parse_xml_str(xml, "5555550100").unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].xml_fields.get("read").map(String::as_str), Some("1"));
+        assert_eq!(
+            msgs[0].xml_fields.get("status").map(String::as_str),
+            Some("-1")
+        );
+        assert_eq!(msgs[0].android_type, "1");
+        assert_eq!(msgs[0].date_ms, "1400773261000");
+        assert_eq!(msgs[0].contact_name, "Alice");
     }
 }

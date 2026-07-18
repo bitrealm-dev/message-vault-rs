@@ -1,5 +1,5 @@
 //! Common SMS/MMS NDJSON schema for Android backup exporters
-//! (GO SMS Pro, SMS Backup & Restore, SMS Backup+).
+//! (SMS Backup & Restore, SMS Backup+).
 //!
 //! Field names match [`crate::imessage`] where overlapping; this module only
 //! includes the subset needed to fully represent those exports.

@@ -2,17 +2,17 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use go_sms_pro_exporter::convert_export;
+use go_sms_pro_exporter_csv::convert_export;
 
 #[derive(Parser, Debug)]
-#[command(name = "go-sms-pro-exporter")]
-#[command(about = "Convert GO SMS Pro XML+PDU backups to SMS NDJSON (message_json::sms)")]
+#[command(name = "go-sms-pro-exporter-csv")]
+#[command(about = "Convert GO SMS Pro XML+PDU backups to per-conversation CSV")]
 struct Cli {
     /// Directory containing gosms_sys*.xml and I_*.pdu files
     #[arg(long)]
     input: PathBuf,
 
-    /// Output directory for NDJSON + attachments/
+    /// Output directory for CSV + attachments/
     #[arg(long)]
     output: PathBuf,
 

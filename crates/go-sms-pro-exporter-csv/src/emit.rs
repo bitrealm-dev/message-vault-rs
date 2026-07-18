@@ -1,20 +1,56 @@
-//! Convert GO SMS Pro export → SMS NDJSON (`message_json::sms`).
+//! Convert GO SMS Pro export → per-conversation CSV.
 
-use crate::phone::{owner_digits, sanitize_number, to_e164};
 use crate::owner_set::OwnerPhoneSet;
 use crate::pdu::{parse_pdu_file, ParsedPdu};
+use crate::phone::{sanitize_number, to_e164};
 use crate::xml::{parse_xml_file, XmlMessage};
 use anyhow::{bail, Context, Result};
 use chrono::{Local, TimeZone, Utc};
-use message_json::sms::{
-    stable_guid, AttachmentRecord, ConversationRecord, ExportRecord, MessageRecord,
-    ParticipantRecord,
-};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
-use std::io::Write;
 use std::path::{Path, PathBuf};
+
+const HEADERS: &[&str] = &[
+    // Shared with imessage-exporter-csv
+    "chat_identifier",
+    "conversation_type",
+    "group_title",
+    "participants_json",
+    "guid",
+    "timestamp",
+    "timestamp_utc",
+    "timestamp_display",
+    "read_receipt",
+    "direction",
+    "service",
+    "sender_handle",
+    "sender_display_name",
+    "subject",
+    "text",
+    "is_deleted",
+    "send_effect",
+    "shared_location",
+    "is_announcement",
+    "announcement",
+    "is_reply",
+    "thread_originator_guid",
+    "thread_originator_part",
+    "num_replies",
+    "parts_json",
+    "edits_json",
+    "attachments_json",
+    "tapbacks_json",
+    "app_json",
+    // SMS-Pro-only
+    "source_kind",
+    "android_type",
+    "date_ms",
+    "contact_name",
+    "pdu_filename",
+    "xml_fields_json",
+];
 
 #[derive(Debug, Default)]
 pub struct ExportReport {
@@ -46,10 +82,17 @@ struct PendingMessage {
     sort_key: f64,
     is_from_me: bool,
     sender_digits: Option<String>,
+    sender_display_name: Option<String>,
     text: String,
     attachments: Vec<PendingAttachment>,
     /// For within-thread dedupe.
     dedupe_key: String,
+    source_kind: &'static str,
+    android_type: String,
+    date_ms: String,
+    contact_name: String,
+    pdu_filename: String,
+    xml_fields: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Default)]
@@ -59,6 +102,22 @@ struct PendingConversation {
     /// digits → optional name hint
     participants: BTreeMap<String, Option<String>>,
     messages: Vec<PendingMessage>,
+}
+
+#[derive(Debug, Serialize)]
+struct ParticipantCell {
+    handle: String,
+    display_name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AttachmentCell {
+    path: Option<String>,
+    original_name: Option<String>,
+    mime_type: Option<String>,
+    is_sticker: bool,
+    transcription: Option<String>,
+    sticker_effect: Option<String>,
 }
 
 fn mime_for_ext(ext: &str) -> Option<&'static str> {
@@ -74,16 +133,52 @@ fn mime_for_ext(ext: &str) -> Option<&'static str> {
     }
 }
 
-fn format_local_ts(secs: i64) -> (String, String) {
+fn format_local_ts(secs: i64) -> (String, String, String) {
     let local = Local
         .timestamp_opt(secs, 0)
         .single()
-        .unwrap_or_else(|| Local.from_utc_datetime(&Utc.timestamp_opt(secs, 0).single().unwrap().naive_utc()));
+        .unwrap_or_else(|| {
+            Local.from_utc_datetime(
+                &Utc.timestamp_opt(secs, 0)
+                    .single()
+                    .unwrap()
+                    .naive_utc(),
+            )
+        });
     let utc = local.with_timezone(&Utc);
+    let display = local.format("%b %e, %Y %I:%M:%S %p").to_string();
     (
         local.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         utc.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        display,
     )
+}
+
+/// Deterministic message GUID from chat + timestamp + direction + body + attachment digests.
+fn stable_guid(
+    chat_id: &str,
+    timestamp: &str,
+    is_from_me: bool,
+    text: &str,
+    att_digests: &[String],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(chat_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(timestamp.as_bytes());
+    hasher.update(b"|");
+    hasher.update(if is_from_me { b"1" } else { b"0" });
+    hasher.update(b"|");
+    hasher.update(text.as_bytes());
+    for d in att_digests {
+        hasher.update(b"|");
+        hasher.update(d.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn json_cell(value: &impl Serialize) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
 fn chat_id_individual(digits: &str) -> String {
@@ -143,9 +238,15 @@ fn chat_id_group(participant_digits: &[String], owners: &OwnerPhoneSet) -> (Stri
 fn safe_filename(chat_id: &str) -> String {
     chat_id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
-        + ".json"
+        + ".csv"
 }
 
 fn ensure_convo<'a>(
@@ -191,9 +292,16 @@ fn add_xml_messages(
             sort_key: msg.timestamp_secs,
             is_from_me: msg.is_from_me,
             sender_digits: msg.sender_digits,
+            sender_display_name: msg.name_hint.clone(),
             text: msg.text,
             attachments: Vec::new(),
             dedupe_key,
+            source_kind: "xml",
+            android_type: msg.android_type,
+            date_ms: msg.date_ms,
+            contact_name: msg.contact_name,
+            pdu_filename: String::new(),
+            xml_fields: msg.xml_fields,
         });
     }
 }
@@ -280,6 +388,13 @@ fn add_pdu_message(
         att_names.join(",")
     );
 
+    let pdu_filename = parsed
+        .path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+
     let pending = PendingMessage {
         sort_key: parsed.timestamp as f64,
         is_from_me: parsed.is_sent,
@@ -288,9 +403,16 @@ fn add_pdu_message(
         } else {
             Some(parsed.sender_number.clone())
         },
+        sender_display_name: None,
         text: parsed.body.clone(),
         attachments,
         dedupe_key,
+        source_kind: "pdu",
+        android_type: String::new(),
+        date_ms: String::new(),
+        contact_name: String::new(),
+        pdu_filename,
+        xml_fields: BTreeMap::new(),
     };
 
     for (chat_id, conversation_type, group_title) in targets {
@@ -322,7 +444,6 @@ fn write_conversation(
     output_dir: &Path,
     chat_id: &str,
     convo: &mut PendingConversation,
-    exported_at: &str,
     owner_e164: &str,
 ) -> Result<()> {
     dedupe_messages(&mut convo.messages);
@@ -330,12 +451,12 @@ fn write_conversation(
         return Ok(());
     }
 
-    let mut participants: Vec<ParticipantRecord> = convo
+    let mut participants: Vec<ParticipantCell> = convo
         .participants
         .iter()
-        .map(|(digits, hint)| ParticipantRecord {
+        .map(|(digits, hint)| ParticipantCell {
             handle: to_e164(digits),
-            name_hint: hint.clone(),
+            display_name: hint.clone().unwrap_or_default(),
         })
         .collect();
     // Include owner in participant list for groups (imessage style often lists all).
@@ -344,68 +465,105 @@ fn write_conversation(
             .iter()
             .any(|p| sanitize_number(&p.handle) == sanitize_number(owner_e164))
     {
-        participants.push(ParticipantRecord {
+        participants.push(ParticipantCell {
             handle: owner_e164.to_string(),
-            name_hint: None,
+            display_name: String::new(),
         });
     }
     participants.sort_by(|a, b| a.handle.cmp(&b.handle));
-
-    let header = ConversationRecord::header(
-        chat_id,
-        convo.conversation_type.clone(),
-        convo.group_title.clone(),
-        participants,
-        exported_at,
-    );
+    let participants_json = json_cell(&participants);
 
     let path = output_dir.join(safe_filename(chat_id));
-    let mut file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
-    serde_json::to_writer(&mut file, &ExportRecord::Conversation(header))?;
-    file.write_all(b"\n")?;
+    let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
+    let mut wtr = csv::Writer::from_writer(file);
+    wtr.write_record(HEADERS)
+        .with_context(|| format!("write header {}", path.display()))?;
 
     for msg in &convo.messages {
         let secs = msg.sort_key as i64;
-        let (ts_local, ts_utc) = format_local_ts(secs);
+        let (ts_local, ts_utc, ts_display) = format_local_ts(secs);
         let digests: Vec<String> = msg.attachments.iter().map(|a| a.digest_hex.clone()).collect();
         let guid = stable_guid(chat_id, &ts_local, msg.is_from_me, &msg.text, &digests);
-        let sender = if msg.is_from_me {
-            None
+        let direction = if msg.is_from_me {
+            "outgoing"
         } else {
-            msg.sender_digits.as_ref().map(|d| to_e164(d))
+            "incoming"
         };
-        let text = if msg.text.is_empty() {
-            None
+        let (sender_handle, sender_display_name) = if msg.is_from_me {
+            (String::new(), String::new())
         } else {
-            Some(msg.text.clone())
+            (
+                msg.sender_digits
+                    .as_ref()
+                    .map(|d| to_e164(d))
+                    .unwrap_or_default(),
+                msg.sender_display_name.clone().unwrap_or_default(),
+            )
         };
-        let attachments: Vec<AttachmentRecord> = msg
+        let attachment_cells: Vec<AttachmentCell> = msg
             .attachments
             .iter()
-            .map(|a| AttachmentRecord {
+            .map(|a| AttachmentCell {
                 path: Some(a.rel_path.clone()),
                 original_name: a.original_name.clone(),
                 mime_type: a.mime_type.clone(),
+                is_sticker: false,
+                transcription: None,
+                sticker_effect: None,
             })
             .collect();
+        let attachments_json = json_cell(&attachment_cells);
+        let xml_fields_json = if msg.xml_fields.is_empty() {
+            String::new()
+        } else {
+            json_cell(&msg.xml_fields)
+        };
 
-        let record = MessageRecord::text_message(
-            guid,
-            ts_local,
-            Some(ts_utc),
-            msg.is_from_me,
-            sender,
-            text,
-            attachments,
-        );
-        serde_json::to_writer(&mut file, &ExportRecord::Message(record))?;
-        file.write_all(b"\n")?;
+        wtr.write_record([
+            chat_id,
+            convo.conversation_type.as_str(),
+            convo.group_title.as_deref().unwrap_or(""),
+            participants_json.as_str(),
+            guid.as_str(),
+            ts_local.as_str(),
+            ts_utc.as_str(),
+            ts_display.as_str(),
+            "", // read_receipt
+            direction,
+            "SMS",
+            sender_handle.as_str(),
+            sender_display_name.as_str(),
+            "", // subject
+            msg.text.as_str(),
+            "", // is_deleted
+            "", // send_effect
+            "", // shared_location
+            "", // is_announcement
+            "", // announcement
+            "", // is_reply
+            "", // thread_originator_guid
+            "", // thread_originator_part
+            "", // num_replies
+            "", // parts_json
+            "", // edits_json
+            attachments_json.as_str(),
+            "", // tapbacks_json
+            "", // app_json
+            msg.source_kind,
+            msg.android_type.as_str(),
+            msg.date_ms.as_str(),
+            msg.contact_name.as_str(),
+            msg.pdu_filename.as_str(),
+            xml_fields_json.as_str(),
+        ])
+        .with_context(|| format!("write row {}", path.display()))?;
     }
 
+    wtr.flush()?;
     Ok(())
 }
 
-/// Convert a GO SMS Pro export directory into SMS NDJSON (`message_json::sms`).
+/// Convert a GO SMS Pro export directory into per-conversation CSV.
 pub fn convert_export(
     input_dir: &Path,
     output_dir: &Path,
@@ -421,12 +579,13 @@ pub fn convert_export(
     let mut report = ExportReport::default();
     let mut conversations: BTreeMap<String, PendingConversation> = BTreeMap::new();
 
-    // Clean previous NDJSON (keep attachments if re-run; rewrite as needed).
+    // Clean previous CSV / leftover NDJSON (keep attachments if re-run; rewrite as needed).
     fs::create_dir_all(output_dir)?;
     for entry in fs::read_dir(output_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+        let ext = path.extension().and_then(|e| e.to_str());
+        if matches!(ext, Some("csv") | Some("json")) {
             let _ = fs::remove_file(&path);
         }
     }
@@ -457,7 +616,6 @@ pub fn convert_export(
             Err(err) => report.errors.push(format!("{}: {err:#}", xml_path.display())),
         }
     }
-
 
     let mut pdu_paths: Vec<PathBuf> = fs::read_dir(input_dir)?
         .filter_map(|e| e.ok())
@@ -497,12 +655,66 @@ pub fn convert_export(
         }
     }
 
-    let exported_at = Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-
     for (chat_id, mut convo) in conversations {
-        write_conversation(output_dir, &chat_id, &mut convo, &exported_at, &owner_e164)?;
+        write_conversation(output_dir, &chat_id, &mut convo, &owner_e164)?;
         report.conversations += 1;
     }
 
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    #[test]
+    fn convert_smoke_writes_csv_not_json() {
+        let input = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample_export");
+        let output = tempfile_dir();
+        let report = convert_export(&input, &output, &["+15555550100".into()]).unwrap();
+        assert!(report.conversations >= 1);
+        assert!(report.xml_messages >= 2);
+
+        let mut csv_files: Vec<_> = fs::read_dir(&output)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("csv"))
+            .collect();
+        csv_files.sort();
+        assert!(!csv_files.is_empty(), "expected at least one .csv");
+
+        let json_count = fs::read_dir(&output)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+            .count();
+        assert_eq!(json_count, 0);
+
+        let mut contents = String::new();
+        File::open(&csv_files[0])
+            .unwrap()
+            .read_to_string(&mut contents)
+            .unwrap();
+        let header = contents.lines().next().unwrap();
+        assert!(header.contains("chat_identifier"));
+        assert!(header.contains("direction"));
+        assert!(header.contains("source_kind"));
+        assert!(header.contains("xml_fields_json"));
+        assert!(contents.contains("incoming") || contents.contains("outgoing"));
+        assert!(contents.contains("smoke"));
+    }
+
+    fn tempfile_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "go-sms-pro-exporter-csv-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 }

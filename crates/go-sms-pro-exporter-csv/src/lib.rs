@@ -1,4 +1,4 @@
-//! GO SMS Pro → SMS NDJSON (`message_json::sms`) exporter.
+//! GO SMS Pro → per-conversation CSV exporter.
 
 pub mod emit;
 pub mod emoji;

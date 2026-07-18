@@ -1,4 +1,4 @@
-//! One-shot: export raw source → staging NDJSON → import → cross-source dedupe.
+//! One-shot: export raw source → staging → import → cross-source dedupe.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -179,13 +179,17 @@ fn export_source(
     match backend {
         ExportBackend::GoSmsPro => {
             let from = require_single_input(source_id, from)?;
-            let report = go_sms_pro_exporter::convert_export(from, staging, &owner.phones)?;
+            let report = go_sms_pro_exporter_csv::convert_export(from, staging, &owner.phones)?;
             println!(
                 "  export:   conversations={} xml={} pdu={} attachments={}",
                 report.conversations,
                 report.xml_messages,
                 report.pdu_messages,
                 report.attachments_saved
+            );
+            bail!(
+                "go-sms-pro stages CSV under {}; vault NDJSON import is not supported for this source yet",
+                staging.display()
             );
         }
         ExportBackend::SmsBackupRestore => {

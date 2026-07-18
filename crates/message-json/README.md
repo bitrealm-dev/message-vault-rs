@@ -11,7 +11,7 @@ There are two on-disk NDJSON shapes. Conversation headers carry a `"schema"` dis
 | Wire schema | Rust module | Who writes it | Discriminator |
 |-------------|-------------|---------------|---------------|
 | **iMessage NDJSON** | [`message_json::imessage`](src/imessage.rs) | `imessage-exporter-json` | `"schema": "imessage"`, `schema_version` 4 (headers without `schema` still default to imessage) |
-| **SMS NDJSON** | [`message_json::sms`](src/sms.rs) | GO SMS Pro, SMS Backup & Restore, SMS Backup+ exporters | `"schema": "sms"`, `schema_version` 2 |
+| **SMS NDJSON** | [`message_json::sms`](src/sms.rs) | SMS Backup & Restore, SMS Backup+ exporters | `"schema": "sms"`, `schema_version` 2 |
 
 Conversation headers use `"conversation_type": "individual" | "group"` (not `"type"`).
 
@@ -24,7 +24,7 @@ Vault import auto-detects which schema a file uses from the conversation header 
 | Module | Role |
 |--------|------|
 | [`imessage`](src/imessage.rs) | iOS / iMessage schema (`schema_version` **4**): tapbacks, replies, announcements, stickers, transcription |
-| [`sms`](src/sms.rs) | Common SMS/MMS schema for GO SMS Pro, SMS Backup & Restore, and SMS Backup+ |
+| [`sms`](src/sms.rs) | Common SMS/MMS schema for SMS Backup & Restore and SMS Backup+ |
 
 ## Usage
 

@@ -1,5 +1,5 @@
 [package]
-name = "go-sms-pro-exporter"
+name = "go-sms-pro-exporter-csv"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,8 +7,8 @@ edition = "2024"
 anyhow = "1.0.103"
 chrono = "0.4.44"
 clap = { version = "4.6.1", features = ["derive"] }
+csv = "1.4.0"
 hex = "0.4.3"
-message_json = { workspace = true }
 quick-xml = { version = "0.41.0", features = ["serialize"] }
 regex = "1.13.0"
 serde = { version = "1.0.228", features = ["derive"] }

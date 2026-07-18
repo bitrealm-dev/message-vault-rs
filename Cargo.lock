@@ -600,14 +600,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
-name = "go-sms-pro-exporter"
+name = "go-sms-pro-exporter-csv"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "csv",
  "hex",
- "message_json",
  "quick-xml 0.41.0",
  "regex",
  "serde",
@@ -878,7 +878,7 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
- "go-sms-pro-exporter",
+ "go-sms-pro-exporter-csv",
  "message_json",
  "rusqlite",
  "serde",
