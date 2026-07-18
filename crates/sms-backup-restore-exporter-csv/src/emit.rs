@@ -1,18 +1,54 @@
-//! Convert SMS Backup & Restore XML → message-json SMS schema NDJSON.
+//! Convert SMS Backup & Restore XML → per-conversation CSV.
 
 use crate::owner_set::OwnerPhoneSet;
-use crate::phone::{sanitize_number, to_e164};
+use crate::phone::to_e164;
 use crate::xml::{parse_xml_file, AttachmentBlob, ConvType, ParsedMessage};
 use anyhow::{bail, Context, Result};
 use chrono::{Local, TimeZone, Utc};
-use message_json::sms::{
-    stable_guid, AttachmentRecord, ConversationRecord, ExportRecord, MessageRecord,
-    ParticipantRecord,
-};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
-use std::io::Write;
 use std::path::{Path, PathBuf};
+
+const HEADERS: &[&str] = &[
+    // Shared with imessage-exporter-csv
+    "chat_identifier",
+    "conversation_type",
+    "group_title",
+    "participants_json",
+    "guid",
+    "timestamp",
+    "timestamp_utc",
+    "timestamp_display",
+    "read_receipt",
+    "direction",
+    "service",
+    "sender_handle",
+    "sender_display_name",
+    "subject",
+    "text",
+    "is_deleted",
+    "send_effect",
+    "shared_location",
+    "is_announcement",
+    "announcement",
+    "is_reply",
+    "thread_originator_guid",
+    "thread_originator_part",
+    "num_replies",
+    "parts_json",
+    "edits_json",
+    "attachments_json",
+    "tapbacks_json",
+    "app_json",
+    // SBR-only
+    "message_kind",
+    "date_ms",
+    "contact_name",
+    "android_type",
+    "xml_fields_json",
+];
 
 #[derive(Debug, Default)]
 pub struct ExportReport {
@@ -43,9 +79,16 @@ struct PendingMessage {
     sort_key: f64,
     is_from_me: bool,
     sender_digits: Option<String>,
+    sender_display_name: Option<String>,
     text: String,
+    subject: String,
     attachments: Vec<PendingAttachment>,
     dedupe_key: String,
+    message_kind: &'static str,
+    date_ms: String,
+    contact_name: String,
+    android_type: String,
+    xml_fields_json: String,
 }
 
 #[derive(Debug, Default)]
@@ -56,17 +99,61 @@ struct PendingConversation {
     messages: Vec<PendingMessage>,
 }
 
-fn format_local_ts(secs: i64) -> Option<(String, String)> {
+#[derive(Debug, Serialize)]
+struct ParticipantCell {
+    handle: String,
+    display_name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AttachmentCell {
+    path: Option<String>,
+    original_name: Option<String>,
+    mime_type: Option<String>,
+    is_sticker: bool,
+    transcription: Option<String>,
+    sticker_effect: Option<String>,
+}
+
+fn format_local_ts(secs: i64) -> Option<(String, String, String)> {
     let local = Local.timestamp_opt(secs, 0).single().or_else(|| {
         Utc.timestamp_opt(secs, 0)
             .single()
             .map(|utc| Local.from_utc_datetime(&utc.naive_utc()))
     })?;
     let utc = local.with_timezone(&Utc);
+    let display = local.format("%b %e, %Y %I:%M:%S %p").to_string();
     Some((
         local.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         utc.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        display,
     ))
+}
+
+fn stable_guid(
+    chat_id: &str,
+    timestamp: &str,
+    is_from_me: bool,
+    text: &str,
+    att_digests: &[String],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(chat_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(timestamp.as_bytes());
+    hasher.update(b"|");
+    hasher.update(if is_from_me { b"1" } else { b"0" });
+    hasher.update(b"|");
+    hasher.update(text.as_bytes());
+    for d in att_digests {
+        hasher.update(b"|");
+        hasher.update(d.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn json_cell(value: &impl Serialize) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
 fn chat_id_for(msg: &ParsedMessage) -> String {
@@ -87,7 +174,7 @@ fn safe_filename(chat_id: &str) -> String {
             }
         })
         .collect::<String>()
-        + ".json"
+        + ".csv"
 }
 
 fn write_attachments(
@@ -98,7 +185,6 @@ fn write_attachments(
     let mut out = Vec::with_capacity(blobs.len());
     for blob in blobs {
         let path = attachments_dir.join(&blob.filename);
-        // Content-addressed filenames: existing path means same bytes.
         if !path.exists() {
             fs::write(&path, blob.data.as_ref())?;
             report.attachments_saved += 1;
@@ -160,13 +246,21 @@ fn add_message(
         msg.text,
         att_names.join(",")
     );
+    let xml_fields_json = json_cell(&msg.xml_fields);
     convo.messages.push(PendingMessage {
         sort_key: msg.timestamp_secs,
         is_from_me: msg.is_from_me,
         sender_digits: msg.sender_digits,
+        sender_display_name: msg.sender_display_name,
         text: msg.text,
+        subject: msg.subject,
         attachments: pending_atts,
         dedupe_key,
+        message_kind: msg.message_kind,
+        date_ms: msg.date_ms,
+        contact_name: msg.contact_name,
+        android_type: msg.android_type,
+        xml_fields_json,
     });
 }
 
@@ -184,7 +278,6 @@ fn write_conversation(
     output_dir: &Path,
     chat_id: &str,
     convo: &mut PendingConversation,
-    exported_at: &str,
     owners: &OwnerPhoneSet,
     report: &mut ExportReport,
 ) -> Result<()> {
@@ -201,77 +294,108 @@ fn write_conversation(
         return Ok(());
     }
 
-    let mut participants: Vec<ParticipantRecord> = convo
+    let mut participants: Vec<ParticipantCell> = convo
         .participants
         .iter()
-        .map(|(digits, hint)| ParticipantRecord {
+        .map(|(digits, hint)| ParticipantCell {
             handle: to_e164(digits),
-            name_hint: hint.clone(),
+            display_name: hint.clone().unwrap_or_default(),
         })
         .collect();
     if convo.conversation_type == ConvType::Group {
-        let has_owner = participants
-            .iter()
-            .any(|p| owners.is_owner(&p.handle));
+        let has_owner = participants.iter().any(|p| owners.is_owner(&p.handle));
         if !has_owner {
-            participants.push(ParticipantRecord {
+            participants.push(ParticipantCell {
                 handle: owners.primary_e164.clone(),
-                name_hint: None,
+                display_name: String::new(),
             });
         }
     }
     participants.sort_by(|a, b| a.handle.cmp(&b.handle));
-
-    let header = ConversationRecord::header(
-        chat_id,
-        convo.conversation_type.as_str(),
-        convo.group_title.clone(),
-        participants,
-        exported_at,
-    );
+    let participants_json = json_cell(&participants);
 
     let path = output_dir.join(safe_filename(chat_id));
-    let mut file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
-    serde_json::to_writer(&mut file, &ExportRecord::Conversation(header))?;
-    file.write_all(b"\n")?;
+    let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
+    let mut wtr = csv::Writer::from_writer(file);
+    wtr.write_record(HEADERS)
+        .with_context(|| format!("write header {}", path.display()))?;
 
     for msg in &convo.messages {
         let secs = msg.sort_key as i64;
-        let (ts_local, ts_utc) = format_local_ts(secs).expect("timestamp validated above");
+        let (ts_local, ts_utc, ts_display) =
+            format_local_ts(secs).expect("timestamp validated above");
         let digests: Vec<String> = msg.attachments.iter().map(|a| a.digest_hex.clone()).collect();
         let guid = stable_guid(chat_id, &ts_local, msg.is_from_me, &msg.text, &digests);
-        let sender = if msg.is_from_me {
-            None
+        let direction = if msg.is_from_me {
+            "outgoing"
         } else {
-            msg.sender_digits.as_ref().map(|d| to_e164(d))
+            "incoming"
         };
-        let text = if msg.text.is_empty() {
-            None
+        let (sender_handle, sender_display_name) = if msg.is_from_me {
+            (String::new(), String::new())
         } else {
-            Some(msg.text.clone())
+            (
+                msg.sender_digits
+                    .as_ref()
+                    .map(|d| to_e164(d))
+                    .unwrap_or_default(),
+                msg.sender_display_name.clone().unwrap_or_default(),
+            )
         };
-        let attachments: Vec<AttachmentRecord> = msg
+        let attachment_cells: Vec<AttachmentCell> = msg
             .attachments
             .iter()
-            .map(|a| AttachmentRecord {
+            .map(|a| AttachmentCell {
                 path: Some(a.rel_path.clone()),
                 original_name: a.original_name.clone(),
                 mime_type: a.mime_type.clone(),
+                is_sticker: false,
+                transcription: None,
+                sticker_effect: None,
             })
             .collect();
+        let attachments_json = json_cell(&attachment_cells);
 
-        let record = MessageRecord::text_message(
-            guid,
-            ts_local,
-            Some(ts_utc),
-            msg.is_from_me,
-            sender,
-            text,
-            attachments,
-        );
-        serde_json::to_writer(&mut file, &ExportRecord::Message(record))?;
-        file.write_all(b"\n")?;
+        wtr.write_record([
+            chat_id,
+            convo.conversation_type.as_str(),
+            convo.group_title.as_deref().unwrap_or(""),
+            participants_json.as_str(),
+            guid.as_str(),
+            ts_local.as_str(),
+            ts_utc.as_str(),
+            ts_display.as_str(),
+            "", // read_receipt
+            direction,
+            "SMS",
+            sender_handle.as_str(),
+            sender_display_name.as_str(),
+            msg.subject.as_str(),
+            msg.text.as_str(),
+            "", // is_deleted
+            "", // send_effect
+            "", // shared_location
+            "", // is_announcement
+            "", // announcement
+            "", // is_reply
+            "", // thread_originator_guid
+            "", // thread_originator_part
+            "", // num_replies
+            "", // parts_json
+            "", // edits_json
+            attachments_json.as_str(),
+            "", // tapbacks_json
+            "", // app_json
+            msg.message_kind,
+            msg.date_ms.as_str(),
+            msg.contact_name.as_str(),
+            msg.android_type.as_str(),
+            msg.xml_fields_json.as_str(),
+        ])
+        .with_context(|| format!("write row {}", path.display()))?;
     }
+
+    wtr.flush()?;
     Ok(())
 }
 
@@ -298,7 +422,7 @@ fn collect_xml_paths(input: &Path) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-/// Convert SMS Backup & Restore XML into message-json SMS schema NDJSON.
+/// Convert SMS Backup & Restore XML into per-conversation CSV.
 pub fn convert_export(
     input: &Path,
     output_dir: &Path,
@@ -311,7 +435,8 @@ pub fn convert_export(
     fs::create_dir_all(output_dir)?;
     for entry in fs::read_dir(output_dir)? {
         let path = entry?.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+        let ext = path.extension().and_then(|e| e.to_str());
+        if matches!(ext, Some("csv") | Some("json")) {
             let _ = fs::remove_file(&path);
         }
     }
@@ -341,16 +466,8 @@ pub fn convert_export(
         }
     }
 
-    let exported_at = Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     for (chat_id, mut convo) in conversations {
-        write_conversation(
-            output_dir,
-            &chat_id,
-            &mut convo,
-            &exported_at,
-            &owners,
-            &mut report,
-        )?;
+        write_conversation(output_dir, &chat_id, &mut convo, &owners, &mut report)?;
         if !convo.messages.is_empty() {
             report.conversations += 1;
         }

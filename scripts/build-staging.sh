@@ -235,7 +235,7 @@ run_sms_backup_restore() {
   echo "==> sms-backup-restore"
   rotate_staging "${out}"
   echo "  exporting → ${out}"
-  (cd "${REPO_ROOT}" && cargo run --release -p sms-backup-restore-exporter -- \
+  (cd "${REPO_ROOT}" && cargo run --release -p sms-backup-restore-exporter-csv -- \
     --input "${input}" \
     --output "${out}" \
     --owner-phone "${OWNER_PHONE}")

@@ -885,7 +885,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sms-backup-plus-exporter",
- "sms-backup-restore-exporter",
+ "sms-backup-restore-exporter-csv",
  "toml",
 ]
 
@@ -1320,16 +1320,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "sms-backup-restore-exporter"
+name = "sms-backup-plus-exporter-csv"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "csv",
+ "hex",
+ "mailparse",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "sms-backup-restore-exporter-csv"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
  "chrono",
  "clap",
+ "csv",
  "hex",
  "html-escape",
- "message_json",
  "quick-xml 0.41.0",
  "regex",
  "serde",

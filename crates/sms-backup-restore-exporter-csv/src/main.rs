@@ -2,22 +2,22 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use sms_backup_restore_exporter::convert_export;
+use sms_backup_restore_exporter_csv::convert_export;
 
 #[derive(Parser, Debug)]
-#[command(name = "sms-backup-restore-exporter")]
-#[command(about = "Convert SMS Backup & Restore XML to message-json SMS schema NDJSON")]
+#[command(name = "sms-backup-restore-exporter-csv")]
+#[command(about = "Convert SMS Backup & Restore XML to per-conversation CSV")]
 struct Cli {
-    /// Path to a sms-*.xml file or a directory of XML files
+    /// Path to sms-*.xml file, or a directory of .xml files
     #[arg(long)]
     input: PathBuf,
 
-    /// Output directory for NDJSON + attachments/
+    /// Output directory for CSV + attachments/
     #[arg(long)]
     output: PathBuf,
 
-    /// Owner phone (E.164 or digits). Required so sent/received and groups are correct.
-    #[arg(long)]
+    /// Owner phone (E.164 or digits)
+    #[arg(long, default_value = "+15555550100")]
     owner_phone: String,
 }
 
@@ -27,24 +27,20 @@ fn main() -> Result<()> {
 
     println!("Wrote {}", cli.output.display());
     println!("  conversations:     {}", report.conversations);
-    println!("  SMS messages:      {}", report.sms_count);
-    println!("  MMS messages:      {}", report.mms_count);
+    println!("  SMS / MMS:         {} / {}", report.sms_count, report.mms_count);
     println!("  attachments:       {}", report.attachments_saved);
     println!("  sent / received:   {} / {}", report.sent, report.received);
     if report.skipped_invalid_date > 0 {
         println!("  skipped bad date:  {}", report.skipped_invalid_date);
     }
-    if report.skipped_unknown_address > 0 {
-        println!("  skipped bad addr:  {}", report.skipped_unknown_address);
-    }
     if report.skipped_unknown_type > 0 {
         println!("  skipped bad type:  {}", report.skipped_unknown_type);
     }
+    if report.skipped_unknown_address > 0 {
+        println!("  skipped bad addr:  {}", report.skipped_unknown_address);
+    }
     if report.skipped_empty_participants > 0 {
-        println!(
-            "  skipped no participants: {}",
-            report.skipped_empty_participants
-        );
+        println!("  skipped empty:     {}", report.skipped_empty_participants);
     }
     if report.skipped_bad_attachment > 0 {
         println!("  skipped bad att:   {}", report.skipped_bad_attachment);

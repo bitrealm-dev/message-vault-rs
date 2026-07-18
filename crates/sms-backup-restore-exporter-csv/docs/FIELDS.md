@@ -1,6 +1,6 @@
 # Fields in SMS Backup & Restore XML
 
-This page describes the XML attributes that **SMS Backup & Restore** writes, and how **sms-backup-restore-exporter** uses them.
+This page describes the XML attributes that **SMS Backup & Restore** writes, and how **sms-backup-restore-exporter-csv** uses them.
 
 Source: SyncTech’s [Fields in XML backup files](https://www.synctech.com.au/sms-backup-restore/fields-in-xml-backup-files/). Related SyncTech links:
 
@@ -44,13 +44,15 @@ Field values are generally copied as-is from the Android SMS/MMS databases. The 
 
 ### How the exporter uses SMS fields
 
-- `address` → chat id and participant handle (after phone normalization)
-- `date` → message timestamp (invalid or missing dates are skipped)
-- `type` `1` / `2` → `is_from_me` false / true; other types are skipped
-- `body` → message text (HTML entities decoded)
-- `contact_name` → optional `name_hint` on the participant
+- `address` → `chat_identifier` / participant handle (after phone normalization)
+- `date` → `timestamp*` columns and `date_ms` (invalid or missing dates are skipped)
+- `type` `1` / `2` → `direction` incoming / outgoing; other types are skipped; raw value in `android_type`
+- `body` → `text` (HTML entities decoded)
+- `subject` → `subject` when present
+- `contact_name` → `contact_name` / display name hints
+- **Every** `<sms>` attribute → `xml_fields_json.attrs`
 
-Example: `<sms address="+15555550101" date="1400773261000" type="1" body="hello &amp; hi" contact_name="Sam" />` becomes a received message in chat `+15555550101` with text `hello & hi`.
+Example: `<sms address="+15555550101" date="1400773261000" type="1" body="hello &amp; hi" contact_name="Sam" />` becomes an incoming CSV row in chat `+15555550101` with text `hello & hi`.
 
 ---
 
@@ -103,15 +105,18 @@ An MMS has three layers:
 
 ### How the exporter uses MMS fields
 
-- `date` → timestamp (bad dates skipped)
-- `msg_box` `2` → sent; otherwise From addr (`type="137"`) sets the sender when received
+- `date` → `timestamp*` / `date_ms` (bad dates skipped)
+- `msg_box` `2` → outgoing; otherwise From addr (`type="137"`) sets the sender when received; raw `msg_box` in `android_type`
+- `sub` → `subject`
 - `address` plus `<addr>` list → participants; one other person is a 1:1 chat, more than one is a group
-- `text/plain` parts → message body; SMIL (`application/smil`) controls text/image order when present
-- Non-text `data` → files under `attachments/` (for example `20140522_123101_a1b2c3d4e5f67890_pic.jpg`)
-- `contact_name` → optional name hint on 1:1 chats
+- `text/plain` parts → `text`; SMIL (`application/smil`) controls text/image order when present
+- Non-text `data` → files under `attachments/` and `attachments_json`; in `xml_fields_json.parts`, `data` is replaced with `data_len` + `data_sha256`
+- Every `<mms>` / `<part>` / `<addr>` attribute → `xml_fields_json`
 - Empty participant lists and undecodable attachment base64 are skipped and counted in the run report
 
 Example group address string: `+15555550101~+15555550102` with two From/To addrs becomes a group chat titled from those two numbers.
+
+See also [XML_CSV_MAPPING.md](XML_CSV_MAPPING.md).
 
 ---
 
@@ -128,4 +133,4 @@ Example group address string: `+15555550101~+15555550102` with two From/To addrs
 | `readable_date` | Optional human-readable date |
 | `contact_name` | Optional contact name |
 
-Call rows can appear in the same backup XML. They are listed here so the file format is complete. The exporter ignores them because the SMS NDJSON schema has no call model.
+Call rows can appear in the same backup XML. They are listed here so the file format is complete. The exporter ignores them (no call rows in the CSV).

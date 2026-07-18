@@ -1,4 +1,4 @@
-//! SMS Backup & Restore → message-json SMS schema exporter.
+//! SMS Backup & Restore → per-conversation CSV exporter.
 
 pub mod assets;
 pub mod emit;

@@ -27,7 +27,8 @@ pub struct ExportReport {
     pub attachments_saved: u64,
     pub sent: u64,
     pub received: u64,
-    pub skipped_unparseable: u64,
+    /// `.eml` files that are not SMS Backup+ shaped (or SMS with unknown chat).
+    pub skipped_not_sms_backup_plus: u64,
     pub skipped_invalid_date: u64,
     pub errors: Vec<String>,
 }
@@ -379,7 +380,7 @@ pub fn convert_export<P: AsRef<Path>>(
         let mail = match mailparse::parse_mail(&bytes) {
             Ok(m) => m,
             Err(err) => {
-                report.skipped_unparseable += 1;
+                report.skipped_not_sms_backup_plus += 1;
                 report
                     .errors
                     .push(format!("{}: parse EML: {err}", eml_path.display()));
@@ -398,7 +399,7 @@ pub fn convert_export<P: AsRef<Path>>(
                     }
                     for msg in msgs {
                         if msg.chat_key == "Unknown" {
-                            report.skipped_unparseable += 1;
+                            report.skipped_not_sms_backup_plus += 1;
                             continue;
                         }
                         match write_attachments(&msg.attachments, &attachments_dir, &mut report) {
@@ -410,7 +411,7 @@ pub fn convert_export<P: AsRef<Path>>(
                     }
                 }
                 Err(err) => {
-                    report.skipped_unparseable += 1;
+                    report.skipped_not_sms_backup_plus += 1;
                     report
                         .errors
                         .push(format!("{}: {err:#}", eml_path.display()));
@@ -426,7 +427,7 @@ pub fn convert_export<P: AsRef<Path>>(
                     let _ = apply_name_mapping(&mut msg, &name_mapping);
                     let _ = fill_unknown_phone(&mut msg, &contacts);
                     if msg.chat_key == "Unknown" {
-                        report.skipped_unparseable += 1;
+                        report.skipped_not_sms_backup_plus += 1;
                     } else {
                         report.flat_eml += 1;
                         match write_attachments(&msg.attachments, &attachments_dir, &mut report) {
@@ -437,16 +438,16 @@ pub fn convert_export<P: AsRef<Path>>(
                         }
                     }
                 }
-                Ok(None) => report.skipped_unparseable += 1,
+                Ok(None) => report.skipped_not_sms_backup_plus += 1,
                 Err(err) => {
-                    report.skipped_unparseable += 1;
+                    report.skipped_not_sms_backup_plus += 1;
                     report
                         .errors
                         .push(format!("{}: {err:#}", eml_path.display()));
                 }
             }
         } else {
-            report.skipped_unparseable += 1;
+            report.skipped_not_sms_backup_plus += 1;
         }
     }
 

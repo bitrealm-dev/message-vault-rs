@@ -8,8 +8,9 @@ This repo is a **Cargo workspace**: the vault binary, shared NDJSON schema, and 
 crates/
   message-json/                 # shared NDJSON schemas (sms + imessage)
   go-sms-pro-exporter-csv/
-  sms-backup-restore-exporter/
-  sms-backup-plus-exporter/
+  sms-backup-restore-exporter-csv/
+  sms-backup-plus-exporter/       # EML → SMS NDJSON (vault ingest)
+  sms-backup-plus-exporter-csv/   # EML → CSV (standalone)
   imessage-exporter/            # bin: imessage-exporter-json (JSON overlay fork)
                                 # keep html/txt paths for upstream merges; see crate README
                                 # depends on crates.io imessage-database
@@ -30,8 +31,8 @@ cargo build --workspace --release
 
 Exporters write one of two wire formats from [`crates/message-json`](crates/message-json):
 
-- **SMS NDJSON** (`message_json::sms`) — SMS Backup & Restore, SMS Backup+
-- **GO SMS Pro CSV** — `go-sms-pro-exporter-csv` (per-conversation CSV; not vault-importable yet)
+- **SMS NDJSON** (`message_json::sms`) — SMS Backup+
+- **CSV exporters** (not vault-importable yet) — `go-sms-pro-exporter-csv`, `sms-backup-restore-exporter-csv`, `sms-backup-plus-exporter-csv`
 - **iMessage NDJSON** (`message_json::imessage`) — `imessage-exporter-json`
 
 Vault import auto-detects the schema from each file’s conversation header. Details: [`crates/message-json/README.md`](crates/message-json/README.md).

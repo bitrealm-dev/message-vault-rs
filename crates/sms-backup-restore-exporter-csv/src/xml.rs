@@ -3,10 +3,13 @@
 use crate::phone::{sanitize_number, to_e164};
 use crate::smil::{ordered_smil_refs, part_content_keys, smil_xml_from_parts};
 use anyhow::{Context, Result};
+use base64::Engine;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use quick_xml::XmlVersion;
-use std::collections::{HashMap, HashSet};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::BufRead;
 use std::path::Path;
 
@@ -41,12 +44,16 @@ pub struct MmsPart {
     pub text: String,
     pub data: String,
     pub seq: String,
+    /// Every `<part>` attribute as written in the backup.
+    pub attrs: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MmsAddr {
     pub address: String,
     pub addr_type: String,
+    /// Every `<addr>` attribute as written in the backup.
+    pub attrs: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +63,22 @@ pub struct AttachmentBlob {
     pub mime_type: Option<String>,
     pub data: std::sync::Arc<[u8]>,
     pub digest_hex: String,
+}
+
+/// Full XML fidelity payload for CSV `xml_fields_json`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind")]
+pub enum XmlFields {
+    #[serde(rename = "sms")]
+    Sms {
+        attrs: BTreeMap<String, String>,
+    },
+    #[serde(rename = "mms")]
+    Mms {
+        attrs: BTreeMap<String, String>,
+        parts: Vec<BTreeMap<String, String>>,
+        addrs: Vec<BTreeMap<String, String>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -68,8 +91,15 @@ pub struct ParsedMessage {
     pub timestamp_secs: f64,
     pub is_from_me: bool,
     pub sender_digits: Option<String>,
+    pub sender_display_name: Option<String>,
     pub text: String,
+    pub subject: String,
     pub attachments: Vec<AttachmentBlob>,
+    pub message_kind: &'static str,
+    pub date_ms: String,
+    pub contact_name: String,
+    pub android_type: String,
+    pub xml_fields: XmlFields,
 }
 
 #[derive(Debug, Default)]
@@ -102,6 +132,10 @@ fn attr_map(e: &quick_xml::events::BytesStart<'_>) -> HashMap<String, String> {
     map
 }
 
+fn to_btree(m: &HashMap<String, String>) -> BTreeMap<String, String> {
+    m.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
 fn get<'a>(m: &'a HashMap<String, String>, key: &str) -> &'a str {
     m.get(key).map(|s| s.as_str()).unwrap_or("")
 }
@@ -115,6 +149,7 @@ fn part_from_attrs(a: &HashMap<String, String>) -> MmsPart {
         text: get(a, "text").to_string(),
         data: get(a, "data").to_string(),
         seq: get(a, "seq").to_string(),
+        attrs: to_btree(a),
     }
 }
 
@@ -122,7 +157,33 @@ fn addr_from_attrs(a: &HashMap<String, String>) -> MmsAddr {
     MmsAddr {
         address: get(a, "address").to_string(),
         addr_type: get(a, "type").to_string(),
+        attrs: to_btree(a),
     }
+}
+
+/// CSV-safe part attrs: drop base64 `data`, add `data_len` + `data_sha256` of decoded bytes.
+fn part_attrs_for_csv(part: &MmsPart) -> BTreeMap<String, String> {
+    let mut m = part.attrs.clone();
+    if let Some(data_b64) = m.remove("data") {
+        let trimmed = data_b64.trim();
+        if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("null") {
+            match base64::engine::general_purpose::STANDARD.decode(trimmed) {
+                Ok(bytes) => {
+                    m.insert("data_len".into(), bytes.len().to_string());
+                    m.insert("data_sha256".into(), hex::encode(Sha256::digest(&bytes)));
+                }
+                Err(_) => {
+                    m.insert("data_len".into(), trimmed.len().to_string());
+                    m.insert(
+                        "data_sha256".into(),
+                        hex::encode(Sha256::digest(trimmed.as_bytes())),
+                    );
+                    m.insert("data_decode_error".into(), "true".into());
+                }
+            }
+        }
+    }
+    m
 }
 
 fn timestamp_secs(date_raw: &str) -> Option<f64> {
@@ -141,6 +202,23 @@ fn contact_name(attrs: &HashMap<String, String>) -> Option<String> {
         None
     } else {
         Some(t.to_string())
+    }
+}
+
+fn raw_contact_name(attrs: &HashMap<String, String>) -> String {
+    let name = get(attrs, "contact_name");
+    if !name.is_empty() {
+        return name.to_string();
+    }
+    get(attrs, "name").to_string()
+}
+
+fn nullish_to_empty(s: &str) -> String {
+    let t = s.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("null") {
+        String::new()
+    } else {
+        t.to_string()
     }
 }
 
@@ -251,7 +329,8 @@ fn parse_sms(
     stats: &mut XmlParseStats,
 ) -> Option<ParsedMessage> {
     stats.sms_count += 1;
-    let ts = match timestamp_secs(get(attrs, "date")) {
+    let date_ms = get(attrs, "date").to_string();
+    let ts = match timestamp_secs(&date_ms) {
         Some(t) => t,
         None => {
             stats.skipped_invalid_date += 1;
@@ -265,11 +344,13 @@ fn parse_sms(
             return None;
         }
     };
-    let typ = get(attrs, "type").trim();
+    let typ = get(attrs, "type").trim().to_string();
     let body = decode_body(get(attrs, "body"));
     let hint = contact_name(attrs);
+    let contact_name_raw = raw_contact_name(attrs);
+    let subject = nullish_to_empty(get(attrs, "subject"));
 
-    let (is_from_me, sender_digits) = match typ {
+    let (is_from_me, sender_digits) = match typ.as_str() {
         SMS_TYPE_SENT => (true, None),
         SMS_TYPE_RECEIVED => (false, Some(addr.clone())),
         _ => {
@@ -282,12 +363,21 @@ fn parse_sms(
         chat_key: addr.clone(),
         conversation_type: ConvType::Individual,
         group_title: None,
-        participant_digits: vec![(addr, hint)],
+        participant_digits: vec![(addr, hint.clone())],
         timestamp_secs: ts,
         is_from_me,
         sender_digits,
+        sender_display_name: if is_from_me { None } else { hint },
         text: body,
+        subject,
         attachments: Vec::new(),
+        message_kind: "sms",
+        date_ms,
+        contact_name: contact_name_raw,
+        android_type: typ,
+        xml_fields: XmlFields::Sms {
+            attrs: to_btree(attrs),
+        },
     })
 }
 
@@ -299,7 +389,8 @@ fn parse_mms(
     stats: &mut XmlParseStats,
 ) -> Option<ParsedMessage> {
     stats.mms_count += 1;
-    let ts = match timestamp_secs(get(attrs, "date")) {
+    let date_ms = get(attrs, "date").to_string();
+    let ts = match timestamp_secs(&date_ms) {
         Some(t) => t,
         None => {
             stats.skipped_invalid_date += 1;
@@ -312,11 +403,19 @@ fn parse_mms(
         return None;
     }
 
-    let date_ms = get(attrs, "date").parse::<f64>().unwrap_or(0.0);
-    let (body, attachments) = mms_body_and_attachments(parts, date_ms, stats);
-    let msg_box = get(attrs, "msg_box");
+    let date_ms_f = date_ms.parse::<f64>().unwrap_or(0.0);
+    let (body, attachments) = mms_body_and_attachments(parts, date_ms_f, stats);
+    let msg_box = get(attrs, "msg_box").to_string();
     let hint = contact_name(attrs);
-    let (is_from_me, sender_digits) = mms_sender(msg_box, addrs, &participants, owners);
+    let contact_name_raw = raw_contact_name(attrs);
+    let subject = nullish_to_empty(get(attrs, "sub"));
+    let (is_from_me, sender_digits) = mms_sender(&msg_box, addrs, &participants, owners);
+
+    let xml_fields = XmlFields::Mms {
+        attrs: to_btree(attrs),
+        parts: parts.iter().map(part_attrs_for_csv).collect(),
+        addrs: addrs.iter().map(|a| a.attrs.clone()).collect(),
+    };
 
     let non_owner: Vec<String> = {
         let mut set: Vec<String> = participants
@@ -342,12 +441,19 @@ fn parse_mms(
             chat_key: counterparty.clone(),
             conversation_type: ConvType::Individual,
             group_title: None,
-            participant_digits: vec![(counterparty, hint)],
+            participant_digits: vec![(counterparty, hint.clone())],
             timestamp_secs: ts,
             is_from_me,
             sender_digits,
+            sender_display_name: if is_from_me { None } else { hint },
             text: body,
+            subject,
             attachments,
+            message_kind: "mms",
+            date_ms,
+            contact_name: contact_name_raw,
+            android_type: msg_box,
+            xml_fields,
         });
     }
 
@@ -374,8 +480,10 @@ fn parse_mms(
     };
     let chat_key = format!("group-{}", others.join("_"));
     let chat_key = if chat_key.len() > 180 {
-        use sha2::{Digest, Sha256};
-        format!("group-{}", &hex::encode(Sha256::digest(chat_key.as_bytes()))[..16])
+        format!(
+            "group-{}",
+            &hex::encode(Sha256::digest(chat_key.as_bytes()))[..16]
+        )
     } else {
         chat_key
     };
@@ -391,8 +499,15 @@ fn parse_mms(
         timestamp_secs: ts,
         is_from_me,
         sender_digits,
+        sender_display_name: if is_from_me { None } else { hint },
         text: body,
+        subject,
         attachments,
+        message_kind: "mms",
+        date_ms,
+        contact_name: contact_name_raw,
+        android_type: msg_box,
+        xml_fields,
     })
 }
 
@@ -527,6 +642,60 @@ mod tests {
         assert_eq!(msgs[0].text, "hello & hi");
         assert!(msgs[1].is_from_me);
         assert_eq!(msgs[0].conversation_type, ConvType::Individual);
+        assert_eq!(msgs[0].message_kind, "sms");
+    }
+
+    #[test]
+    fn preserves_extra_sms_attrs() {
+        let xml = br#"<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<smses count="1">
+  <sms protocol="0" address="+15555550101" date="1400773261000" type="1" body="hi" read="1" status="-1" service_center="+1555000" />
+</smses>"#;
+        let (msgs, _) = parse_xml_reader(xml.as_slice(), &test_owners()).unwrap();
+        assert_eq!(msgs.len(), 1);
+        match &msgs[0].xml_fields {
+            XmlFields::Sms { attrs } => {
+                assert_eq!(attrs.get("read").map(String::as_str), Some("1"));
+                assert_eq!(attrs.get("status").map(String::as_str), Some("-1"));
+                assert_eq!(
+                    attrs.get("service_center").map(String::as_str),
+                    Some("+1555000")
+                );
+            }
+            XmlFields::Mms { .. } => panic!("expected sms"),
+        }
+        assert_eq!(msgs[0].android_type, "1");
+        assert_eq!(msgs[0].date_ms, "1400773261000");
+    }
+
+    #[test]
+    fn mms_parts_replace_data_with_digest() {
+        let xml = br#"<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<smses count="1">
+  <mms date="1400773400000" msg_box="1" address="+15555550101">
+    <parts>
+      <part seq="0" ct="image/jpeg" name="pic.jpg" cl="pic.jpg" chset="null" data="aGVsbG8=" />
+    </parts>
+    <addrs>
+      <addr address="+15555550101" type="137" charset="106" />
+      <addr address="+15555550100" type="151" charset="106" />
+    </addrs>
+  </mms>
+</smses>"#;
+        let (msgs, _) = parse_xml_reader(xml.as_slice(), &test_owners()).unwrap();
+        assert_eq!(msgs.len(), 1);
+        match &msgs[0].xml_fields {
+            XmlFields::Mms { parts, addrs, .. } => {
+                assert_eq!(parts.len(), 1);
+                assert!(!parts[0].contains_key("data"));
+                assert_eq!(parts[0].get("data_len").map(String::as_str), Some("5"));
+                assert!(parts[0].get("data_sha256").is_some());
+                assert_eq!(parts[0].get("chset").map(String::as_str), Some("null"));
+                assert_eq!(addrs.len(), 2);
+                assert_eq!(addrs[0].get("charset").map(String::as_str), Some("106"));
+            }
+            XmlFields::Sms { .. } => panic!("expected mms"),
+        }
     }
 
     #[test]

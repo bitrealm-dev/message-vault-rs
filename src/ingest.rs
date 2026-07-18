@@ -195,13 +195,17 @@ fn export_source(
         ExportBackend::SmsBackupRestore => {
             let from = require_single_input(source_id, from)?;
             let report =
-                sms_backup_restore_exporter::convert_export(from, staging, &owner.phones)?;
+                sms_backup_restore_exporter_csv::convert_export(from, staging, &owner.phones)?;
             println!(
                 "  export:   conversations={} sms={} mms={} attachments={}",
                 report.conversations,
                 report.sms_count,
                 report.mms_count,
                 report.attachments_saved
+            );
+            bail!(
+                "sms-backup-restore stages CSV under {}; vault NDJSON import is not supported for this source yet",
+                staging.display()
             );
         }
         ExportBackend::SmsBackupPlus => {

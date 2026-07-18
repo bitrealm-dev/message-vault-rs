@@ -1,5 +1,6 @@
-use sms_backup_restore_exporter::convert_export;
-use std::fs;
+use sms_backup_restore_exporter_csv::convert_export;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::PathBuf;
 
 #[test]
@@ -8,7 +9,7 @@ fn convert_export_smoke_on_sample_fixture() {
     assert!(fixture.is_file(), "missing fixture: {}", fixture.display());
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let report = convert_export(&fixture, tmp.path(), "+15555550100")
+    let report = convert_export(&fixture, tmp.path(), &["+15555550100".into()])
         .expect("convert_export should succeed");
 
     assert!(
@@ -16,6 +17,32 @@ fn convert_export_smoke_on_sample_fixture() {
         "expected >=1 conversations, got {}",
         report.conversations
     );
+
+    let mut csv_files: Vec<_> = fs::read_dir(tmp.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("csv"))
+        .collect();
+    csv_files.sort();
+    assert!(!csv_files.is_empty(), "expected at least one .csv");
+
+    let json_count = fs::read_dir(tmp.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+        .count();
+    assert_eq!(json_count, 0);
+
+    let mut contents = String::new();
+    File::open(&csv_files[0])
+        .unwrap()
+        .read_to_string(&mut contents)
+        .unwrap();
+    let header = contents.lines().next().unwrap();
+    assert!(header.contains("chat_identifier"));
+    assert!(header.contains("message_kind"));
+    assert!(header.contains("xml_fields_json"));
 
     let attachments = tmp.path().join("attachments");
     let mut found = false;
@@ -49,13 +76,13 @@ fn dedupes_overlapping_xml_files() {
     fs::write(input_dir.join("b.xml"), xml).unwrap();
 
     let out = tmp.path().join("out");
-    let report = convert_export(&input_dir, &out, "+15555550100").unwrap();
+    let report = convert_export(&input_dir, &out, &["+15555550100".into()]).unwrap();
     assert_eq!(report.sms_count, 2);
     assert_eq!(report.conversations, 1);
 
-    let chat = out.join("_15555550101.json");
+    let chat = out.join("_15555550101.csv");
     let body = fs::read_to_string(&chat).unwrap();
-    // header + one message line (duplicate dropped)
+    // header + one message row (duplicate dropped)
     assert_eq!(body.lines().count(), 2);
     assert!(body.contains("same text"));
 }
@@ -64,7 +91,7 @@ fn dedupes_overlapping_xml_files() {
 fn rejects_owner_phone_without_digits() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.xml");
     let tmp = tempfile::tempdir().expect("tempdir");
-    let err = convert_export(&fixture, tmp.path(), "not-a-phone").unwrap_err();
+    let err = convert_export(&fixture, tmp.path(), &["not-a-phone".into()]).unwrap_err();
     assert!(
         err.to_string().contains("owner phone"),
         "unexpected error: {err:#}"
