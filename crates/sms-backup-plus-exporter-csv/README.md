@@ -4,7 +4,7 @@ Convert [SMS Backup+](https://github.com/jberkel/sms-backup-plus) `.eml` trees i
 
 Sibling of [`sms-backup-plus-exporter`](../sms-backup-plus-exporter) (NDJSON + `dedupe-eml`). This crate does **not** replace that one; vault ingest still uses NDJSON.
 
-EML → CSV field mapping: [`docs/EML_CSV_MAPPING.md`](docs/EML_CSV_MAPPING.md).
+EML → CSV field mapping: [`docs/EML_CSV_MAPPING.md`](docs/EML_CSV_MAPPING.md). Example output from the test fixtures: [`samples/`](samples/).
 
 ## Standalone usage
 

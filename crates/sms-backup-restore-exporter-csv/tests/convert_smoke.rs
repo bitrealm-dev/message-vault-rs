@@ -41,8 +41,14 @@ fn convert_export_smoke_on_sample_fixture() {
         .unwrap();
     let header = contents.lines().next().unwrap();
     assert!(header.contains("chat_identifier"));
+    assert!(header.contains("export_source"));
     assert!(header.contains("message_kind"));
     assert!(header.contains("xml_fields_json"));
+    assert!(header.contains("subject"));
+    assert!(!header.contains("participants_json"));
+    assert!(!header.contains("read_receipt"));
+    assert!(!header.contains("tapbacks_json"));
+    assert!(contents.contains("sms-backup-restore"));
 
     let attachments = tmp.path().join("attachments");
     let mut found = false;

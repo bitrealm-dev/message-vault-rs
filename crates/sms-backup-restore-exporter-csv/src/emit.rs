@@ -11,44 +11,33 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
+/// Columns this exporter fills. Shared names match imessage-csv where the
+/// concept exists; unused iMessage-only columns are omitted.
 const HEADERS: &[&str] = &[
-    // Shared with imessage-exporter-csv
     "chat_identifier",
     "conversation_type",
     "group_title",
-    "participants_json",
     "guid",
     "timestamp",
     "timestamp_utc",
     "timestamp_display",
-    "read_receipt",
     "direction",
     "service",
     "sender_handle",
     "sender_display_name",
     "subject",
     "text",
-    "is_deleted",
-    "send_effect",
-    "shared_location",
-    "is_announcement",
-    "announcement",
-    "is_reply",
-    "thread_originator_guid",
-    "thread_originator_part",
-    "num_replies",
-    "parts_json",
-    "edits_json",
     "attachments_json",
-    "tapbacks_json",
-    "app_json",
     // SBR-only
+    "export_source",
     "message_kind",
     "date_ms",
     "contact_name",
     "android_type",
     "xml_fields_json",
 ];
+
+const EXPORT_SOURCE: &str = "sms-backup-restore";
 
 #[derive(Debug, Default)]
 pub struct ExportReport {
@@ -95,14 +84,7 @@ struct PendingMessage {
 struct PendingConversation {
     conversation_type: ConvType,
     group_title: Option<String>,
-    participants: BTreeMap<String, Option<String>>,
     messages: Vec<PendingMessage>,
-}
-
-#[derive(Debug, Serialize)]
-struct ParticipantCell {
-    handle: String,
-    display_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -209,7 +191,6 @@ fn ensure_convo<'a>(
         .or_insert_with(|| PendingConversation {
             conversation_type,
             group_title,
-            participants: BTreeMap::new(),
             messages: Vec::new(),
         })
 }
@@ -227,12 +208,6 @@ fn add_message(
         msg.conversation_type,
         msg.group_title.clone(),
     );
-    for (digits, hint) in &msg.participant_digits {
-        let entry = convo.participants.entry(digits.clone()).or_insert(None);
-        if entry.is_none() {
-            *entry = hint.clone();
-        }
-    }
     if msg.is_from_me {
         report.sent += 1;
     } else {
@@ -278,7 +253,6 @@ fn write_conversation(
     output_dir: &Path,
     chat_id: &str,
     convo: &mut PendingConversation,
-    owners: &OwnerPhoneSet,
     report: &mut ExportReport,
 ) -> Result<()> {
     dedupe_messages(&mut convo.messages);
@@ -293,26 +267,6 @@ fn write_conversation(
     if convo.messages.is_empty() {
         return Ok(());
     }
-
-    let mut participants: Vec<ParticipantCell> = convo
-        .participants
-        .iter()
-        .map(|(digits, hint)| ParticipantCell {
-            handle: to_e164(digits),
-            display_name: hint.clone().unwrap_or_default(),
-        })
-        .collect();
-    if convo.conversation_type == ConvType::Group {
-        let has_owner = participants.iter().any(|p| owners.is_owner(&p.handle));
-        if !has_owner {
-            participants.push(ParticipantCell {
-                handle: owners.primary_e164.clone(),
-                display_name: String::new(),
-            });
-        }
-    }
-    participants.sort_by(|a, b| a.handle.cmp(&b.handle));
-    let participants_json = json_cell(&participants);
 
     let path = output_dir.join(safe_filename(chat_id));
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
@@ -360,32 +314,18 @@ fn write_conversation(
             chat_id,
             convo.conversation_type.as_str(),
             convo.group_title.as_deref().unwrap_or(""),
-            participants_json.as_str(),
             guid.as_str(),
             ts_local.as_str(),
             ts_utc.as_str(),
             ts_display.as_str(),
-            "", // read_receipt
             direction,
             "SMS",
             sender_handle.as_str(),
             sender_display_name.as_str(),
             msg.subject.as_str(),
             msg.text.as_str(),
-            "", // is_deleted
-            "", // send_effect
-            "", // shared_location
-            "", // is_announcement
-            "", // announcement
-            "", // is_reply
-            "", // thread_originator_guid
-            "", // thread_originator_part
-            "", // num_replies
-            "", // parts_json
-            "", // edits_json
             attachments_json.as_str(),
-            "", // tapbacks_json
-            "", // app_json
+            EXPORT_SOURCE,
             msg.message_kind,
             msg.date_ms.as_str(),
             msg.contact_name.as_str(),
@@ -467,7 +407,7 @@ pub fn convert_export(
     }
 
     for (chat_id, mut convo) in conversations {
-        write_conversation(output_dir, &chat_id, &mut convo, &owners, &mut report)?;
+        write_conversation(output_dir, &chat_id, &mut convo, &mut report)?;
         if !convo.messages.is_empty() {
             report.conversations += 1;
         }

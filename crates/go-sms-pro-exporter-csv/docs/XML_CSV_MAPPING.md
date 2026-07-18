@@ -4,6 +4,11 @@ How `gosms_sys*.xml` `<SMS>` elements map to per-conversation CSV rows written b
 
 PDU (`I_*.pdu`) rows use the same CSV columns; see [PDU notes](#pdu-rows) at the end.
 
+## Goal / non-goal
+
+- **Goal:** Emit columns GO SMS Pro can fill. Where a concept matches iMessage CSV, reuse that field name.
+- **Non-goal:** A universal CSV schema shared with every exporter, or a full iMessage column skeleton with empty placeholders.
+
 ## XML shape
 
 ```xml
@@ -26,37 +31,29 @@ Each `<SMS>` becomes one CSV data row. Conversation files are keyed by the other
 
 | XML child | CSV column(s) | Notes |
 |-----------|---------------|--------|
-| `<address>` | `chat_identifier`, `participants_json`, `sender_handle` | Digits sanitized then E.164. For sent (`type=2`), address is the peer (not the sender). For received (`type=1`), address is also `sender_handle` unless Google Voice voicemail parsing overrides it from `<body>`. |
-| `<contactName>` | `contact_name`, `sender_display_name`, `participants_json[].display_name` | Raw string in `contact_name`. Display name filled for incoming when present. |
+| `<address>` | `chat_identifier`, `sender_handle` | Digits sanitized then E.164. For sent (`type=2`), address is the peer (not the sender). For received (`type=1`), address is also `sender_handle` unless Google Voice voicemail parsing overrides it from `<body>`. |
+| `<contactName>` | `contact_name`, `sender_display_name` | Raw string in `contact_name`. Display name filled for incoming when present. |
 | `<date>` | `date_ms`, `timestamp`, `timestamp_utc`, `timestamp_display` | Raw ms string in `date_ms`. Converted to local/UTC RFC3339 and a human display string. |
 | `<type>` | `android_type`, `direction` | `1` → `incoming`, `2` → `outgoing`. Other values are skipped. |
 | `<body>` | `text` | GO SMS emoji codes (e.g. `+g1f602`) decoded to Unicode. |
 | *(all children)* | `xml_fields_json` | Full map of every child element name → text (includes the five above plus extras such as `read`, `status`, `date_sent`, …). |
 
-## Derived / constant CSV fields (XML path)
+## Columns (imessage names where shared)
 
 | CSV column | Source |
 |------------|--------|
-| `conversation_type` | Always `individual` for XML SMS. |
-| `group_title` | Empty for XML. |
-| `participants_json` | JSON array of `{ "handle", "display_name" }` for the peer. |
-| `guid` | SHA-256 of chat id + local timestamp + direction + text + attachment digests (deterministic). |
-| `service` | Always `SMS`. |
-| `source_kind` | `xml`. |
-| `pdu_filename` | Empty. |
-| `attachments_json` | `[]` (XML SMS has no attachments). |
-| `sender_handle` / `sender_display_name` | Empty when `direction=outgoing`. |
-
-## Shared imessage-csv columns left empty (XML)
-
-These exist for alignment with `imessage-exporter-csv` and are blank for GO SMS Pro XML:
-
-`read_receipt`, `subject`, `is_deleted`, `send_effect`, `shared_location`, `is_announcement`, `announcement`, `is_reply`, `thread_originator_guid`, `thread_originator_part`, `num_replies`, `parts_json`, `edits_json`, `tapbacks_json`, `app_json`
+| `conversation_type` | Always `individual` for XML SMS; `group` from PDU PLMN lists |
+| `group_title` | Derived for PDU groups; empty for XML |
+| `guid` | SHA-256 of chat id + local timestamp + direction + text + attachment digests |
+| `service` | Always `SMS` |
+| `sender_handle` / `sender_display_name` | Empty when `direction=outgoing` |
+| `attachments_json` | `[]` for XML; media paths for PDU |
 
 ## SMS-Pro-only columns
 
 | CSV column | Meaning |
 |------------|---------|
+| `export_source` | Always `go-sms-pro` |
 | `source_kind` | `xml` or `pdu` |
 | `android_type` | Raw `<type>` (`1`/`2`); empty for PDU |
 | `date_ms` | Raw `<date>` ms; empty for PDU |

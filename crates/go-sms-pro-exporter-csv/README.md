@@ -1,8 +1,8 @@
 # go-sms-pro-exporter-csv
 
-Convert a **GO SMS Pro** (GOMO / Jiubang) local backup into per-conversation **CSV** (column names aligned with `imessage-exporter-csv`, plus SMS-Pro-only fields).
+Convert a **GO SMS Pro** (GOMO / Jiubang) local backup into per-conversation **CSV**. Reuses iMessage field names where the concept exists; unused iMessage-only columns are omitted. SMS-Pro-only fields are appended. A universal CSV shared by all exporters is a non-goal.
 
-Part of the [message-vault-rs](../..) Cargo workspace. Field mapping: [`docs/XML_CSV_MAPPING.md`](docs/XML_CSV_MAPPING.md).
+Part of the [message-vault-rs](../..) Cargo workspace. Field mapping: [`docs/XML_CSV_MAPPING.md`](docs/XML_CSV_MAPPING.md). Example output from the smoke fixture: [`samples/`](samples/).
 
 ## Input
 
@@ -28,8 +28,8 @@ Output:
 
 - one `.csv` file per conversation (header row + one row per message)
 - `attachments/` for media extracted from PDUs
-- `service` is `"SMS"`; iMessage-only columns are left empty
-- SMS-Pro-only columns: `source_kind`, `android_type`, `date_ms`, `contact_name`, `pdu_filename`, `xml_fields_json`
+- `service` is `"SMS"`
+- SMS-Pro-only columns: `export_source` (`go-sms-pro`), `source_kind`, `android_type`, `date_ms`, `contact_name`, `pdu_filename`, `xml_fields_json`
 
 ## Vault ingest
 

@@ -2,7 +2,7 @@
 
 use crate::owner_set::OwnerPhoneSet;
 use crate::pdu::{parse_pdu_file, ParsedPdu};
-use crate::phone::{sanitize_number, to_e164};
+use crate::phone::to_e164;
 use crate::xml::{parse_xml_file, XmlMessage};
 use anyhow::{bail, Context, Result};
 use chrono::{Local, TimeZone, Utc};
@@ -12,38 +12,24 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
+/// Columns this exporter fills. Shared names match imessage-csv where the
+/// concept exists; unused iMessage-only columns are omitted.
 const HEADERS: &[&str] = &[
-    // Shared with imessage-exporter-csv
     "chat_identifier",
     "conversation_type",
     "group_title",
-    "participants_json",
     "guid",
     "timestamp",
     "timestamp_utc",
     "timestamp_display",
-    "read_receipt",
     "direction",
     "service",
     "sender_handle",
     "sender_display_name",
-    "subject",
     "text",
-    "is_deleted",
-    "send_effect",
-    "shared_location",
-    "is_announcement",
-    "announcement",
-    "is_reply",
-    "thread_originator_guid",
-    "thread_originator_part",
-    "num_replies",
-    "parts_json",
-    "edits_json",
     "attachments_json",
-    "tapbacks_json",
-    "app_json",
     // SMS-Pro-only
+    "export_source",
     "source_kind",
     "android_type",
     "date_ms",
@@ -51,6 +37,8 @@ const HEADERS: &[&str] = &[
     "pdu_filename",
     "xml_fields_json",
 ];
+
+const EXPORT_SOURCE: &str = "go-sms-pro";
 
 #[derive(Debug, Default)]
 pub struct ExportReport {
@@ -99,15 +87,7 @@ struct PendingMessage {
 struct PendingConversation {
     conversation_type: String,
     group_title: Option<String>,
-    /// digits → optional name hint
-    participants: BTreeMap<String, Option<String>>,
     messages: Vec<PendingMessage>,
-}
-
-#[derive(Debug, Serialize)]
-struct ParticipantCell {
-    handle: String,
-    display_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -259,7 +239,6 @@ fn ensure_convo<'a>(
         .or_insert_with(|| PendingConversation {
             conversation_type: conversation_type.to_string(),
             group_title,
-            participants: BTreeMap::new(),
             messages: Vec::new(),
         })
 }
@@ -271,17 +250,6 @@ fn add_xml_messages(
     for msg in msgs {
         let chat_id = chat_id_individual(&msg.other_digits);
         let convo = ensure_convo(conversations, &chat_id, "individual", None);
-        convo
-            .participants
-            .entry(msg.other_digits.clone())
-            .or_insert_with(|| msg.name_hint.clone());
-        if let Some(hint) = &msg.name_hint {
-            if let Some(slot) = convo.participants.get_mut(&msg.other_digits) {
-                if slot.is_none() {
-                    *slot = Some(hint.clone());
-                }
-            }
-        }
         let dedupe_key = format!(
             "{}|{}|{}|",
             msg.timestamp_secs as i64,
@@ -417,15 +385,6 @@ fn add_pdu_message(
 
     for (chat_id, conversation_type, group_title) in targets {
         let convo = ensure_convo(conversations, &chat_id, &conversation_type, group_title);
-        if conversation_type == "group" {
-            for p in &parsed.participants {
-                if !owners.is_owner(p) {
-                    convo.participants.entry(p.clone()).or_insert(None);
-                }
-            }
-        } else if let Some(other) = parsed.participants.iter().find(|p| !owners.is_owner(p)) {
-            convo.participants.entry(other.clone()).or_insert(None);
-        }
         convo.messages.push(pending.clone());
     }
 }
@@ -444,34 +403,11 @@ fn write_conversation(
     output_dir: &Path,
     chat_id: &str,
     convo: &mut PendingConversation,
-    owner_e164: &str,
 ) -> Result<()> {
     dedupe_messages(&mut convo.messages);
     if convo.messages.is_empty() {
         return Ok(());
     }
-
-    let mut participants: Vec<ParticipantCell> = convo
-        .participants
-        .iter()
-        .map(|(digits, hint)| ParticipantCell {
-            handle: to_e164(digits),
-            display_name: hint.clone().unwrap_or_default(),
-        })
-        .collect();
-    // Include owner in participant list for groups (imessage style often lists all).
-    if convo.conversation_type == "group"
-        && !participants
-            .iter()
-            .any(|p| sanitize_number(&p.handle) == sanitize_number(owner_e164))
-    {
-        participants.push(ParticipantCell {
-            handle: owner_e164.to_string(),
-            display_name: String::new(),
-        });
-    }
-    participants.sort_by(|a, b| a.handle.cmp(&b.handle));
-    let participants_json = json_cell(&participants);
 
     let path = output_dir.join(safe_filename(chat_id));
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
@@ -523,32 +459,17 @@ fn write_conversation(
             chat_id,
             convo.conversation_type.as_str(),
             convo.group_title.as_deref().unwrap_or(""),
-            participants_json.as_str(),
             guid.as_str(),
             ts_local.as_str(),
             ts_utc.as_str(),
             ts_display.as_str(),
-            "", // read_receipt
             direction,
             "SMS",
             sender_handle.as_str(),
             sender_display_name.as_str(),
-            "", // subject
             msg.text.as_str(),
-            "", // is_deleted
-            "", // send_effect
-            "", // shared_location
-            "", // is_announcement
-            "", // announcement
-            "", // is_reply
-            "", // thread_originator_guid
-            "", // thread_originator_part
-            "", // num_replies
-            "", // parts_json
-            "", // edits_json
             attachments_json.as_str(),
-            "", // tapbacks_json
-            "", // app_json
+            EXPORT_SOURCE,
             msg.source_kind,
             msg.android_type.as_str(),
             msg.date_ms.as_str(),
@@ -575,7 +496,6 @@ pub fn convert_export(
 
     let owners = OwnerPhoneSet::new(owner_phones)?;
     let owner = owners.primary_digits.clone();
-    let owner_e164 = owners.primary_e164.clone();
     let mut report = ExportReport::default();
     let mut conversations: BTreeMap<String, PendingConversation> = BTreeMap::new();
 
@@ -656,7 +576,7 @@ pub fn convert_export(
     }
 
     for (chat_id, mut convo) in conversations {
-        write_conversation(output_dir, &chat_id, &mut convo, &owner_e164)?;
+        write_conversation(output_dir, &chat_id, &mut convo)?;
         report.conversations += 1;
     }
 
@@ -700,8 +620,13 @@ mod tests {
         let header = contents.lines().next().unwrap();
         assert!(header.contains("chat_identifier"));
         assert!(header.contains("direction"));
+        assert!(header.contains("export_source"));
         assert!(header.contains("source_kind"));
         assert!(header.contains("xml_fields_json"));
+        assert!(!header.contains("participants_json"));
+        assert!(!header.contains("read_receipt"));
+        assert!(!header.contains("tapbacks_json"));
+        assert!(contents.contains("go-sms-pro"));
         assert!(contents.contains("incoming") || contents.contains("outgoing"));
         assert!(contents.contains("smoke"));
     }

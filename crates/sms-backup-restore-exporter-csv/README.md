@@ -1,12 +1,12 @@
 # sms-backup-restore-exporter-csv
 
-Turn an Android **SMS Backup & Restore** XML file into per-conversation **CSV** (column names aligned with `imessage-exporter-csv`, plus SBR-only fields that preserve full XML attributes).
+Turn an Android **SMS Backup & Restore** XML file into per-conversation **CSV**. Reuses iMessage field names where the concept exists; unused iMessage-only columns are omitted. SBR-only fields (including full XML fidelity via `xml_fields_json`) are appended. A universal CSV shared by all exporters is a non-goal.
 
 Part of the [message-vault-rs](../..) Cargo workspace.
 
 [SMS Backup & Restore](https://www.synctech.com.au/sms-backup-restore/) (SyncTech) writes a backup like `sms-20210328165031.xml`. This tool reads that XML and writes one CSV file per conversation, plus decoded MMS media under `attachments/`.
 
-Field meanings: [docs/FIELDS.md](docs/FIELDS.md). XML→CSV mapping: [docs/XML_CSV_MAPPING.md](docs/XML_CSV_MAPPING.md).
+Field meanings: [docs/FIELDS.md](docs/FIELDS.md). XML→CSV mapping: [docs/XML_CSV_MAPPING.md](docs/XML_CSV_MAPPING.md). Example output from the sample fixture: [`samples/`](samples/).
 
 ## Input
 
@@ -34,8 +34,8 @@ Output:
 
 - one `.csv` file per conversation
 - `attachments/` for MMS media
-- `service` is `"SMS"`; iMessage-only columns are left empty
-- SBR-only columns: `message_kind`, `date_ms`, `contact_name`, `android_type`, `xml_fields_json`
+- `service` is `"SMS"`
+- SBR-only columns: `export_source` (`sms-backup-restore`), `message_kind`, `date_ms`, `contact_name`, `android_type`, `xml_fields_json`
 
 ## Vault ingest
 
