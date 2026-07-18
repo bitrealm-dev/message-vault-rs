@@ -1,0 +1,54 @@
+# Maps imessage-exporter-csv columns → vault NDJSON fields.
+# Left = CSV header; right = vault JSON field.
+# Unmapped CSV columns: `# name = ""` (commented; do not enable with a real field).
+
+source_id = "imessage"
+export_source = "imessage"
+exporter_version = "4.2.0"
+schema = "vault"
+default_service = "iMessage"
+
+[columns]
+chat_identifier = "chat_identifier"
+conversation_type = "conversation_type"
+group_title = "group_title"
+participants_json = "participants"
+guid = "guid"
+timestamp = "timestamp"
+timestamp_utc = "timestamp_utc"
+# timestamp_display = ""   # locale display string; use timestamp / timestamp_utc
+read_receipt = "read_receipt"
+direction = "direction"
+service = "service"
+sender_handle = "sender"
+sender_display_name = "sender_display_name"
+subject = "subject"
+text = "text"
+is_deleted = "is_deleted"
+send_effect = "send_effect"
+shared_location = "shared_location"
+is_announcement = "is_announcement"
+announcement = "announcement"
+is_reply = "is_reply"
+thread_originator_guid = "thread_originator_guid"
+thread_originator_part = "thread_originator_part"
+num_replies = "num_replies"
+parts_json = "parts"
+edits_json = "edits"
+attachments_json = "attachments"
+tapbacks_json = "tapbacks"
+app_json = "app"
+# export_source = ""       # ingest source id covers provenance
+
+[transforms]
+direction_to_is_from_me = true
+attachments_json_parse = true
+tapbacks_json_parse = true
+participants_json_parse = true
+parts_json_parse = true
+edits_json_parse = true
+app_json_parse = true
+
+[required]
+fields = ["chat_identifier", "timestamp", "direction"]
+require_text_or_attachments = true

@@ -6,16 +6,19 @@ Exporters in this workspace produce these records; the vault binary imports them
 
 ## Wire schemas
 
-There are two on-disk NDJSON shapes. Conversation headers carry a `"schema"` discriminator and `schema_version`:
+Conversation headers carry a `"schema"` discriminator and `schema_version`:
 
 | Wire schema | Rust module | Who writes it | Discriminator |
 |-------------|-------------|---------------|---------------|
-| **iMessage NDJSON** | [`message_json::imessage`](src/imessage.rs) | `imessage-exporter-json` | `"schema": "imessage"`, `schema_version` 4 (headers without `schema` still default to imessage) |
+| **Vault NDJSON** | [`message_json::vault`](src/vault.rs) | `csv-ingest` (all CSV sources); intended HTTP ingest body | `"schema": "vault"`, `schema_version` 1 |
+| **iMessage NDJSON** | [`message_json::imessage`](src/imessage.rs) | `imessage-exporter-json` (legacy wire) | `"schema": "imessage"`, `schema_version` 4 (headers without `schema` still default to imessage) |
 | **SMS NDJSON** | [`message_json::sms`](src/sms.rs) | SMS Backup+ exporter | `"schema": "sms"`, `schema_version` 2 |
+
+`vault` is the one standard message shape for every source. It holds every field the vault understands (text, attachments, tapbacks, replies, announcements, …). Sources leave unused fields empty or omit them. `service` is the channel (`SMS`, `iMessage`, …), not the wire schema name.
 
 Conversation headers use `"conversation_type": "individual" | "group"` (not `"type"`).
 
-Vault import auto-detects which schema a file uses from the conversation header (`schema`, or `schema_version`) and maps both into the same SQLite rows.
+Vault import auto-detects which schema a file uses from the conversation header and maps everything into vault records for SQLite.
 
 **Breaking:** older NDJSON with `"type"` / `schema_version` 1 or 3, and DBs with a `conv_type` column, are not read. Re-export and re-ingest.
 
@@ -23,8 +26,9 @@ Vault import auto-detects which schema a file uses from the conversation header 
 
 | Module | Role |
 |--------|------|
-| [`imessage`](src/imessage.rs) | iOS / iMessage schema (`schema_version` **4**): tapbacks, replies, announcements, stickers, transcription |
-| [`sms`](src/sms.rs) | Common SMS/MMS schema for SMS Backup+ |
+| [`vault`](src/vault.rs) | One standard schema for all sources (`schema_version` **1**); rich fields omitted when unused |
+| [`imessage`](src/imessage.rs) | Legacy iOS exporter wire shape (`schema_version` **4**) |
+| [`sms`](src/sms.rs) | Legacy SMS Backup+ NDJSON |
 
 ## Usage
 
@@ -35,9 +39,8 @@ message_json = { path = "../message-json" }
 ```
 
 ```rust
-use message_json::sms::{
-    stable_guid, AttachmentRecord, ConversationRecord, ExportRecord, MessageRecord,
-    ParticipantRecord,
+use message_json::vault::{
+    AttachmentRecord, ConversationRecord, ExportRecord, MessageRecord, ParticipantRecord,
 };
 
 let header = ConversationRecord::header(
@@ -48,10 +51,15 @@ let header = ConversationRecord::header(
         handle: "+15551212".into(),
         name_hint: None,
     }],
+    "SMS",
     "2024-01-01T00:00:00Z",
 );
 serde_json::to_writer(stdout, &ExportRecord::Conversation(header))?;
 ```
+
+## CSV ingest
+
+Per-conversation CSV from the workspace exporters is converted to vault NDJSON via [`csv-ingest`](../csv-ingest) and source mapping files. Contract (required fields, pipeline): [`docs/CSV_INGEST.md`](docs/CSV_INGEST.md).
 
 ## Out of scope
 

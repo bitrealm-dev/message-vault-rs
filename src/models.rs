@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
 #[allow(unused_imports)] // re-exported for callers
-pub use message_json::imessage::{
+pub use message_json::vault::{
     AttachmentRecord, ConversationRecord, ExportRecord, MessageRecord, ParticipantRecord,
     TapbackRecord,
 };
@@ -17,7 +17,11 @@ pub fn clean_body(text: Option<&str>) -> Option<String> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WireSchema {
+    /// Standard vault NDJSON (`schema: "vault"`), also used for CSV ingest.
+    Vault,
+    /// Legacy iOS exporter (`schema: "imessage"`). Same field layout as vault.
     Imessage,
+    /// Legacy SMS Backup+ NDJSON (`schema: "sms"`).
     Sms,
 }
 
@@ -26,10 +30,12 @@ impl WireSchema {
         if let Some(s) = v.get("schema").and_then(|x| x.as_str()) {
             return match s {
                 "sms" => Self::Sms,
-                _ => Self::Imessage,
+                "vault" => Self::Vault,
+                "imessage" => Self::Imessage,
+                _ => Self::Vault,
             };
         }
-        // No schema field: schema_version 2 ⇒ sms; otherwise imessage.
+        // No schema field: schema_version 2 ⇒ sms; otherwise legacy imessage / vault layout.
         match v.get("schema_version").and_then(|x| x.as_u64()) {
             Some(2) => Self::Sms,
             _ => Self::Imessage,
@@ -56,8 +62,8 @@ fn attachment_from_sms(a: message_json::sms::AttachmentRecord) -> AttachmentReco
 
 fn conversation_from_sms(c: message_json::sms::ConversationRecord) -> ConversationRecord {
     ConversationRecord {
-        schema: c.schema,
-        schema_version: c.schema_version,
+        schema: message_json::vault::SCHEMA_NAME.to_string(),
+        schema_version: message_json::vault::SCHEMA_VERSION,
         chat_identifier: c.chat_identifier,
         service: c.service,
         conversation_type: c.conversation_type,
@@ -77,10 +83,17 @@ fn message_from_sms(m: message_json::sms::MessageRecord) -> MessageRecord {
         service: m.service,
         subject: None,
         text: m.text,
+        read_receipt: None,
+        is_deleted: false,
+        send_effect: None,
+        shared_location: None,
         is_announcement: false,
         announcement: None,
         attachments: m.attachments.into_iter().map(attachment_from_sms).collect(),
         tapbacks: Vec::new(),
+        parts: Vec::new(),
+        edits: Vec::new(),
+        app: None,
         is_reply: false,
         thread_originator_guid: None,
         thread_originator_part: None,
@@ -88,10 +101,16 @@ fn message_from_sms(m: message_json::sms::MessageRecord) -> MessageRecord {
     }
 }
 
-/// Parse NDJSON lines from one file into imessage-shaped records.
+fn normalize_to_vault_conversation(mut c: ConversationRecord) -> ConversationRecord {
+    c.schema = message_json::vault::SCHEMA_NAME.to_string();
+    c.schema_version = message_json::vault::SCHEMA_VERSION;
+    c
+}
+
+/// Parse NDJSON lines from one file into vault records.
 ///
-/// Conversation `schema` selects sms vs imessage parsing for following messages.
-/// Missing `schema` with schema_version ≠ 2 is treated as imessage.
+/// Conversation `schema` selects sms vs vault/imessage parsing for following messages.
+/// Missing `schema` with schema_version ≠ 2 is treated as imessage-shaped layout.
 pub fn parse_export_lines(lines: impl IntoIterator<Item = String>) -> Result<Vec<ExportRecord>> {
     let mut active_schema: Option<WireSchema> = None;
     let mut records = Vec::new();
@@ -124,24 +143,24 @@ fn parse_export_line(line: &str, active_schema: &mut Option<WireSchema>) -> Resu
                         serde_json::from_value(value).context("sms conversation")?;
                     Ok(ExportRecord::Conversation(conversation_from_sms(c)))
                 }
-                WireSchema::Imessage => {
+                WireSchema::Vault | WireSchema::Imessage => {
                     let c: ConversationRecord =
-                        serde_json::from_value(value).context("imessage conversation")?;
-                    Ok(ExportRecord::Conversation(c))
+                        serde_json::from_value(value).context("conversation")?;
+                    Ok(ExportRecord::Conversation(normalize_to_vault_conversation(c)))
                 }
             }
         }
         "message" => {
-            let schema = active_schema.unwrap_or(WireSchema::Imessage);
+            let schema = active_schema.unwrap_or(WireSchema::Vault);
             match schema {
                 WireSchema::Sms => {
                     let m: message_json::sms::MessageRecord =
                         serde_json::from_value(value).context("sms message")?;
                     Ok(ExportRecord::Message(message_from_sms(m)))
                 }
-                WireSchema::Imessage => {
+                WireSchema::Vault | WireSchema::Imessage => {
                     let m: MessageRecord =
-                        serde_json::from_value(value).context("imessage message")?;
+                        serde_json::from_value(value).context("message")?;
                     Ok(ExportRecord::Message(m))
                 }
             }

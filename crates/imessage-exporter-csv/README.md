@@ -23,6 +23,8 @@ imessage-exporter-csv -f csv -c clone -o csv_export
 
 One `.csv` file per conversation. Columns follow the HTML message surface; values are filled from `chat.db` (handles, participants, RFC 3339 times). Nested structures use JSON cells (`parts_json`, `tapbacks_json`, `edits_json`, `attachments_json`, `app_json`).
 
+Example output shape: [`samples/15551212.csv`](samples/15551212.csv). Each row includes `export_source=imessage` for [`csv-ingest`](../csv-ingest) mapping selection.
+
 ## Upstream sync
 
 1. Copy a fresh `imessage-exporter/` package from upstream into this directory

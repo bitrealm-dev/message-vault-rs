@@ -187,10 +187,7 @@ fn export_source(
                 report.pdu_messages,
                 report.attachments_saved
             );
-            bail!(
-                "go-sms-pro stages CSV under {}; vault NDJSON import is not supported for this source yet",
-                staging.display()
-            );
+            csv_to_ndjson(staging, "go-sms-pro")?;
         }
         ExportBackend::SmsBackupRestore => {
             let from = require_single_input(source_id, from)?;
@@ -203,10 +200,7 @@ fn export_source(
                 report.mms_count,
                 report.attachments_saved
             );
-            bail!(
-                "sms-backup-restore stages CSV under {}; vault NDJSON import is not supported for this source yet",
-                staging.display()
-            );
+            csv_to_ndjson(staging, "sms-backup-restore")?;
         }
         ExportBackend::SmsBackupPlus => {
             let emails = if owner.emails.is_empty() {
@@ -235,6 +229,23 @@ fn export_source(
             let from = require_single_input(source_id, from)?;
             export_imessage(from, staging)?;
         }
+    }
+    Ok(())
+}
+
+/// CSV exporters stage `.csv` first; convert in-place to NDJSON for vault import.
+fn csv_to_ndjson(staging: &Path, source_id: &str) -> Result<()> {
+    let mapping_path = csv_ingest::resolve_mapping_path(None, Some(source_id))?;
+    let mapping = csv_ingest::Mapping::load(&mapping_path)?;
+    let report = csv_ingest::convert_directory(staging, staging, &mapping)?;
+    println!(
+        "  csv→json: conversations={} messages={} (mapping {})",
+        report.conversations,
+        report.messages,
+        mapping_path.display()
+    );
+    if report.rows_skipped > 0 {
+        println!("  csv→json: rows skipped={}", report.rows_skipped);
     }
     Ok(())
 }

@@ -82,7 +82,10 @@ const HEADERS: &[&str] = &[
     "attachments_json",
     "tapbacks_json",
     "app_json",
+    "export_source",
 ];
+
+const EXPORT_SOURCE: &str = "imessage";
 
 fn parse_thread_part(part: &str) -> Option<usize> {
     part.split(':').next().and_then(|p| p.parse::<usize>().ok())
@@ -124,6 +127,7 @@ struct CsvRow {
     attachments_json: String,
     tapbacks_json: String,
     app_json: String,
+    export_source: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -455,6 +459,7 @@ impl<'a> CSV<'a> {
             attachments_json: json_cell(&attachment_cells),
             tapbacks_json: json_cell(&tapbacks),
             app_json: app.map(|v| json_cell(&v)).unwrap_or_else(|| "null".into()),
+            export_source: EXPORT_SOURCE.to_string(),
         })
     }
 
@@ -594,10 +599,10 @@ mod tests {
 
     #[test]
     fn csv_header_matches_row_fields() {
-        assert_eq!(HEADERS.len(), 29);
+        assert_eq!(HEADERS.len(), 30);
         assert_eq!(HEADERS[0], "chat_identifier");
         assert_eq!(HEADERS[9], "direction");
-        assert_eq!(HEADERS[HEADERS.len() - 1], "app_json");
+        assert_eq!(HEADERS[HEADERS.len() - 1], "export_source");
     }
 
     #[test]
@@ -632,6 +637,7 @@ mod tests {
             attachments_json: "[]".into(),
             tapbacks_json: "[]".into(),
             app_json: "null".into(),
+            export_source: "imessage".into(),
         };
 
         let mut wtr = csv::WriterBuilder::new()
@@ -644,6 +650,7 @@ mod tests {
         assert!(s.contains("hello"));
         assert!(s.contains("+15551212"));
         assert!(s.contains("Nov 21, 2019 12:50:31 PM"));
+        assert!(s.contains("imessage"));
     }
 
     #[test]

@@ -424,6 +424,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "csv-ingest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "csv",
+ "hex",
+ "message_json",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "ctutils"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -878,6 +895,7 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
+ "csv-ingest",
  "go-sms-pro-exporter-csv",
  "message_json",
  "rusqlite",

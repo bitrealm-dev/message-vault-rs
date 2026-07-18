@@ -33,7 +33,7 @@ Output:
 
 ## Vault ingest
 
-`message-vault-rs ingest go-sms-pro` still runs the export into the source staging dir, then **stops**: vault NDJSON import does not accept this CSV yet.
+`message-vault-rs ingest go-sms-pro` exports CSV into staging, then runs [`csv-ingest`](../csv-ingest) (mapping → imessage-shaped NDJSON) and continues with normal vault import.
 
 ## License
 

@@ -6,7 +6,8 @@ This repo is a **Cargo workspace**: the vault binary, shared NDJSON schema, and 
 
 ```text
 crates/
-  message-json/                 # shared NDJSON schemas (sms + imessage)
+  message-json/                 # shared NDJSON schemas (vault + legacy sms/imessage)
+  csv-ingest/                   # CSV + mapping → vault NDJSON
   go-sms-pro-exporter-csv/
   sms-backup-restore-exporter-csv/
   sms-backup-plus-exporter/       # EML → SMS NDJSON (vault ingest)
@@ -14,6 +15,7 @@ crates/
   imessage-exporter/            # bin: imessage-exporter-json (JSON overlay fork)
                                 # keep html/txt paths for upstream merges; see crate README
                                 # depends on crates.io imessage-database
+  imessage-exporter-csv/        # iMessage → CSV
 config/                         # local machine config (examples committed)
 sources/                        # optional placeholder for raw backups (gitignored)
 scripts/
@@ -29,13 +31,14 @@ cargo build --workspace --release
 
 ### NDJSON schemas
 
-Exporters write one of two wire formats from [`crates/message-json`](crates/message-json):
+Exporters write NDJSON from [`crates/message-json`](crates/message-json):
 
-- **SMS NDJSON** (`message_json::sms`) — SMS Backup+
-- **CSV exporters** (not vault-importable yet) — `go-sms-pro-exporter-csv`, `sms-backup-restore-exporter-csv`, `sms-backup-plus-exporter-csv`
-- **iMessage NDJSON** (`message_json::imessage`) — `imessage-exporter-json`
+- **Vault NDJSON** (`message_json::vault`) — one standard message shape for all sources; written by [`csv-ingest`](crates/csv-ingest)
+- **SMS NDJSON** (`message_json::sms`) — SMS Backup+ (direct, legacy wire)
+- **iMessage NDJSON** (`message_json::imessage`) — `imessage-exporter-json` (direct, legacy wire)
+- **CSV exporters** — `go-sms-pro-exporter-csv`, `sms-backup-restore-exporter-csv`, `sms-backup-plus-exporter-csv`, `imessage-exporter-csv`; vault ingest runs [`csv-ingest`](crates/csv-ingest) (mapping → vault NDJSON) before import
 
-Vault import auto-detects the schema from each file’s conversation header. Details: [`crates/message-json/README.md`](crates/message-json/README.md).
+Vault import auto-detects the schema from each file’s conversation header and maps into vault records. CSV contract: [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md).
 
 ## Multi-source layout
 

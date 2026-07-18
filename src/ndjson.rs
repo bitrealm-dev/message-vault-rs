@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 
 use crate::models::{self, ExportRecord};
 
-/// Read an NDJSON export file (imessage or sms schema), one typed record per line.
+/// Read an NDJSON export file (vault, imessage, or sms schema), one typed record per line.
 pub fn read_records(path: &Path) -> Result<Vec<ExportRecord>> {
     let file = File::open(path)
         .with_context(|| format!("failed to open {}", path.display()))?;
