@@ -12,32 +12,28 @@ crates/
 config/                         # local machine config (examples committed)
 sources/                        # optional placeholder for raw backups (gitignored)
 scripts/
-  ingest-staging.sh             # archive-path wrapper around `ingest`
-  build-staging.sh              # export only (debug)
+  ingest-staging.sh             # staging → import + dedupe wrapper
   import-staging.sh             # import + dedupe only (debug)
 web/                            # Next.js browser UI
 ```
 
 ```bash
-# Exporters (sibling clone)
-cd ../message-exporters && cargo build --workspace --release
-export MESSAGE_EXPORTERS_BIN="$PWD/target/release"
-
 # Vault
-cd ../message-vault-rs
 cargo build --workspace --release
+
+# Exporters (separate repo — fill staging/, not used by vault at runtime)
+# https://github.com/bitrealm-dev/message-exporters
 ```
 
 ### Pipeline
 
 ```text
-message-exporters   backup  →  CSV or SMS/iMessage NDJSON
-message-vault-rs    CSV     →  vault NDJSON (csv-ingest)  →  SQLite + UI
-                    NDJSON  →  import (schema auto-detect)
+message-exporters   backup  →  staging/<source>/  (CSV or NDJSON)
+message-vault-rs    staging →  optional csv-ingest →  SQLite + UI
 ```
 
 - **Vault NDJSON** (`message_json::vault`) — standard ingest shape; see [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md)
-- Ingest shells out to exporter binaries (`MESSAGE_EXPORTERS_BIN`, sibling `../message-exporters/target/release`, or `PATH`)
+- Vault **never** runs exporters. Fill each source’s `export_dir` first, then `ingest`.
 
 ## Multi-source layout
 
@@ -53,8 +49,6 @@ assets_converted_dir = "assets_converted"
 [[sources]]
 id = "imessage"
 export_dir = "staging/imessage"
-# Optional: raw input for `ingest` / scripts (omit --from when set)
-# source_dir = "/path/to/iphone_backup"
 
 [[sources]]
 id = "sms-backup-plus"
@@ -69,30 +63,22 @@ id = "sms-backup-restore"
 export_dir = "staging/sms-backup-restore"
 ```
 
-Resolved asset roots default to `data/<source_id>/assets` and `data/<source_id>/assets_converted`. Override with full paths on a source if needed.
+Resolved asset roots default to `data/<account_id>/<source_id>/assets` and `…/assets_converted`. Override with full paths on a source if needed.
 
-### Raw inputs (`sources/` vs `source_dir`)
-
-[`sources/`](sources/) is an optional, gitignored placeholder for keeping raw backups inside the clone (contents are ignored; only `.gitkeep` is tracked). Ingest does **not** read from `sources/` automatically.
-
-Point each `[[sources]]` entry at real input with absolute (or repo-relative) `source_dir` / `source_dirs` in `config.toml`, or pass `--from` on the CLI. Putting trees under `sources/` is only a convenience for local layout — paths still go in config or `--from`.
+[`sources/`](sources/) is an optional, gitignored placeholder for keeping raw backups inside the clone. Ingest does **not** read from `sources/` — only from each source’s `export_dir` (staging).
 
 One shared SQLite DB holds all sources. Each message row has a `source` column. The web UI can filter by source or show the combined (all) view.
 
 ## Ingest (primary path)
 
-One command exports raw source data → NDJSON under `staging/<source>/` → imports that source → soft-dedupes across sources:
+1. Export backups into `staging/<source>/` with [message-exporters](https://github.com/bitrealm-dev/message-exporters) (or any tool that writes vault NDJSON / mapped CSV).
+2. Run `ingest` — optional CSV→vault NDJSON, import that source, soft-dedupe across sources:
 
 ```bash
-# --from required unless that source has source_dir / source_dirs in config
-cargo run --release -- ingest imessage --from /path/to/iphone_backup
-cargo run --release -- ingest go-sms-pro --from /path/to/gosms-export
-cargo run --release -- ingest sms-backup-plus --from /path/to/eml-tree
-cargo run --release -- ingest sms-backup-restore --from /path/to/sms-xml
-
-# with source_dir / source_dirs configured:
-cargo run --release -- ingest go-sms-pro
-cargo run --release -- ingest sms-backup-plus
+cargo run --release -- ingest imessage --account <uuid>
+cargo run --release -- ingest go-sms-pro --account <uuid>
+cargo run --release -- ingest sms-backup-plus --account <uuid>
+cargo run --release -- ingest sms-backup-restore --account <uuid>
 
 # optional flags:
 #   --mode append | replace   (default replace)
@@ -102,24 +88,16 @@ cargo run --release -- ingest sms-backup-plus
 #   --staging-dir staging/custom
 ```
 
-Helper (uses each source’s `source_dir` / `source_dirs` from config):
+Helper (staging must already be populated):
 
 ```bash
 # one source
-./scripts/ingest-staging.sh go-sms-pro
-./scripts/ingest-staging.sh --append sms-backup-plus
+./scripts/ingest-staging.sh --account <uuid> go-sms-pro
+./scripts/ingest-staging.sh --account <uuid> --append sms-backup-plus
 
-# several, or all configured sources (omit ids → all)
-./scripts/ingest-staging.sh imessage go-sms-pro sms-backup-plus sms-backup-restore
-./scripts/ingest-staging.sh
-```
-
-Or call `ingest` once per source yourself (same flags each time):
-
-```bash
-for id in imessage go-sms-pro sms-backup-plus sms-backup-restore; do
-  cargo run --release -- ingest "$id"
-done
+# several, or all known sources (omit ids → all)
+./scripts/ingest-staging.sh --account <uuid> imessage go-sms-pro sms-backup-plus sms-backup-restore
+./scripts/ingest-staging.sh --account <uuid>
 ```
 
 Then generate converted media and browse:
@@ -129,10 +107,9 @@ cd web && npm run process-assets
 npm run dev
 ```
 
-NDJSON under `staging/` is an implementation detail of ingest. Lower-level scripts remain for debugging:
+Lower-level import-only path:
 
 ```bash
-./scripts/build-staging.sh          # export only
 ./scripts/import-staging.sh         # import + dedupe only
 ```
 
@@ -158,9 +135,9 @@ Full walkthrough with diagrams: [docs/dedupe.md](docs/dedupe.md).
 Database tables and how they connect: [docs/schema.md](docs/schema.md).
 
 ```bash
-cargo run --release -- import --source imessage --mode replace
-cargo run --release -- import --all --mode replace
-cargo run --release -- dedupe-cross-source
+cargo run --release -- import --source imessage --mode replace --account <uuid>
+cargo run --release -- import --all --mode replace --account <uuid>
+cargo run --release -- dedupe-cross-source --account <uuid>
 ```
 
 ## Obsidian markdown export

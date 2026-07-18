@@ -524,7 +524,6 @@ name = "message-vault-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "csv",
  "csv-ingest",

@@ -61,15 +61,9 @@ pub struct PathsConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SourceConfig {
     pub id: String,
+    /// Staging directory for this source (NDJSON and/or CSV ready to import).
+    /// Fill externally (e.g. message-exporters); vault ingest only reads this path.
     pub export_dir: PathBuf,
-    /// Optional single raw input path for `ingest` (iPhone backup, XML, EML tree, …).
-    /// Prefer [`Self::source_dirs`] when a source has multiple trees.
-    #[serde(default)]
-    pub source_dir: Option<PathBuf>,
-    /// Optional list of raw input paths (merged for exporters that support multi-input).
-    /// When non-empty, used instead of [`Self::source_dir`].
-    #[serde(default)]
-    pub source_dirs: Vec<PathBuf>,
     /// Optional full-path override for originals (else `data_dir/<id>/<assets_dir>`).
     #[serde(default)]
     pub assets_dir: Option<PathBuf>,
@@ -99,17 +93,6 @@ fn default_exclude_csv() -> PathBuf {
 }
 
 impl SourceConfig {
-    /// Raw input paths for ingest/export: `source_dirs` if set, else singular `source_dir`.
-    pub fn input_dirs(&self) -> Vec<PathBuf> {
-        if !self.source_dirs.is_empty() {
-            self.source_dirs.clone()
-        } else if let Some(p) = &self.source_dir {
-            vec![p.clone()]
-        } else {
-            Vec::new()
-        }
-    }
-
     /// Per-account asset store: `data_dir/<account_id>/<source_id>/<assets_dir>`.
     pub fn resolved_assets_dir_for_account(
         &self,
@@ -185,8 +168,6 @@ impl Config {
             config.sources.push(SourceConfig {
                 id: "default".to_string(),
                 export_dir,
-                source_dir: None,
-                source_dirs: Vec::new(),
                 assets_dir: None,
                 assets_converted_dir: None,
             });
@@ -197,14 +178,6 @@ impl Config {
                 bail!("source id must not be empty");
             }
             source.export_dir = resolve_path(repo, &source.export_dir);
-            if let Some(p) = source.source_dir.take() {
-                source.source_dir = Some(resolve_path(repo, &p));
-            }
-            source.source_dirs = source
-                .source_dirs
-                .drain(..)
-                .map(|p| resolve_path(repo, &p))
-                .collect();
             if let Some(p) = source.assets_dir.take() {
                 source.assets_dir = Some(resolve_path(repo, &p));
             }

@@ -32,22 +32,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Export raw source data, import into the vault, then soft-dedupe across sources
+    /// Import staging for a source (optional CSV→vault NDJSON), then soft-dedupe.
+    /// Fill `export_dir` / staging via message-exporters first.
     Ingest {
-        /// Configured source id (imessage, go-sms-pro, sms-backup-plus, sms-backup-restore)
+        /// Configured source id (imessage, go-sms-pro, sms-backup-plus, sms-backup-restore, …)
         source: String,
-
-        /// Path to raw source data (iPhone backup, XML export, EML tree, …).
-        /// Optional when the source has `source_dir` / `source_dirs` set in config.
-        /// When omitted, all configured input dirs are used (sms-backup-plus can merge several).
-        #[arg(long)]
-        from: Option<PathBuf>,
 
         /// Path to config.toml
         #[arg(long, default_value = "config/config.toml")]
         config: PathBuf,
 
-        /// Override staging/output dir (defaults to the source's export_dir)
+        /// Override staging dir (defaults to the source's export_dir)
         #[arg(long)]
         staging_dir: Option<PathBuf>,
 
@@ -215,7 +210,6 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Ingest {
             source,
-            from,
             config,
             staging_dir,
             mode,
@@ -229,28 +223,13 @@ fn main() -> Result<()> {
                 bail!("--window-secs must be >= 0");
             }
             let mode = import::ImportMode::parse(&mode)?;
-            let src = cfg.source(&source)?;
-            let from = match from {
-                Some(p) => vec![p],
-                None => {
-                    let dirs = src.input_dirs();
-                    if dirs.is_empty() {
-                        bail!(
-                            "ingest '{source}' needs --from, or set source_dir / source_dirs \
-                             on that [[sources]] entry in {}",
-                            config.display()
-                        );
-                    }
-                    dirs
-                }
-            };
+            let _ = cfg.source(&source)?;
 
             let stats = ingest::ingest(
                 &cfg,
                 &ingest::IngestOptions {
                     source_id: source,
                     account_id: account,
-                    from,
                     staging_dir,
                     mode,
                     overwrite_contacts,
@@ -262,9 +241,6 @@ fn main() -> Result<()> {
             println!();
             println!("Import into {}", cfg.paths.db.display());
             println!("  staging:       {}", stats.staging_dir.display());
-            if let Some(archive) = &stats.rotated_to {
-                println!("  rotated from:  {}", archive.display());
-            }
             println!("  files:         {}", stats.import.files);
             println!("  conversations: {}", stats.import.conversations);
             println!("  messages:      {}", stats.import.messages);

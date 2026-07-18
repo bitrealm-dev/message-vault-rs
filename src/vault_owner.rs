@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // first/last/phones/emails loaded for profile round-trip; export uses display_name
 pub struct VaultOwner {
     pub first_name: String,
     pub last_name: String,

@@ -9,8 +9,11 @@
 # accounts live in SQLite (`vault_owners`, `accounts`). CLI commands require `--account <uuid>`.
 #
 # Optional legacy sections (used by `reset-demo` seeding when present):
-# [owner] — message / vault owner for exporters
+# [owner] — message / vault owner for demo seeding
 # [account] — web login account stub
+#
+# Staging (`export_dir`) is filled outside this repo (e.g. message-exporters).
+# Then run: cargo run --release -- ingest <source> --account <uuid>
 #
 # contacts.csv: phone numbers only (semicolon-separated). Set exclude=true to hide from
 # Contacts/groups (All still lists them). iMessage emails attach in the UI into
@@ -39,23 +42,15 @@ exclude_csv = "config/exclude.csv"
 [[sources]]
 id = "imessage"
 export_dir = "staging/imessage"
-# Optional: raw input for `ingest` (omit --from when set)
-# source_dir = "/path/to/iphone_backup"
 
 [[sources]]
 id = "sms-backup-plus"
 export_dir = "staging/sms-backup-plus-eml"
-# One tree:
-# source_dir = "/path/to/eml-tree"
-# Or several trees (merged at export; sms-backup-plus only):
-# source_dirs = ["/path/to/eml-a", "/path/to/eml-b"]
 
 [[sources]]
 id = "go-sms-pro"
 export_dir = "staging/go-sms-pro"
-# source_dir = "/path/to/gosms-export"
 
 [[sources]]
 id = "sms-backup-restore"
 export_dir = "staging/sms-backup-restore"
-# source_dir = "/path/to/sms-xml-or-dir"
