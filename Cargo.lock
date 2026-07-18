@@ -748,6 +748,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "imessage-exporter-csv"
+version = "0.0.0"
+dependencies = [
+ "askama",
+ "chrono",
+ "clap",
+ "crabapple",
+ "csv",
+ "fdlimit",
+ "fs2",
+ "imessage-database",
+ "rpassword",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
