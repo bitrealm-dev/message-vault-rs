@@ -25,12 +25,13 @@ Writes one `{stem}.json` NDJSON file per `{stem}.csv` (conversation header + mes
 
 | File | Source |
 |------|--------|
-| [`mappings/imessage.toml`](mappings/imessage.toml) | `imessage-exporter-csv` |
-| [`mappings/sms-backup-plus.toml`](mappings/sms-backup-plus.toml) | `sms-backup-plus-exporter-csv` |
-| [`mappings/sms-backup-restore.toml`](mappings/sms-backup-restore.toml) | `sms-backup-restore-exporter-csv` |
-| [`mappings/go-sms-pro.toml`](mappings/go-sms-pro.toml) | `go-sms-pro-exporter-csv` |
+| [`mappings/imessage.toml`](mappings/imessage.toml) | `imessage-exporter-csv` (Rust mapper) |
+| [`mappings/imazing.toml`](mappings/imazing.toml) | iMazing Messages CSV (**Python** adapter) |
+| [`mappings/sms-backup-plus.toml`](mappings/sms-backup-plus.toml) | `sms-backup-plus-exporter-csv` (Rust mapper) |
+| [`mappings/sms-backup-restore.toml`](mappings/sms-backup-restore.toml) | `sms-backup-restore-exporter-csv` (Rust mapper) |
+| [`mappings/go-sms-pro.toml`](mappings/go-sms-pro.toml) | `go-sms-pro-exporter-csv` (Rust mapper) |
 
-Each mapping sets `schema = "vault"`. CSV column sets stay source-specific; only the NDJSON output is shared.
+Each mapping sets `schema = "vault"`. Simple sources use the Rust column mapper; sources that need computed fields set `backend = "python"` and a script under [`python/`](python/).
 
 ## Samples
 

@@ -15,8 +15,18 @@ pub struct Mapping {
     pub exporter_version: String,
     #[serde(default = "default_schema")]
     pub schema: String,
+    /// `"rust"` (default column mapper) or `"python"` (external script).
+    #[serde(default = "default_backend")]
+    pub backend: String,
+    /// IANA timezone for Python converters that parse local wall times.
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Script filename under `crates/csv-ingest/python/` when `backend = "python"`.
+    #[serde(default)]
+    pub python_script: Option<String>,
     #[serde(default = "default_service_sms")]
     pub default_service: String,
+    #[serde(default)]
     pub columns: HashMap<String, String>,
     #[serde(default)]
     pub transforms: Transforms,
@@ -26,6 +36,10 @@ pub struct Mapping {
 
 fn default_schema() -> String {
     "vault".into()
+}
+
+fn default_backend() -> String {
+    "rust".into()
 }
 
 fn default_service_sms() -> String {
@@ -38,6 +52,9 @@ pub struct Transforms {
     pub direction_to_is_from_me: bool,
     #[serde(default = "default_true")]
     pub attachments_json_parse: bool,
+    /// Treat mapped `attachments` cell as a plain filename/path (iMazing), not JSON.
+    #[serde(default)]
+    pub attachments_filename_parse: bool,
     #[serde(default)]
     pub tapbacks_json_parse: bool,
     #[serde(default)]
@@ -85,9 +102,6 @@ impl Mapping {
             .with_context(|| format!("read mapping {}", path.display()))?;
         let mapping: Self = toml::from_str(&text)
             .with_context(|| format!("parse mapping TOML {}", path.display()))?;
-        if mapping.columns.is_empty() {
-            bail!("mapping {} has empty [columns]", path.display());
-        }
         if mapping.exporter_version.trim().is_empty() {
             bail!("mapping {} missing exporter_version", path.display());
         }
@@ -98,7 +112,21 @@ impl Mapping {
                 mapping.schema
             );
         }
+        if mapping.is_python_backend() {
+            if mapping.python_script.as_deref().unwrap_or("").trim().is_empty() {
+                bail!(
+                    "mapping {} backend=python requires python_script",
+                    path.display()
+                );
+            }
+        } else if mapping.columns.is_empty() {
+            bail!("mapping {} has empty [columns]", path.display());
+        }
         Ok(mapping)
+    }
+
+    pub fn is_python_backend(&self) -> bool {
+        self.backend.eq_ignore_ascii_case("python")
     }
 
     /// CSV header name that maps to the given JSON field, if any.
@@ -113,5 +141,17 @@ impl Mapping {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("mappings")
             .join(format!("{source_id}.toml"))
+    }
+
+    pub fn python_script_path(&self) -> Option<std::path::PathBuf> {
+        let name = self.python_script.as_deref()?.trim();
+        if name.is_empty() {
+            return None;
+        }
+        Some(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("python")
+                .join(name),
+        )
     }
 }

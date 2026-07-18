@@ -8,7 +8,7 @@ use std::path::PathBuf;
 #[derive(Debug, Parser)]
 #[command(
     name = "csv-ingest",
-    about = "Convert per-conversation CSV (+ mapping) to imessage-shaped NDJSON"
+    about = "Convert per-conversation CSV (+ mapping) to vault NDJSON"
 )]
 struct Cli {
     /// Directory (or single .csv) of exporter CSV output
@@ -32,11 +32,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let output = cli.output.unwrap_or_else(|| cli.input.clone());
 
-    let source_id = cli.source_id.or_else(|| {
-        detect_export_source(&cli.input)
-            .ok()
-            .flatten()
-    });
+    let source_id = cli
+        .source_id
+        .or_else(|| detect_export_source(&cli.input).ok().flatten());
 
     let mapping_path = resolve_mapping_path(cli.mapping.as_deref(), source_id.as_deref())?;
     let mapping = Mapping::load(&mapping_path)?;
@@ -54,6 +52,15 @@ fn main() -> Result<()> {
     println!("Wrote NDJSON under {}", output.display());
     println!("  mapping:       {}", mapping_path.display());
     println!("  source:        {}", mapping.source_id);
+    println!("  backend:       {}", mapping.backend);
+    if mapping.is_python_backend() {
+        if let Some(script) = mapping.python_script_path() {
+            println!("  python:        {}", script.display());
+        }
+        if let Some(tz) = &mapping.timezone {
+            println!("  timezone:      {tz}");
+        }
+    }
     println!("  exporter:      {}", mapping.exporter_version);
     println!("  conversations: {}", report.conversations);
     println!("  messages:      {}", report.messages);

@@ -1,21 +1,14 @@
 # message-vault-rs
 
-Import NDJSON message archives into SQLite and browse them in a local web UI.
+Import message archives into SQLite and browse them in a local web UI.
 
-This repo is a **Cargo workspace**: the vault binary, shared NDJSON schema, and per-source exporters live under [`crates/`](crates/). Helper shell scripts live under [`scripts/`](scripts/). One clone is enough — no sibling exporter checkouts.
+**Backup → CSV / exporter binaries** live in [`message-exporters`](https://github.com/bitrealm-dev/message-exporters). This vault repo owns vault JSON, CSV→vault ingest, SQLite, and the web UI.
 
 ```text
 crates/
-  message-json/                 # shared NDJSON schemas (vault + legacy sms/imessage)
-  csv-ingest/                   # CSV + mapping → vault NDJSON
-  go-sms-pro-exporter-csv/
-  sms-backup-restore-exporter-csv/
-  sms-backup-plus-exporter/       # EML → SMS NDJSON (vault ingest)
-  sms-backup-plus-exporter-csv/   # EML → CSV (standalone)
-  imessage-exporter/            # bin: imessage-exporter-json (JSON overlay fork)
-                                # keep html/txt paths for upstream merges; see crate README
-                                # depends on crates.io imessage-database
-  imessage-exporter-csv/        # iMessage → CSV
+  message-json/                 # vault (+ legacy sms/imessage) NDJSON schemas
+  csv-ingest/                   # CSV + mapping → vault NDJSON (Rust + Python adapters)
+  demo-seed/                    # demo data generator
 config/                         # local machine config (examples committed)
 sources/                        # optional placeholder for raw backups (gitignored)
 scripts/
@@ -26,19 +19,25 @@ web/                            # Next.js browser UI
 ```
 
 ```bash
+# Exporters (sibling clone)
+cd ../message-exporters && cargo build --workspace --release
+export MESSAGE_EXPORTERS_BIN="$PWD/target/release"
+
+# Vault
+cd ../message-vault-rs
 cargo build --workspace --release
 ```
 
-### NDJSON schemas
+### Pipeline
 
-Exporters write NDJSON from [`crates/message-json`](crates/message-json):
+```text
+message-exporters   backup  →  CSV or SMS/iMessage NDJSON
+message-vault-rs    CSV     →  vault NDJSON (csv-ingest)  →  SQLite + UI
+                    NDJSON  →  import (schema auto-detect)
+```
 
-- **Vault NDJSON** (`message_json::vault`) — one standard message shape for all sources; written by [`csv-ingest`](crates/csv-ingest)
-- **SMS NDJSON** (`message_json::sms`) — SMS Backup+ (direct, legacy wire)
-- **iMessage NDJSON** (`message_json::imessage`) — `imessage-exporter-json` (direct, legacy wire)
-- **CSV exporters** — `go-sms-pro-exporter-csv`, `sms-backup-restore-exporter-csv`, `sms-backup-plus-exporter-csv`, `imessage-exporter-csv`; vault ingest runs [`csv-ingest`](crates/csv-ingest) (mapping → vault NDJSON) before import
-
-Vault import auto-detects the schema from each file’s conversation header and maps into vault records. CSV contract: [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md).
+- **Vault NDJSON** (`message_json::vault`) — standard ingest shape; see [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md)
+- Ingest shells out to exporter binaries (`MESSAGE_EXPORTERS_BIN`, sibling `../message-exporters/target/release`, or `PATH`)
 
 ## Multi-source layout
 

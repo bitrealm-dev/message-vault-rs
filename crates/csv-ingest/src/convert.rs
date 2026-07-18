@@ -12,8 +12,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Default)]
 pub struct ConvertReport {
@@ -58,6 +59,10 @@ pub fn convert_directory(input: &Path, output: &Path, mapping: &Mapping) -> Resu
     fs::create_dir_all(output)
         .with_context(|| format!("create output {}", output.display()))?;
 
+    if mapping.is_python_backend() {
+        return convert_directory_python(input, output, mapping);
+    }
+
     let csv_paths = collect_csv_paths(input)?;
     if csv_paths.is_empty() {
         bail!("no .csv files under {}", input.display());
@@ -92,6 +97,120 @@ pub fn convert_directory(input: &Path, output: &Path, mapping: &Mapping) -> Resu
         );
     }
     Ok(report)
+}
+
+/// Shell out to `python3` + mapping `python_script` (e.g. iMazing).
+fn convert_directory_python(
+    input: &Path,
+    output: &Path,
+    mapping: &Mapping,
+) -> Result<ConvertReport> {
+    let script = mapping
+        .python_script_path()
+        .context("python_script path")?;
+    if !script.is_file() {
+        bail!("python script not found: {}", script.display());
+    }
+
+    let mut cmd = Command::new("python3");
+    cmd.arg(&script)
+        .arg("--input")
+        .arg(input)
+        .arg("--output")
+        .arg(output);
+    if let Some(tz) = mapping.timezone.as_deref().filter(|s| !s.is_empty()) {
+        cmd.arg("--timezone").arg(tz);
+    }
+
+    let out = cmd
+        .output()
+        .with_context(|| format!("spawn python3 {}", script.display()))?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    if !out.status.success() {
+        bail!(
+            "python converter failed ({}):\n{}\n{}",
+            out.status,
+            stdout.trim(),
+            stderr.trim()
+        );
+    }
+
+    let mut report = ConvertReport::default();
+    // Prefer script summary line; fall back to counting output JSON.
+    if let Some((c, m)) = parse_python_summary(&stderr).or_else(|| parse_python_summary(&stdout))
+    {
+        report.conversations = c;
+        report.messages = m;
+    } else {
+        count_ndjson_outputs(output, &mut report)?;
+    }
+    if report.conversations == 0 {
+        bail!(
+            "python converter wrote no conversations under {}",
+            output.display()
+        );
+    }
+    Ok(report)
+}
+
+fn parse_python_summary(text: &str) -> Option<(u64, u64)> {
+    // done conversations=1 messages=4 errors=0
+    for line in text.lines().rev() {
+        let line = line.trim();
+        if !line.starts_with("done ") {
+            continue;
+        }
+        let mut conversations = None;
+        let mut messages = None;
+        for part in line.split_whitespace() {
+            if let Some(v) = part.strip_prefix("conversations=") {
+                conversations = v.parse().ok();
+            } else if let Some(v) = part.strip_prefix("messages=") {
+                messages = v.parse().ok();
+            }
+        }
+        if let (Some(c), Some(m)) = (conversations, messages) {
+            return Some((c, m));
+        }
+    }
+    None
+}
+
+fn count_ndjson_outputs(output: &Path, report: &mut ConvertReport) -> Result<()> {
+    let mut paths = Vec::new();
+    if output.is_file() {
+        paths.push(output.to_path_buf());
+    } else {
+        for entry in fs::read_dir(output).with_context(|| format!("read {}", output.display()))? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                paths.push(path);
+            }
+        }
+    }
+    for path in paths {
+        let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
+        let mut msgs = 0u64;
+        let mut saw_conversation = false;
+        for line in BufReader::new(file).lines() {
+            let line = line?;
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if line.contains(r#""record":"conversation""#) {
+                saw_conversation = true;
+            } else if line.contains(r#""record":"message""#) {
+                msgs += 1;
+            }
+        }
+        if saw_conversation && msgs > 0 {
+            report.conversations += 1;
+            report.messages += msgs;
+        }
+    }
+    Ok(())
 }
 
 fn collect_csv_paths(input: &Path) -> Result<Vec<PathBuf>> {
@@ -295,6 +414,11 @@ fn row_to_message(
 
     let attachments = if mapping.transforms.attachments_json_parse {
         parse_attachments(mapped_cell(record, index, mapping, "attachments"))?
+    } else if mapping.transforms.attachments_filename_parse {
+        parse_attachment_filename(
+            mapped_cell(record, index, mapping, "attachments"),
+            mapped_cell(record, index, mapping, "attachment_mime"),
+        )
     } else {
         Vec::new()
     };
@@ -463,6 +587,27 @@ fn parse_attachments(raw: &str) -> Result<Vec<AttachmentRecord>> {
         .collect())
 }
 
+/// iMazing-style single attachment filename (+ optional type label).
+fn parse_attachment_filename(path: &str, mime_or_kind: &str) -> Vec<AttachmentRecord> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Vec::new();
+    }
+    let original_name = path
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mime_type = nonempty(mime_or_kind);
+    vec![AttachmentRecord {
+        path: Some(path.to_string()),
+        original_name,
+        mime_type,
+        is_sticker: false,
+        transcription: None,
+    }]
+}
+
 fn parse_tapbacks(raw: &str) -> Result<Vec<TapbackRecord>> {
     if raw.is_empty() || raw == "[]" || raw == "null" {
         return Ok(Vec::new());
@@ -582,7 +727,7 @@ pub fn resolve_mapping_path(explicit: Option<&Path>, source_id: Option<&str>) ->
     bail!("no mapping for source_id={id} (tried {} and {})", bundled.display(), cwd.display());
 }
 
-/// Detect `export_source` from the first CSV under `input` (if column present).
+/// Detect `export_source` / source id from the first CSV under `input`.
 pub fn detect_export_source(input: &Path) -> Result<Option<String>> {
     let paths = collect_csv_paths(input)?;
     let Some(path) = paths.first() else {
@@ -590,6 +735,13 @@ pub fn detect_export_source(input: &Path) -> Result<Option<String>> {
     };
     let mut rdr = csv::Reader::from_path(path)?;
     let headers = rdr.headers()?.clone();
+    // iMazing Messages CSV (no export_source column).
+    if headers.iter().any(|h| h == "Chat Session")
+        && headers.iter().any(|h| h == "Message Date")
+        && headers.iter().any(|h| h == "Sender ID")
+    {
+        return Ok(Some("imazing".into()));
+    }
     let idx = headers.iter().position(|h| h == "export_source");
     let Some(i) = idx else {
         return Ok(None);
@@ -606,7 +758,13 @@ pub fn detect_export_source(input: &Path) -> Result<Option<String>> {
 }
 
 pub fn known_source_ids() -> HashSet<&'static str> {
-    ["imessage", "sms-backup-plus", "sms-backup-restore", "go-sms-pro"]
+    [
+        "imessage",
+        "sms-backup-plus",
+        "sms-backup-restore",
+        "go-sms-pro",
+        "imazing",
+    ]
         .into_iter()
         .collect()
 }

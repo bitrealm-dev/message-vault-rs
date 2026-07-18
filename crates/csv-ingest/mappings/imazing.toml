@@ -1,0 +1,45 @@
+# iMazing Messages CSV → vault NDJSON via Python (not the Rust column mapper).
+# Script: python/imazing_to_vault.py
+#
+# Programmatic converts:
+# - Message Date → RFC3339 (uses this computer's local timezone by default)
+# - chat_identifier from sorted peer Sender IDs (+ phones in Chat Session)
+# - group vs individual (Chat Session contains " & " or ≥2 peers)
+# - Reactions prose → tapbacks
+# - Attachment filename → attachments[]
+#
+# Optional override only if the phone's zone differs from this machine:
+# timezone = "America/Chicago"
+#
+# CSV columns (reference; Python reads by header name):
+# Chat Session, Message Date, Delivered Date, Read Date, Edited Date, Deleted Date,
+# Service, Type, Sender ID, Sender Name, Status, Replying to, Subject, Text,
+# Reactions, Attachment, Attachment type
+
+source_id = "imazing"
+export_source = "imazing"
+exporter_version = "1.0.0"
+schema = "vault"
+backend = "python"
+python_script = "imazing_to_vault.py"
+default_service = "SMS"
+
+# Documentation only when backend = python (Rust mapper is not used).
+[columns]
+"Chat Session" = "chat_identifier"
+"Message Date" = "timestamp"
+# "Delivered Date" = ""
+# "Read Date" = ""
+# "Edited Date" = ""
+# "Deleted Date" = ""
+Service = "service"
+Type = "direction"
+"Sender ID" = "sender"
+"Sender Name" = "sender_display_name"
+# Status = ""
+# "Replying to" = ""
+Subject = "subject"
+Text = "text"
+# Reactions = ""
+Attachment = "attachments"
+"Attachment type" = "attachment_mime"

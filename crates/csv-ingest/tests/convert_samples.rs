@@ -4,10 +4,6 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 fn mapping(name: &str) -> Mapping {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("mappings")
@@ -15,9 +11,11 @@ fn mapping(name: &str) -> Mapping {
     Mapping::load(&path).unwrap_or_else(|e| panic!("load {name}: {e:#}"))
 }
 
-fn convert_sample_dir(sample_rel: &str, mapping_name: &str) -> (u64, PathBuf) {
-    let input = repo_root().join(sample_rel);
-    assert!(input.is_dir(), "missing samples at {}", input.display());
+fn convert_sample_csv(sample_name: &str, mapping_name: &str) -> (u64, PathBuf) {
+    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("samples/csv")
+        .join(sample_name);
+    assert!(input.is_file(), "missing sample {}", input.display());
     let out = tempfile::tempdir().unwrap();
     let report = convert_directory(&input, out.path(), &mapping(mapping_name)).unwrap();
     assert!(report.conversations >= 1);
@@ -59,7 +57,7 @@ fn message_line_raw(dir: &Path) -> String {
 
 #[test]
 fn converts_go_sms_pro_sample() {
-    let (_n, out) = convert_sample_dir("crates/go-sms-pro-exporter-csv/samples", "go-sms-pro");
+    let (_n, out) = convert_sample_csv("go-sms-pro.csv", "go-sms-pro");
     let records = read_first_json(&out);
     match &records[0] {
         ExportRecord::Conversation(c) => {
@@ -79,25 +77,74 @@ fn converts_go_sms_pro_sample() {
 
 #[test]
 fn converts_sms_backup_plus_sample() {
-    let (_n, out) =
-        convert_sample_dir("crates/sms-backup-plus-exporter-csv/samples", "sms-backup-plus");
+    let (_n, out) = convert_sample_csv("sms-backup-plus.csv", "sms-backup-plus");
     let records = read_first_json(&out);
     assert!(matches!(records[0], ExportRecord::Conversation(_)));
 }
 
 #[test]
 fn converts_sms_backup_restore_sample() {
-    let (_n, out) = convert_sample_dir(
-        "crates/sms-backup-restore-exporter-csv/samples",
-        "sms-backup-restore",
-    );
+    let (_n, out) = convert_sample_csv("sms-backup-restore.csv", "sms-backup-restore");
     let records = read_first_json(&out);
     assert!(matches!(records[0], ExportRecord::Conversation(_)));
 }
 
 #[test]
+fn converts_imazing_sample() {
+    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("samples/csv/imazing.csv");
+    let out = tempfile::tempdir().unwrap();
+    let report = convert_directory(&input, out.path(), &mapping("imazing")).unwrap();
+    assert!(report.messages >= 3);
+    let records = read_first_json(out.path());
+    match &records[0] {
+        ExportRecord::Conversation(c) => {
+            assert_eq!(c.schema, "vault");
+            assert_eq!(c.conversation_type, "individual");
+            // Peer phone from Sender ID, not the Chat Session display name.
+            assert_eq!(c.chat_identifier, "+14072438732");
+        }
+        _ => panic!("expected conversation"),
+    }
+    let att = records.iter().find_map(|r| match r {
+        ExportRecord::Message(m) if !m.attachments.is_empty() => Some(m),
+        _ => None,
+    });
+    assert!(att.is_some(), "expected attachment row from iMazing sample");
+    assert_eq!(
+        att.unwrap().attachments[0].path.as_deref(),
+        Some("attachment_0000.png")
+    );
+    let tap = records.iter().find_map(|r| match r {
+        ExportRecord::Message(m) if !m.tapbacks.is_empty() => Some(m),
+        _ => None,
+    });
+    assert!(tap.is_some(), "expected reaction → tapback");
+}
+
+#[test]
+fn converts_imazing_group_sample() {
+    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("samples/csv/imazing-group.csv");
+    let out = tempfile::tempdir().unwrap();
+    let report = convert_directory(&input, out.path(), &mapping("imazing")).unwrap();
+    assert!(report.messages >= 1);
+    let records = read_first_json(out.path());
+    match &records[0] {
+        ExportRecord::Conversation(c) => {
+            assert_eq!(c.conversation_type, "group");
+            assert!(c.group_title.as_deref().unwrap_or("").contains("Karen"));
+            // Sorted peer phones.
+            assert_eq!(
+                c.chat_identifier,
+                "+18635143256,+19546008720,+19546550193"
+            );
+        }
+        _ => panic!("expected conversation"),
+    }
+}
+
+#[test]
 fn converts_imessage_sample() {
-    let (_n, out) = convert_sample_dir("crates/imessage-exporter-csv/samples", "imessage");
+    let (_n, out) = convert_sample_csv("imessage.csv", "imessage");
     let records = read_first_json(&out);
     match &records[0] {
         ExportRecord::Conversation(c) => {

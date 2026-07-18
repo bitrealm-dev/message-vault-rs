@@ -179,51 +179,57 @@ fn export_source(
     match backend {
         ExportBackend::GoSmsPro => {
             let from = require_single_input(source_id, from)?;
-            let report = go_sms_pro_exporter_csv::convert_export(from, staging, &owner.phones)?;
-            println!(
-                "  export:   conversations={} xml={} pdu={} attachments={}",
-                report.conversations,
-                report.xml_messages,
-                report.pdu_messages,
-                report.attachments_saved
-            );
+            let bin = resolve_exporter_binary("go-sms-pro-exporter-csv")?;
+            let mut cmd = Command::new(&bin);
+            cmd.arg("--input")
+                .arg(from)
+                .arg("--output")
+                .arg(staging);
+            for phone in &owner.phones {
+                cmd.arg("--owner-phone").arg(phone);
+            }
+            run_exporter(&bin, &mut cmd)?;
             csv_to_ndjson(staging, "go-sms-pro")?;
         }
         ExportBackend::SmsBackupRestore => {
             let from = require_single_input(source_id, from)?;
-            let report =
-                sms_backup_restore_exporter_csv::convert_export(from, staging, &owner.phones)?;
-            println!(
-                "  export:   conversations={} sms={} mms={} attachments={}",
-                report.conversations,
-                report.sms_count,
-                report.mms_count,
-                report.attachments_saved
-            );
+            let bin = resolve_exporter_binary("sms-backup-restore-exporter-csv")?;
+            let mut cmd = Command::new(&bin);
+            cmd.arg("--input")
+                .arg(from)
+                .arg("--output")
+                .arg(staging);
+            for phone in &owner.phones {
+                cmd.arg("--owner-phone").arg(phone);
+            }
+            run_exporter(&bin, &mut cmd)?;
             csv_to_ndjson(staging, "sms-backup-restore")?;
         }
         ExportBackend::SmsBackupPlus => {
+            let bin = resolve_exporter_binary("sms-backup-plus-exporter")?;
+            let mut cmd = Command::new(&bin);
+            cmd.arg("-v").arg("convert").arg("--output").arg(staging);
+            for p in from {
+                cmd.arg("--input").arg(p);
+            }
+            for phone in &owner.phones {
+                cmd.arg("--owner-phone").arg(phone);
+            }
             let emails = if owner.emails.is_empty() {
                 vec!["owner@example.com".to_string()]
             } else {
                 owner.emails.clone()
             };
-            let contacts = optional_file("config/contacts.csv");
-            let name_mapping = optional_file("config/name-mapping.csv")
-                .or_else(|| optional_file("crates/sms-backup-plus-exporter/config/name-mapping.csv"));
-            let report = sms_backup_plus_exporter::convert_export(
-                from,
-                staging,
-                &owner.phones,
-                &emails,
-                contacts.as_deref(),
-                name_mapping.as_deref(),
-                true,
-            )?;
-            println!(
-                "  export:   conversations={} messages={} attachments={}",
-                report.conversations, report.messages, report.attachments_saved
-            );
+            for email in &emails {
+                cmd.arg("--owner-email").arg(email);
+            }
+            if let Some(contacts) = optional_file("config/contacts.csv") {
+                cmd.arg("--contacts").arg(contacts);
+            }
+            if let Some(mapping) = optional_file("config/name-mapping.csv") {
+                cmd.arg("--name-mapping").arg(mapping);
+            }
+            run_exporter(&bin, &mut cmd)?;
         }
         ExportBackend::Imessage => {
             let from = require_single_input(source_id, from)?;
@@ -272,47 +278,79 @@ fn optional_file(rel: &str) -> Option<PathBuf> {
 }
 
 fn export_imessage(from: &Path, staging: &Path) -> Result<()> {
-    let bin = resolve_imessage_binary()?;
+    let bin = resolve_exporter_binary("imessage-exporter-json")?;
+    let mut cmd = Command::new(&bin);
+    cmd.args([
+        "-f",
+        "json",
+        "-c",
+        "clone",
+        "-a",
+        "iOS",
+        "-p",
+        from.to_str().context("imessage --from path is not UTF-8")?,
+        "-o",
+        staging
+            .to_str()
+            .context("staging path is not UTF-8")?,
+    ]);
+    run_exporter(&bin, &mut cmd)
+}
+
+fn run_exporter(bin: &Path, cmd: &mut Command) -> Result<()> {
     println!("  export:   running {} …", bin.display());
-    let status = Command::new(&bin)
-        .args([
-            "-f",
-            "json",
-            "-c",
-            "clone",
-            "-a",
-            "iOS",
-            "-p",
-            from.to_str().context("imessage --from path is not UTF-8")?,
-            "-o",
-            staging
-                .to_str()
-                .context("staging path is not UTF-8")?,
-        ])
+    let status = cmd
         .status()
         .with_context(|| format!("failed to run {}", bin.display()))?;
     if !status.success() {
         bail!(
-            "imessage-exporter-json failed with status {status} (bin: {})",
-            bin.display()
+            "{} failed with status {status}",
+            bin.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("exporter")
         );
     }
     Ok(())
 }
 
-fn resolve_imessage_binary() -> Result<PathBuf> {
-    let candidates = [
-        PathBuf::from("target/release/imessage-exporter-json"),
-        PathBuf::from("target/debug/imessage-exporter-json"),
+/// Find an exporter binary from [`message-exporters`](https://github.com/bitrealm-dev/message-exporters).
+///
+/// Search order:
+/// 1. `$MESSAGE_EXPORTERS_BIN/<name>`
+/// 2. sibling `../message-exporters/target/{release,debug}/<name>`
+/// 3. `PATH` (`which`)
+fn resolve_exporter_binary(name: &str) -> Result<PathBuf> {
+    if let Ok(dir) = std::env::var("MESSAGE_EXPORTERS_BIN") {
+        let p = PathBuf::from(dir).join(name);
+        if p.is_file() {
+            return Ok(p);
+        }
+    }
+    let siblings = [
+        PathBuf::from(format!("../message-exporters/target/release/{name}")),
+        PathBuf::from(format!("../message-exporters/target/debug/{name}")),
+        PathBuf::from(format!("target/release/{name}")),
+        PathBuf::from(format!("target/debug/{name}")),
     ];
-    for p in &candidates {
+    for p in &siblings {
         if p.is_file() {
             return Ok(p.clone());
         }
     }
+    if let Ok(output) = Command::new("which").arg(name).output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Ok(PathBuf::from(path));
+            }
+        }
+    }
     bail!(
-        "imessage-exporter-json binary not found under target/release or target/debug.\n\
-         Build it first:\n  cargo build --release -p imessage-exporter"
+        "{name} not found. Build message-exporters and either:\n\
+         - export MESSAGE_EXPORTERS_BIN=/path/to/message-exporters/target/release\n\
+         - clone message-exporters as a sibling of this repo and cargo build --release\n\
+         - install the binary on PATH\n\
+         Repo: https://github.com/bitrealm-dev/message-exporters"
     );
 }
 

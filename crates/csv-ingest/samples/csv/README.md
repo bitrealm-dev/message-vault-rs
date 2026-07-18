@@ -2,10 +2,12 @@
 
 One per-conversation CSV from each workspace CSV exporter (copied for side-by-side comparison). Column sets differ by source; convert with the matching mapping under [`../../mappings/`](../../mappings/).
 
-| File | Exporter | Mapping |
-|------|----------|---------|
+| File | Exporter / source | Mapping |
+|------|-------------------|---------|
 | [`go-sms-pro.csv`](go-sms-pro.csv) | `go-sms-pro-exporter-csv` | `go-sms-pro.toml` |
 | [`imessage.csv`](imessage.csv) | `imessage-exporter-csv` | `imessage.toml` |
+| [`imazing.csv`](imazing.csv) | iMazing 1:1 Messages CSV | `imazing.toml` (Python) |
+| [`imazing-group.csv`](imazing-group.csv) | iMazing group Messages CSV | `imazing.toml` (Python) |
 | [`sms-backup-plus.csv`](sms-backup-plus.csv) | `sms-backup-plus-exporter-csv` | `sms-backup-plus.toml` |
 | [`sms-backup-restore.csv`](sms-backup-restore.csv) | `sms-backup-restore-exporter-csv` | `sms-backup-restore.toml` |
 
