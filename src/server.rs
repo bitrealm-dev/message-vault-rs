@@ -1,7 +1,7 @@
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use axum::body::Bytes;
-use axum::extract::{Query, State};
+use axum::extract::{FromRequest, Multipart, Query, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -14,7 +14,7 @@ use crate::config::Config;
 use crate::dedupe;
 use crate::import::{self, ImportMode, ImportOptions, ImportStats};
 
-const MAX_BODY_BYTES: usize = 256 * 1024 * 1024; // 256 MiB
+const MAX_BODY_BYTES: usize = 512 * 1024 * 1024; // 512 MiB (multipart uploads)
 
 #[derive(Clone)]
 struct AppState {
@@ -98,14 +98,20 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
-        .route("/v1/import", post(import_ndjson))
+        .route("/v1/import", post(import_handler))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     eprintln!("message-vault-rs serve listening on http://{bind}");
     eprintln!("  GET  /health");
-    eprintln!("  POST /v1/import?source=&account=&mode=append|replace&dedupe=false");
+    eprintln!(
+        "  POST /v1/import?source=&account=&mode=append|replace&dedupe=false"
+    );
+    eprintln!("       Content-Type: application/x-ndjson  (body only; assets from export_dir)");
+    eprintln!(
+        "       Content-Type: multipart/form-data   (field ndjson + file parts; remote push)"
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -141,23 +147,57 @@ fn check_bearer(headers: &HeaderMap, expected: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn content_type_ok(headers: &HeaderMap) -> bool {
-    let Some(ct) = headers.get(header::CONTENT_TYPE) else {
-        return false;
-    };
-    let Ok(ct) = ct.to_str() else {
-        return false;
-    };
-    let base = ct.split(';').next().unwrap_or(ct).trim();
+fn content_type_base(headers: &HeaderMap) -> Option<&str> {
+    let ct = headers.get(header::CONTENT_TYPE)?.to_str().ok()?;
+    Some(ct.split(';').next().unwrap_or(ct).trim())
+}
+
+fn is_ndjson_content_type(base: &str) -> bool {
     base.eq_ignore_ascii_case("application/x-ndjson")
         || base.eq_ignore_ascii_case("application/ndjson")
 }
 
-async fn import_ndjson(
+fn is_multipart_content_type(base: &str) -> bool {
+    base.eq_ignore_ascii_case("multipart/form-data")
+}
+
+/// Reject path traversal; allow only relative Normal/CurDir components.
+fn safe_rel_path(name: &str) -> Result<PathBuf, ApiError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("empty attachment path".into()));
+    }
+    let path = Path::new(name);
+    if path.is_absolute() {
+        return Err(ApiError::BadRequest(format!(
+            "attachment path must be relative: {name}"
+        )));
+    }
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::Normal(s) => out.push(s),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(ApiError::BadRequest(format!(
+                    "unsafe attachment path: {name}"
+                )));
+            }
+        }
+    }
+    if out.as_os_str().is_empty() {
+        return Err(ApiError::BadRequest(format!(
+            "empty attachment path after normalize: {name}"
+        )));
+    }
+    Ok(out)
+}
+
+async fn import_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<ImportQuery>,
-    body: Bytes,
+    request: Request,
 ) -> Result<Json<ImportResponse>, ApiError> {
     let server = state
         .cfg
@@ -165,21 +205,153 @@ async fn import_ndjson(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     check_bearer(&headers, &server.api_token)?;
 
-    if !content_type_ok(&headers) {
+    let Some(ct) = content_type_base(&headers) else {
         return Err(ApiError::BadRequest(
-            "Content-Type must be application/x-ndjson (or application/ndjson)".into(),
+            "Content-Type required (application/x-ndjson or multipart/form-data)".into(),
         ));
+    };
+
+    validate_import_query(&query)?;
+
+    if is_multipart_content_type(ct) {
+        let multipart = Multipart::from_request(request, &state)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("invalid multipart body: {e}")))?;
+        return import_multipart(state, query, multipart).await;
     }
+
+    if is_ndjson_content_type(ct) {
+        let body = axum::body::to_bytes(request.into_body(), MAX_BODY_BYTES)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("failed to read body: {e}")))?;
+        if body.is_empty() {
+            return Err(ApiError::BadRequest("request body is empty".into()));
+        }
+        return run_import(state, query, body.to_vec(), None).await;
+    }
+
+    Err(ApiError::BadRequest(
+        "Content-Type must be application/x-ndjson or multipart/form-data".into(),
+    ))
+}
+
+fn validate_import_query(query: &ImportQuery) -> Result<(), ApiError> {
     if query.source.trim().is_empty() {
         return Err(ApiError::BadRequest("query param source is required".into()));
     }
     if query.account.trim().is_empty() {
         return Err(ApiError::BadRequest("query param account is required".into()));
     }
-    if body.is_empty() {
-        return Err(ApiError::BadRequest("request body is empty".into()));
+    Ok(())
+}
+
+async fn stream_field_to_file(
+    mut field: axum::extract::multipart::Field<'_>,
+    dest: &Path,
+) -> Result<u64, ApiError> {
+    use tokio::io::AsyncWriteExt;
+
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| {
+            ApiError::Internal(format!("mkdir {}: {e}", parent.display()))
+        })?;
+    }
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|e| ApiError::Internal(format!("create {}: {e}", dest.display())))?;
+    let mut written = 0u64;
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("multipart chunk: {e}")))?
+    {
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| ApiError::Internal(format!("write {}: {e}", dest.display())))?;
+        written += chunk.len() as u64;
+    }
+    file.flush()
+        .await
+        .map_err(|e| ApiError::Internal(format!("flush {}: {e}", dest.display())))?;
+    Ok(written)
+}
+
+async fn import_multipart(
+    state: AppState,
+    query: ImportQuery,
+    mut multipart: Multipart,
+) -> Result<Json<ImportResponse>, ApiError> {
+    let temp = tempfile::tempdir()
+        .map_err(|e| ApiError::Internal(format!("temp dir: {e}")))?;
+    let asset_root = temp.path().to_path_buf();
+    let ndjson_path = asset_root.join("_import.ndjson");
+    let mut have_ndjson = false;
+    let mut file_count = 0u64;
+
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("multipart field error: {e}")))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "ndjson" => {
+                let n = stream_field_to_file(field, &ndjson_path).await?;
+                if n == 0 {
+                    return Err(ApiError::BadRequest("ndjson part is empty".into()));
+                }
+                have_ndjson = true;
+            }
+            "file" => {
+                let filename = field
+                    .file_name()
+                    .map(|s| s.to_string())
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        ApiError::BadRequest(
+                            "file part missing filename (use relative path e.g. attachments/a.jpg)"
+                                .into(),
+                        )
+                    })?;
+                let rel = safe_rel_path(&filename)?;
+                let dest = asset_root.join(&rel);
+                stream_field_to_file(field, &dest).await?;
+                file_count += 1;
+            }
+            other => {
+                while let Some(chunk) = field
+                    .chunk()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("multipart chunk: {e}")))?
+                {
+                    let _ = chunk;
+                }
+                eprintln!("import: ignoring unknown multipart field {other:?}");
+            }
+        }
     }
 
+    if !have_ndjson {
+        return Err(ApiError::BadRequest(
+            "multipart missing required field 'ndjson'".into(),
+        ));
+    }
+    let ndjson = tokio::fs::read(&ndjson_path)
+        .await
+        .map_err(|e| ApiError::Internal(format!("read ndjson temp: {e}")))?;
+    eprintln!("import: multipart ndjson + {file_count} file(s)");
+
+    let response = run_import(state, query, ndjson, Some(asset_root)).await;
+    drop(temp);
+    response
+}
+
+async fn run_import(
+    state: AppState,
+    query: ImportQuery,
+    ndjson: Vec<u8>,
+    asset_root_override: Option<PathBuf>,
+) -> Result<Json<ImportResponse>, ApiError> {
     let mode = ImportMode::parse(&query.mode).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let source = state
         .cfg
@@ -191,16 +363,18 @@ async fn import_ndjson(
     let account = query.account.clone();
     let source_id = source.id.clone();
     let do_dedupe = query.dedupe;
-    let body = body.to_vec();
 
     let _guard = state.import_lock.lock().await;
 
     let result = tokio::task::spawn_blocking(move || {
         let assets_dir = source.resolved_assets_dir_for_account(&cfg.paths, &account);
+        let asset_root = asset_root_override
+            .as_deref()
+            .unwrap_or(source.export_dir.as_path());
         let opts = ImportOptions {
             db_path: &cfg.paths.db,
             assets_dir: &assets_dir,
-            asset_root: &source.export_dir,
+            asset_root,
             contacts_csv: &cfg.paths.contacts_csv,
             exclude_csv: &cfg.paths.exclude_csv,
             overwrite_contacts: false,
@@ -208,7 +382,7 @@ async fn import_ndjson(
             source: &source_id,
             account_id: &account,
         };
-        let stats = import::import_ndjson_bytes(&body, &opts)?;
+        let stats = import::import_ndjson_bytes(&ndjson, &opts)?;
         let dedupe_stats = if do_dedupe {
             let priority: Vec<String> = cfg.sources.iter().map(|s| s.id.clone()).collect();
             Some(dedupe::run_dedupe(&cfg.paths.db, &account, &priority, 2)?)

@@ -114,4 +114,4 @@ Most exporters already use column names close to the vault fields (`chat_identif
 
 ## HTTP import
 
-The same vault NDJSON is the body for `message-vault-rs serve` → `POST /v1/import`. Details: [`crates/csv-ingest/README.md`](../../csv-ingest/README.md#http-ingest) and the root README.
+The same vault NDJSON is what `vault-push` and `POST /v1/import` accept. Remote clients use multipart (`ndjson` + `file` parts) so attachments travel over the API and land in the vault asset store (not SQLite blobs). Details: [`crates/csv-ingest/README.md`](../../csv-ingest/README.md) and the root README.

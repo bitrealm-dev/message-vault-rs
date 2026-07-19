@@ -2,36 +2,62 @@
 
 Convert per-conversation **CSV** into **vault NDJSON** using Python converters. Rust provides the CLI and a thin dispatcher that shells out to `python3`.
 
+**`vault-push`** (CLI) converts a local export directory and uploads **one conversation at a time** to a remote `message-vault-rs serve` (multipart NDJSON + attachments). **`vault-push-gui`** is a cross-platform egui front-end that only collects settings and runs the CLI.
+
 Ingest contract: [`../message-json/docs/CSV_INGEST.md`](../message-json/docs/CSV_INGEST.md).
 
 ## Why CSV exists
 
-CSV is the **human checkpoint**: open it in a spreadsheet, spot bad phones / wrong chats / junk rows, edit or re-export, then convert. That is why the pipeline is not backup → vault JSON in one opaque step.
+CSV is the **human checkpoint**: open it in a spreadsheet, spot bad phones / wrong chats / junk rows, edit or re-export, then convert.
 
-## What this tool does *not* do
-
-**No contact or phone-number lookup.** Resolving names → handles and normalizing phones happens when the CSV is produced (e.g. [message-exporters](https://github.com/bitrealm-dev/message-exporters)), or when the user edits the CSV. CSV → JSON only reshapes fields already on the sheet. Do not add VCF, contacts.csv, or fuzzy name matching here — that would hide problems the CSV stage is meant to surface.
-
-## Usage
+## Convert only
 
 ```bash
-# Detect source from CSV (export_source column or iMazing headers)
 cargo run -p csv-ingest -- \
   --input ./staging/go-sms-pro \
   --output ./staging/go-sms-pro
-
-# Or pass --source-id explicitly
-cargo run -p csv-ingest -- \
-  --input crates/csv-ingest/samples/csv/imessage.csv \
-  --output /tmp/vault-out \
-  --source-id imessage
 ```
 
-Writes one `{stem}.json` NDJSON file per `{stem}.csv` (conversation header + message lines). Attachment paths in CSV are left as relative strings.
+## Remote push (CLI)
 
-Requires **Python 3.9+** (`zoneinfo` for iMazing). No third-party packages.
+```bash
+cargo run -p csv-ingest --bin vault-push --release -- \
+  --input ./staging/go-sms-pro \
+  --source-id go-sms-pro \
+  --url http://vault-host:8080 \
+  --token "$VAULT_API_TOKEN" \
+  --account <uuid> \
+  --mode append
+```
 
-## Converters (one script per source)
+| Flag | Role |
+|------|------|
+| `--input` | Export dir from message-exporters |
+| `--source-id` | Vault source + converter |
+| `--url` / `VAULT_URL` | Vault base URL |
+| `--token` / `VAULT_API_TOKEN` | Bearer token |
+| `--account` | Account UUID |
+| `--mode append` | Default; resume-safe |
+| `--mode replace` | Wipe source on first conversation, then append |
+| `--continue-on-error` | Keep going after a failed chat |
+| `--force-repush` | Ignore checkpoint |
+| `--report` / `--log` / `--checkpoint` | Paths (default: under export dir) |
+
+**Per conversation:** multipart `ndjson` + `file` parts. Missing local attachments → that chat fails (no silent `assets_missing` import). Re-run with `append` **skips** chats listed in `vault-push-done.json`.
+
+Artifacts: `vault-push.log`, `vault-push-report.json`, `vault-push-done.json`.
+
+Stdout progress (for the GUI): `PROGRESS 12/400 ok chat.json …` / `fail` / `skip`.
+
+## GUI wrapper
+
+```bash
+cargo run -p csv-ingest --bin vault-push-gui --features gui --release
+```
+
+Requires `vault-push` on `PATH` or next to the GUI binary. Form → spawn CLI → live log → open report/log.
+
+## Converters
 
 | Source id | Script |
 |-----------|--------|
@@ -41,29 +67,11 @@ Requires **Python 3.9+** (`zoneinfo` for iMazing). No third-party packages.
 | `imessage` | [`python/imessage_to_vault.py`](python/imessage_to_vault.py) |
 | `imazing` | [`python/imazing_to_vault.py`](python/imazing_to_vault.py) |
 
-Shared reshape helpers: [`python/exporter_csv.py`](python/exporter_csv.py), [`python/vault_common.py`](python/vault_common.py). Copy a per-source script as a template when adding another exporter — see [`python/README.md`](python/README.md).
-
 ## Samples
 
-- [`samples/csv/`](samples/csv/) — one CSV from each exporter (side-by-side column sets)
-- [`samples/vault/`](samples/vault/) — hand-written vault NDJSON per message shape
-- [`samples/converted/`](samples/converted/) — example conversion output
+- [`samples/csv/`](samples/csv/), [`samples/vault/`](samples/vault/), [`samples/converted/`](samples/converted/)
 
-## HTTP ingest
-
-The NDJSON this tool writes is the body for the vault HTTP import API:
-
-```bash
-# config.toml needs [server] api_token=…
-cargo run --release -- serve
-
-curl -X POST "http://127.0.0.1:8080/v1/import?source=<id>&account=<uuid>&mode=append" \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/x-ndjson" \
-  --data-binary @path/to/conversation.json
-```
-
-See the root README and `./scripts/smoke-import-api.sh`. This crate only produces NDJSON; the vault binary serves `/v1/import`.
+Smoke: `../../scripts/smoke-vault-push.sh`.
 
 ## License
 

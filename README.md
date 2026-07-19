@@ -70,9 +70,38 @@ Resolved asset roots default to `data/<account_id>/<source_id>/assets` and `…/
 
 One shared SQLite DB holds all sources. Each message row has a `source` column. The web UI can filter by source or show the combined (all) view.
 
-## Ingest (primary path)
+## Ingest (primary path — remote client)
 
-1. Export backups into `staging/<source>/` with [message-exporters](https://github.com/bitrealm-dev/message-exporters) (or any tool that writes vault NDJSON / mapped CSV).
+Typical setup: exporters + CSV on one machine, vault server on another.
+
+1. On the **client**, export backups with [message-exporters](https://github.com/bitrealm-dev/message-exporters) into a local staging dir (CSV + `attachments/`).
+2. On the **vault host**, run `message-vault-rs serve` (see HTTP section below).
+3. On the **client**, run **`vault-push`** (CLI) or **`vault-push-gui`** (wrapper). One conversation per HTTP request; resume with append + checkpoint.
+
+```bash
+# vault host
+cargo run --release -- serve
+
+# client CLI (staging dir from exporters)
+cargo run -p csv-ingest --bin vault-push --release -- \
+  --input ./staging/go-sms-pro \
+  --source-id go-sms-pro \
+  --url http://vault-host:8080 \
+  --token "$VAULT_API_TOKEN" \
+  --account <uuid> \
+  --mode append
+
+# GUI (spawns vault-push; ship both binaries together)
+cargo run -p csv-ingest --bin vault-push-gui --features gui --release
+```
+
+Writes `vault-push.log`, `vault-push-report.json`, and `vault-push-done.json` in the export folder. Smoke: `./scripts/smoke-vault-push.sh`.
+
+### Local CLI ingest (same host as the DB)
+
+When staging already lives next to the vault config:
+
+1. Export into `staging/<source>/`.
 2. Run `ingest` — optional CSV→vault NDJSON, import that source, soft-dedupe across sources:
 
 ```bash
@@ -116,7 +145,7 @@ Lower-level import-only path:
 
 ### HTTP import API
 
-Ingest can also accept vault NDJSON over HTTP (Rust server — not the Next.js UI):
+Rust server (`serve`) — not the Next.js UI. Prefer **`vault-push`** (multipart). Raw NDJSON remains for text-only / curl.
 
 ```toml
 # config/config.toml
@@ -128,13 +157,17 @@ api_token = "change-me"
 ```bash
 cargo run --release -- serve
 
+# Multipart (NDJSON + files) — what vault-push sends
+# fields: ndjson, file (filename = relative path e.g. attachments/photo.jpg)
+
+# NDJSON only (assets resolved from source export_dir on the vault host)
 curl -sS -X POST "http://127.0.0.1:8080/v1/import?source=imessage&account=<uuid>&mode=append" \
   -H "Authorization: Bearer change-me" \
   -H "Content-Type: application/x-ndjson" \
   --data-binary @crates/csv-ingest/samples/vault/01-sms-text.json
 ```
 
-Attachment paths in the NDJSON still resolve against that source’s `export_dir`. Smoke: `./scripts/smoke-import-api.sh`.
+Smokes: `./scripts/smoke-import-api.sh`, `./scripts/smoke-vault-push.sh`.
 
 ### Import modes
 
