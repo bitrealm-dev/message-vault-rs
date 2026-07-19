@@ -28,13 +28,13 @@ cargo build --workspace --release
 ### Pipeline
 
 ```text
-message-exporters   backup  →  staging CSV  (lookup + human-visible / editable)
+message-exporters   backup + --contacts/--vcf  →  staging CSV  (lookup here)
 message-vault-rs    staging →  optional csv-ingest (shape only)  →  SQLite + UI
 ```
 
 - **Vault NDJSON** (`message_json::vault`) — standard ingest shape; see [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md)
 - Vault **never** runs exporters. Fill each source’s `export_dir` first, then `ingest`.
-- **CSV is the checkpoint** — inspect and correct bad handles/rows (or re-export) before csv-ingest. Converters do not look up contacts; the vault imports what the CSV says.
+- **CSV is the checkpoint** — Android exporters require `--contacts` or `--vcf` for name/phone resolution; inspect and correct the sheet before csv-ingest (which does not look up contacts).
 
 ## Multi-source layout
 

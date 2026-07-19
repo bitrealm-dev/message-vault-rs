@@ -16,12 +16,12 @@ pub struct ConvertReport {
     pub errors: Vec<String>,
 }
 
-/// source_id → Python script under `python/`.
+/// source_id → Python script under `python/` (one file per source).
 const CONVERTERS: &[(&str, &str)] = &[
-    ("go-sms-pro", "exporter_csv_to_vault.py"),
-    ("sms-backup-plus", "exporter_csv_to_vault.py"),
-    ("sms-backup-restore", "exporter_csv_to_vault.py"),
-    ("imessage", "exporter_csv_to_vault.py"),
+    ("go-sms-pro", "go_sms_pro_to_vault.py"),
+    ("sms-backup-plus", "sms_backup_plus_to_vault.py"),
+    ("sms-backup-restore", "sms_backup_restore_to_vault.py"),
+    ("imessage", "imessage_to_vault.py"),
     ("imazing", "imazing_to_vault.py"),
 ];
 

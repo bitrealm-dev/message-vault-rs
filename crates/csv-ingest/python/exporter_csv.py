@@ -1,17 +1,11 @@
-#!/usr/bin/env python3
-"""Convert message-exporters CSV (near-vault columns) to vault NDJSON.
+"""Shared convert for message-exporters CSV (near-vault columns).
 
-Handles go-sms-pro, sms-backup-plus, sms-backup-restore, and imessage CSV shapes:
-columns are already vault-oriented; JSON cells (`attachments_json`, `tapbacks_json`,
-…) are parsed when present. Exporter-only columns are ignored.
+Used by per-source scripts (`go_sms_pro_to_vault.py`, `imessage_to_vault.py`, …).
+JSON cells (`attachments_json`, `tapbacks_json`, …) are parsed when present.
+Exporter-only columns are ignored.
 
 Does not look up contacts or normalize phone numbers — that belongs in the
-backup→CSV step. This script only reshapes CSV cells into vault JSON.
-
-Usage:
-  python3 exporter_csv_to_vault.py --input path/to.csv --output /tmp/out
-  python3 exporter_csv_to_vault.py --input path/to/dir --output /tmp/out \\
-      --default-service iMessage
+backup→CSV step (or user edits to the CSV). This module only reshapes cells.
 """
 
 from __future__ import annotations
@@ -34,13 +28,6 @@ from vault_common import (
     utc_now,
     write_ndjson,
 )
-
-DEFAULT_SERVICES = {
-    "imessage": "iMessage",
-    "go-sms-pro": "SMS",
-    "sms-backup-plus": "SMS",
-    "sms-backup-restore": "SMS",
-}
 
 
 def parse_attachments(raw: str) -> list[dict[str, Any]]:
@@ -279,19 +266,26 @@ def convert_csv(
     return header, messages
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+def run_exporter_main(
+    *,
+    source_id: str,
+    default_service: str,
+    description: str,
+    argv: list[str] | None = None,
+) -> int:
+    """CLI entry used by one-script-per-source wrappers."""
+    p = argparse.ArgumentParser(description=description)
     p.add_argument("--input", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
     p.add_argument(
         "--source-id",
-        default=None,
-        help="Optional source id (sets default service when --default-service omitted)",
+        default=source_id,
+        help=f"Source id (default: {source_id})",
     )
     p.add_argument(
         "--default-service",
-        default=None,
-        help="Fallback service when CSV service cell is empty (default: SMS)",
+        default=default_service,
+        help=f"Fallback service when CSV service cell is empty (default: {default_service})",
     )
     p.add_argument(
         "--timezone",
@@ -299,12 +293,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Ignored (accepted for a uniform Rust dispatcher CLI)",
     )
     args = p.parse_args(argv)
-
-    default_service = args.default_service
-    if not default_service and args.source_id:
-        default_service = DEFAULT_SERVICES.get(args.source_id, "SMS")
-    if not default_service:
-        default_service = "SMS"
 
     try:
         csvs = collect_csvs(args.input, recursive=False)
@@ -323,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for csv_path in csvs:
         try:
-            header, msgs = convert_csv(csv_path, default_service, exported_at)
+            header, msgs = convert_csv(csv_path, args.default_service, exported_at)
             out_path = args.output / f"{csv_path.stem}.json"
             write_ndjson(out_path, header, msgs)
             conversations += 1
@@ -339,7 +327,3 @@ def main(argv: list[str] | None = None) -> int:
     for err in errors[:10]:
         print(f"  {err}", file=sys.stderr)
     return 0 if conversations > 0 else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

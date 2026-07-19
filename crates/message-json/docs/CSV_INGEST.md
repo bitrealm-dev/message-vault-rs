@@ -14,16 +14,17 @@ The whole point of a **CSV** stage is so a person can **open the file, see the d
 - Correct bad phones / wrong chat merges / junk rows by hand, then convert
 - Or fix the exporter and re-export CSV — still inspectable before import
 
-**Contact names and phone-number lookup / normalization happen when the CSV is written** (message-exporters or another backup→CSV tool). That step should emit correct handles. If it does not, the user corrects the CSV.
+**Contact names and phone-number lookup / normalization happen when the CSV is written** in [message-exporters](https://github.com/bitrealm-dev/message-exporters): Android converters require `--contacts` (vault-shaped CSV) or `--vcf`. That step should emit correct handles. If it does not, the user corrects the CSV.
 
 **csv-ingest (CSV → vault NDJSON) does not look up contacts or rewrite phone numbers.** It only reshapes columns into vault JSON. The vault imports what the CSV already says. Wrong data in CSV becomes wrong data in the vault — fix it in the CSV (or re-export), not in the converter.
 
 ## Pipeline
 
 ```
-backup  →  CSV  (lookup/normalize; user can inspect and edit)
-        →  csv-ingest  (shape only; no contact/phone lookup)
-        →  vault NDJSON  →  vault import
+backup + contacts.csv|vcf  →  message-exporters (lookup/normalize)
+                           →  CSV  (user can inspect and edit)
+                           →  csv-ingest  (shape only)
+                           →  vault NDJSON  →  vault import
 ```
 
 ## Conversation header (first line)

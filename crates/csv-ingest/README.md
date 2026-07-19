@@ -31,17 +31,17 @@ Writes one `{stem}.json` NDJSON file per `{stem}.csv` (conversation header + mes
 
 Requires **Python 3.9+** (`zoneinfo` for iMazing). No third-party packages.
 
-## Converters
+## Converters (one script per source)
 
 | Source id | Script |
 |-----------|--------|
-| `go-sms-pro` | [`python/exporter_csv_to_vault.py`](python/exporter_csv_to_vault.py) |
-| `sms-backup-plus` | same |
-| `sms-backup-restore` | same |
-| `imessage` | same |
+| `go-sms-pro` | [`python/go_sms_pro_to_vault.py`](python/go_sms_pro_to_vault.py) |
+| `sms-backup-plus` | [`python/sms_backup_plus_to_vault.py`](python/sms_backup_plus_to_vault.py) |
+| `sms-backup-restore` | [`python/sms_backup_restore_to_vault.py`](python/sms_backup_restore_to_vault.py) |
+| `imessage` | [`python/imessage_to_vault.py`](python/imessage_to_vault.py) |
 | `imazing` | [`python/imazing_to_vault.py`](python/imazing_to_vault.py) |
 
-Shared helpers: [`python/vault_common.py`](python/vault_common.py).
+Shared reshape helpers: [`python/exporter_csv.py`](python/exporter_csv.py), [`python/vault_common.py`](python/vault_common.py). Copy a per-source script as a template when adding another exporter — see [`python/README.md`](python/README.md).
 
 ## Samples
 
