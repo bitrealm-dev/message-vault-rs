@@ -64,7 +64,7 @@ enum Commands {
         #[arg(long, default_value_t = 2)]
         window_secs: i64,
 
-        /// Account UUID (scopes ingest to this vault tenant)
+        /// Account username or UUID (scopes ingest to this vault tenant)
         #[arg(long)]
         account: String,
     },
@@ -111,7 +111,7 @@ enum Commands {
         #[arg(long, default_value = "replace")]
         mode: String,
 
-        /// Account UUID (scopes import to this vault tenant)
+        /// Account username or UUID (scopes import to this vault tenant)
         #[arg(long)]
         account: String,
     },
@@ -130,7 +130,7 @@ enum Commands {
         #[arg(long, default_value_t = 2)]
         window_secs: i64,
 
-        /// Account UUID (scopes dedupe to this vault tenant)
+        /// Account username or UUID (scopes dedupe to this vault tenant)
         #[arg(long)]
         account: String,
     },
@@ -147,7 +147,7 @@ enum Commands {
         #[arg(long)]
         db: Option<PathBuf>,
 
-        /// Account UUID (scopes contacts to this vault tenant)
+        /// Account username or UUID (scopes contacts to this vault tenant)
         #[arg(long)]
         account: String,
     },
@@ -168,7 +168,7 @@ enum Commands {
         #[arg(long)]
         snippet_css: Option<PathBuf>,
 
-        /// Account UUID (scopes export to this vault tenant)
+        /// Account username or UUID (scopes export to this vault tenant)
         #[arg(long)]
         account: String,
     },
@@ -233,6 +233,7 @@ fn main() -> Result<()> {
             }
             let mode = import::ImportMode::parse(&mode)?;
             let _ = cfg.source(&source)?;
+            let account = vault_owner::resolve_account_ref_at(&cfg.paths.db, &account)?;
 
             let stats = ingest::ingest(
                 &cfg,
@@ -286,6 +287,7 @@ fn main() -> Result<()> {
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
+            let account = vault_owner::resolve_account_ref_at(&db, &account)?;
             let contacts_csv = contacts_csv.unwrap_or_else(|| cfg.paths.contacts_csv.clone());
             let exclude_csv = exclude_csv.unwrap_or_else(|| cfg.paths.exclude_csv.clone());
             let mode = import::ImportMode::parse(&mode)?;
@@ -390,6 +392,7 @@ fn main() -> Result<()> {
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
+            let account = vault_owner::resolve_account_ref_at(&db, &account)?;
             let priority: Vec<String> = cfg.sources.iter().map(|s| s.id.clone()).collect();
             if window_secs < 0 {
                 bail!("--window-secs must be >= 0");
@@ -416,6 +419,7 @@ fn main() -> Result<()> {
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or(cfg.paths.db);
+            let account = vault_owner::resolve_account_ref_at(&db, &account)?;
             let contacts_csv = contacts_csv.unwrap_or(cfg.paths.contacts_csv);
 
             if let Some(parent) = db.parent() {
@@ -447,6 +451,7 @@ fn main() -> Result<()> {
         } => {
             let cfg = Config::load(&config)?;
             let db = db.unwrap_or_else(|| cfg.paths.db.clone());
+            let account = vault_owner::resolve_account_ref_at(&db, &account)?;
             let snippet_css = snippet_css.unwrap_or_else(|| {
                 PathBuf::from("config/obsidian-message-vault.css")
             });

@@ -13,7 +13,7 @@ cd web && npm install && npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). On first visit you will land on **/login** — create a user or pick an existing one (no password). Use **Reset demo** in the sidebar footer to wipe local edits and re-import the committed bundle.
 
-Multi-user note: each web account has its own vault partition in the shared `vault.db` (`account_id` on rows). CLI ingest/import requires `--account <uuid>` (copy the id from Settings or the database).
+Multi-user note: each web account has its own vault partition in the shared `vault.db` (`account_id` on rows). CLI ingest/import accepts `--account <username>` (or UUID). Remote vault-push with a personal Import API token does not need `--account`.
 
 ## Setup
 

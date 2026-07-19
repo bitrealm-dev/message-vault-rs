@@ -10,13 +10,14 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_http::limit::RequestBodyLimitLayer;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::Connection;
 
 use crate::api_tokens;
 use crate::config::Config;
 use crate::dedupe;
 use crate::import::{self, ImportMode, ImportOptions, ImportStats};
 use crate::schema;
+use crate::vault_owner;
 
 const MAX_BODY_BYTES: usize = 512 * 1024 * 1024; // 512 MiB (multipart uploads)
 
@@ -39,7 +40,7 @@ struct AppState {
 #[derive(Debug, Deserialize)]
 struct ImportQuery {
     source: String,
-    /// Required for admin token; optional for user tokens (derived from Bearer).
+    /// Username or UUID. Required for admin token; optional for user tokens (derived from Bearer).
     #[serde(default)]
     account: Option<String>,
     #[serde(default = "default_import_mode")]
@@ -160,6 +161,8 @@ struct AuthCheckResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     account_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     account_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     admin: Option<bool>,
@@ -180,40 +183,60 @@ async fn auth_check(
     match auth {
         AuthIdentity::User { account_id } => {
             if let Some(q) = query.account.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                if q != account_id {
+                let resolved = lookup_or_resolve_query(&state.cfg.paths.db, q).await?;
+                if let Some(resolved) = resolved {
+                    if resolved != account_id {
+                        return Err(ApiError::Forbidden(
+                            "account query does not match token's account".into(),
+                        ));
+                    }
+                } else if q != account_id {
                     return Err(ApiError::Forbidden(
                         "account query does not match token's account".into(),
                     ));
                 }
             }
+            let username = load_username(&state.cfg.paths.db, &account_id).await?;
             Ok(Json(AuthCheckResponse {
                 ok: true,
                 sources,
                 account_id: Some(account_id),
+                username,
                 account_ok: Some(true),
                 admin: None,
             }))
         }
         AuthIdentity::Admin => {
-            let (account_id, account_ok) =
+            let (account_id, username, account_ok) =
                 if let Some(account) = query.account.as_deref().map(str::trim).filter(|s| !s.is_empty())
                 {
                     let db = state.cfg.paths.db.clone();
-                    let account = account.to_string();
-                    let account_for_check = account.clone();
-                    let exists =
-                        tokio::task::spawn_blocking(move || account_exists(&db, &account_for_check))
-                            .await
-                            .map_err(|e| ApiError::Internal(format!("auth check task: {e}")))?
-                            .map_err(|e| ApiError::Internal(e.to_string()))?;
-                    (Some(account), Some(exists))
+                    let account_query = account.to_string();
+                    let looked_up = tokio::task::spawn_blocking(move || {
+                        let conn = Connection::open(&db)?;
+                        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+                        let id = vault_owner::lookup_account_ref(&conn, &account_query)?;
+                        let username = match &id {
+                            Some(id) => vault_owner::username_for_account(&conn, id)?,
+                            None => None,
+                        };
+                        Ok::<_, anyhow::Error>((id, username, account_query))
+                    })
+                    .await
+                    .map_err(|e| ApiError::Internal(format!("auth check task: {e}")))?
+                    .map_err(|e| ApiError::Internal(e.to_string()))?;
+                    match looked_up {
+                        (Some(id), username, _) => (Some(id), username, Some(true)),
+                        (None, _, raw) => (Some(raw), None, Some(false)),
+                    }
                 } else {
-                    (None, None)
+                    (None, None, None)
                 };
             Ok(Json(AuthCheckResponse {
                 ok: true,
                 sources,
                 account_id,
+                username,
                 account_ok,
                 admin: Some(true),
             }))
@@ -221,18 +244,39 @@ async fn auth_check(
     }
 }
 
-fn account_exists(db_path: &Path, account_id: &str) -> anyhow::Result<bool> {
-    let conn = Connection::open(db_path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    schema::ensure_accounts_schema(&conn)?;
-    let found: Option<i64> = conn
-        .query_row(
-            "SELECT 1 FROM accounts WHERE id = ?1",
-            params![account_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    Ok(found.is_some())
+async fn lookup_or_resolve_query(db_path: &Path, account_ref: &str) -> Result<Option<String>, ApiError> {
+    let db = db_path.to_path_buf();
+    let account_ref = account_ref.to_string();
+    tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&db)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        vault_owner::lookup_account_ref(&conn, &account_ref)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("account lookup task: {e}")))?
+    .map_err(|e| ApiError::Internal(e.to_string()))
+}
+
+async fn load_username(db_path: &Path, account_id: &str) -> Result<Option<String>, ApiError> {
+    let db = db_path.to_path_buf();
+    let account_id = account_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&db)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        vault_owner::username_for_account(&conn, &account_id)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("username lookup task: {e}")))?
+    .map_err(|e| ApiError::Internal(e.to_string()))
+}
+
+async fn resolve_account_ref_async(db_path: &Path, account_ref: &str) -> Result<String, ApiError> {
+    let db = db_path.to_path_buf();
+    let account_ref = account_ref.to_string();
+    tokio::task::spawn_blocking(move || vault_owner::resolve_account_ref_at(&db, &account_ref))
+        .await
+        .map_err(|e| ApiError::Internal(format!("account resolve task: {e}")))?
+        .map_err(|e| ApiError::BadRequest(e.to_string()))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Result<String, ApiError> {
@@ -298,15 +342,18 @@ async fn resolve_auth(
 }
 
 /// Resolve the account id for an import: user tokens bind; admin requires query.
-fn resolve_import_account(
+/// Query may be username or UUID; always returns `accounts.id`.
+async fn resolve_import_account(
     auth: &AuthIdentity,
     query_account: Option<&str>,
+    db_path: &Path,
 ) -> Result<String, ApiError> {
     let query = query_account.map(str::trim).filter(|s| !s.is_empty());
     match auth {
         AuthIdentity::User { account_id } => {
             if let Some(q) = query {
-                if q != account_id {
+                let resolved = resolve_account_ref_async(db_path, q).await?;
+                if resolved != *account_id {
                     return Err(ApiError::Forbidden(
                         "account query does not match token's account".into(),
                     ));
@@ -314,11 +361,15 @@ fn resolve_import_account(
             }
             Ok(account_id.clone())
         }
-        AuthIdentity::Admin => query.map(|s| s.to_string()).ok_or_else(|| {
-            ApiError::BadRequest(
-                "query param account is required when using the admin API token".into(),
-            )
-        }),
+        AuthIdentity::Admin => {
+            let q = query.ok_or_else(|| {
+                ApiError::BadRequest(
+                    "query param account is required when using the admin API token (username or UUID)"
+                        .into(),
+                )
+            })?;
+            resolve_account_ref_async(db_path, q).await
+        }
     }
 }
 
@@ -389,7 +440,7 @@ async fn import_handler(
     if query.source.trim().is_empty() {
         return Err(ApiError::BadRequest("query param source is required".into()));
     }
-    let account = resolve_import_account(&auth, query.account.as_deref())?;
+    let account = resolve_import_account(&auth, query.account.as_deref(), &state.cfg.paths.db).await?;
     query.account = Some(account);
 
     if is_multipart_content_type(ct) {

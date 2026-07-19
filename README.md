@@ -1,259 +1,201 @@
-# message-vault-rs
+# Message Vault
 
-Import message archives into SQLite and browse them in a local web UI.
+Message Vault keeps your text-message history in one place so you can browse it in a local website—search conversations, open photos and attachments, and see iPhone and Android backups side by side.
 
-**Backup → CSV / exporter binaries** live in [`message-exporters`](https://github.com/bitrealm-dev/message-exporters). This vault repo owns vault JSON, CSV→vault ingest, SQLite, and the web UI.
+You run it on a computer you control. Your messages stay in a database on that machine; they are not uploaded to a cloud service by this project.
 
-```text
-crates/
-  message-json/                 # vault (+ legacy sms/imessage) NDJSON schemas
-  csv-ingest/                   # CSV → vault NDJSON (Python converters, Rust CLI)
-  demo-seed/                    # demo data generator
-config/                         # local machine config (examples committed)
-sources/                        # optional placeholder for raw backups (gitignored)
-scripts/
-  ingest-staging.sh             # staging → import + dedupe wrapper
-  import-staging.sh             # import + dedupe only (debug)
-web/                            # Next.js browser UI
-```
+Turning a phone backup into files the vault understands is done by a separate project, [message-exporters](https://github.com/bitrealm-dev/message-exporters). This repository is the vault itself: storage, import, and the browser UI.
 
-```bash
-# Vault
-cargo build --workspace --release
-
-# Exporters (separate repo — fill staging/, not used by vault at runtime)
-# https://github.com/bitrealm-dev/message-exporters
-```
-
-### Pipeline
+## How it works
 
 ```text
-message-exporters   backup + --contacts/--vcf  →  staging CSV  (lookup here)
-message-vault-rs    staging →  optional csv-ingest (shape only)  →  SQLite + UI
+1. Export     Take a backup from your phone or backup app
+              → spreadsheet files + photos (message-exporters)
+
+2. Import     Send that folder into your vault
+              → vault-push-gui (or a command on the same machine)
+
+3. Browse     Open the website on your computer
+              → read and search your history
 ```
 
-- **Vault NDJSON** (`message_json::vault`) — standard ingest shape; see [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md)
-- Vault **never** runs exporters. Fill each source’s `export_dir` first, then `ingest`.
-- **CSV is the checkpoint** — Android exporters require `--contacts` or `--vcf` for name/phone resolution; inspect and correct the sheet before csv-ingest (which does not look up contacts).
+An **export folder** (sometimes called staging) is simply the folder the exporter wrote: one spreadsheet file per conversation, plus any photos or other media next to those files.
 
-## Multi-source layout
+## Try it with sample data
 
-Configure sources in [`config/config.toml`](config/config.toml) (copy from [`config/config.toml.example`](config/config.toml.example)):
-
-```toml
-[paths]
-db = "data/vault.db"
-data_dir = "data"
-assets_dir = "assets"                 # originals dir name under each source
-assets_converted_dir = "assets_converted"
-
-[[sources]]
-id = "imessage"
-export_dir = "staging/imessage"
-
-[[sources]]
-id = "sms-backup-plus"
-export_dir = "staging/sms-backup-plus-eml"
-
-[[sources]]
-id = "go-sms-pro"
-export_dir = "staging/go-sms-pro"
-
-[[sources]]
-id = "sms-backup-restore"
-export_dir = "staging/sms-backup-restore"
-```
-
-Resolved asset roots default to `data/<account_id>/<source_id>/assets` and `…/assets_converted`. Override with full paths on a source if needed.
-
-[`sources/`](sources/) is an optional, gitignored placeholder for keeping raw backups inside the clone. Ingest does **not** read from `sources/` — only from each source’s `export_dir` (staging).
-
-One shared SQLite DB holds all sources. Each message row has a `source` column. The web UI can filter by source or show the combined (all) view.
-
-## Ingest (primary path — remote client)
-
-Typical setup: exporters + CSV on one machine, vault server on another.
-
-1. On the **client**, export backups with [message-exporters](https://github.com/bitrealm-dev/message-exporters) into a local staging dir. Attachment locations come from paths in the CSV (not a fixed folder layout).
-2. On the **vault host**, run `message-vault-rs serve` (see HTTP section below).
-3. On the **client**, run **`vault-push`** (CLI) or **`vault-push-gui`** (wrapper). One conversation per HTTP request; resume with append + checkpoint.
+No real backup needed. From this repository:
 
 ```bash
-# vault host
-cargo run --release -- serve
-
-# client CLI (staging dir from exporters)
-cargo run -p csv-ingest --bin vault-push --release -- \
-  --input ./staging/go-sms-pro \
-  --source-id go-sms-pro \
-  --url http://vault-host:8080 \
-  --token "$VAULT_API_TOKEN" \
-  --account <uuid> \
-  --mode append
-
-# GUI (spawns vault-push; ship both binaries together)
-cargo run -p csv-ingest --bin vault-push-gui --features gui --release
-```
-
-Writes `vault-push.log`, `vault-push-report.json`, and `vault-push-done.json` in the export folder. Smoke: `./scripts/smoke-vault-push.sh`.
-
-### Local CLI ingest (same host as the DB)
-
-When staging already lives next to the vault config:
-
-1. Export into `staging/<source>/`.
-2. Run `ingest` — optional CSV→vault NDJSON, import that source, soft-dedupe across sources:
-
-```bash
-cargo run --release -- ingest imessage --account <uuid>
-cargo run --release -- ingest go-sms-pro --account <uuid>
-cargo run --release -- ingest sms-backup-plus --account <uuid>
-cargo run --release -- ingest sms-backup-restore --account <uuid>
-
-# optional flags:
-#   --mode append | replace   (default replace)
-#   --overwrite-contacts
-#   --skip-dedupe
-#   --window-secs 2
-#   --staging-dir staging/custom
-```
-
-Helper (staging must already be populated):
-
-```bash
-# one source
-./scripts/ingest-staging.sh --account <uuid> go-sms-pro
-./scripts/ingest-staging.sh --account <uuid> --append sms-backup-plus
-
-# several, or all known sources (omit ids → all)
-./scripts/ingest-staging.sh --account <uuid> imessage go-sms-pro sms-backup-plus sms-backup-restore
-./scripts/ingest-staging.sh --account <uuid>
-```
-
-Then generate converted media and browse:
-
-```bash
-cd web && npm run process-assets
-npm run dev
-```
-
-Lower-level import-only path:
-
-```bash
-./scripts/import-staging.sh         # import + dedupe only
-```
-
-### HTTP import API
-
-Rust server (`serve`) — not the Next.js UI. Prefer **`vault-push`** (multipart). Raw NDJSON remains for text-only / curl.
-
-```toml
-# config/config.toml
-[server]
-bind = "127.0.0.1:8080"
-api_token = "change-me"
-```
-
-```bash
-cargo run --release -- serve
-
-# Check token — user tokens return bound account_id; admin token may pass ?account=
-curl -sS "http://127.0.0.1:8080/v1/auth/check" \
-  -H "Authorization: Bearer <user-token-from-settings>"
-
-# Multipart (NDJSON + files) — what vault-push sends
-# fields: ndjson, file (filename = relative path e.g. attachments/photo.jpg)
-# account= optional when using a user API token (bound to the token)
-
-# NDJSON only (assets resolved from source export_dir on the vault host)
-# Admin host token still requires ?account=
-curl -sS -X POST "http://127.0.0.1:8080/v1/import?source=imessage&account=<uuid>&mode=append" \
-  -H "Authorization: Bearer change-me" \
-  -H "Content-Type: application/x-ndjson" \
-  --data-binary @crates/csv-ingest/samples/vault/01-sms-text.json
-```
-
-Per-account import tokens are created at web signup and shown under **Settings**. `[server] api_token` remains an admin secret for ops/smoke.
-
-Smokes: `./scripts/smoke-import-api.sh`, `./scripts/smoke-vault-push.sh`.
-
-### Import modes
-
-- **replace** — delete that source’s messages, then reload from staging.
-- **append** — keep existing rows; skip when the same `(source, guid)` already exists.
-
-Other sources are left alone.
-
-### Cross-source dedupe
-
-Ingest (and `import-staging.sh`) finish with `dedupe-cross-source`. That pass:
-
-1. Rebuilds every message **content key** (chat + UTC epoch seconds + direction + normalized body + attachment hashes).
-2. Soft-hides exact cross-source matches (`duplicate_of`).
-3. Soft-hides near matches in the same conversation within ±2 seconds (same body or same attachment hashes).
-
-Rows are not deleted. **All (combined)** hides soft-hidden copies. A single-source filter still shows every row for that archive.
-
-Full walkthrough with diagrams: [docs/dedupe.md](docs/dedupe.md).
-
-Database tables and how they connect: [docs/schema.md](docs/schema.md).
-
-```bash
-cargo run --release -- import --source imessage --mode replace --account <uuid>
-cargo run --release -- import --all --mode replace --account <uuid>
-cargo run --release -- dedupe-cross-source --account <uuid>
-```
-
-## Obsidian markdown export
-
-Export 1:1 contacts (no groups) as bubble-styled markdown — one file per person-year, combined/soft-deduped timeline, attachments copied under `_assets/`:
-
-```bash
-cargo run --release -- export-markdown --out /path/to/Obsidian-Message-Vault
-# Enable snippet: Settings → Appearance → CSS snippets → message-vault-bubbles
-```
-
-Layout: `People/{Name}/{year}.md`, hub notes `_{Name}.md`, and `.obsidian/snippets/message-vault-bubbles.css` (from `config/obsidian-message-vault.css`).
-
-## Demo dataset
-
-A committed iMessage bundle lives under [`demo/`](demo/) (~30 contacts, ~50 conversations, thousands of messages). Bootstrap without a real backup:
-
-```bash
+# Needs Rust (https://www.rust-lang.org/tools/install) and Node.js for the website
 ./scripts/setup-demo.sh
-cd web && npm run dev
+cd web && npm install && npm run process-assets && npm run dev
 ```
 
-Restore the default demo state from the CLI (sidebar **Reset demo** only shows this command — the web app does not import):
+Open the URL the web app prints (usually `http://localhost:3000`). You should see demo contacts and conversations you can click through.
+
+To put the demo data back later:
 
 ```bash
 cargo run --release -- reset-demo
 ```
 
-Regenerate committed NDJSON (maintainers):
+## Bring in your own messages
+
+### 1. Start the vault and create an account
+
+On the computer that will hold your archive:
+
+1. Copy [`config/config.toml.example`](config/config.toml.example) to `config/config.toml` and adjust paths if you like.
+2. Build and start the import server:
+
+```bash
+cargo build --workspace --release
+cargo run --release -- serve
+```
+
+3. In another terminal, start the website:
+
+```bash
+cd web && npm install && npm run process-assets && npm run dev
+```
+
+4. Open the site, create an account, then go to **Settings** and copy your **Import API token**.  
+   That token identifies your account. You do **not** need an account UUID.
+
+Keep `serve` running while you import.
+
+### 2. Export your phone backup
+
+On the machine that has your backup files, use [message-exporters](https://github.com/bitrealm-dev/message-exporters). Pick the converter that matches what you have (for example Apple Messages, SMS Backup & Restore, SMS Backup+, GO SMS Pro).
+
+You will get an **export folder** of CSV spreadsheets and media. Open a CSV in a spreadsheet app if you want to spot-check names and times before importing.
+
+### 3. Send the export into the vault
+
+The easiest way is the graphical importer.
+
+On the machine that has the export folder (it can be a different computer from the vault, as long as it can reach the vault over the network):
+
+```bash
+cargo run -p csv-ingest --bin vault-push-gui --features gui --release
+```
+
+Then:
+
+1. Enter your vault URL (for example `http://127.0.0.1:8080` or your vault host’s address).
+2. Paste your **Import API token** from Settings.
+3. Click **Authenticate**.
+4. Choose the export folder and the source type (or let detection pick it).
+5. Click **Start import**.
+
+Progress appears in the log. You can close and re-run later; unfinished chats can resume with append mode.
+
+**Command-line option** (same idea, no window):
+
+```bash
+cargo run -p csv-ingest --bin vault-push --release -- \
+  --input ./path/to/your-export-folder \
+  --source-id go-sms-pro \
+  --url http://vault-host:8080 \
+  --token "$VAULT_API_TOKEN" \
+  --mode append
+```
+
+Omit `--account` when using your personal Import API token. If you use the server’s admin token from `config.toml`, pass `--account yourusername`.
+
+### 4. Browse
+
+Refresh the website. Use the **Source** control in the sidebar to look at one backup type or **All (combined)**. Under contacts you will see **Contacts**, **All**, and **Excluded**—see [`web/README.md`](web/README.md) for details.
+
+## Same computer (optional)
+
+If the export folder already lives on the vault machine next to your config, you can import without the network push tools:
+
+```bash
+# One source (username from your web account)
+cargo run --release -- ingest go-sms-pro --account yourusername
+
+# Or several sources that already have folders under staging/
+./scripts/ingest-staging.sh --account yourusername
+```
+
+Then convert media for the web UI if needed: `cd web && npm run process-assets`.
+
+## Browse tips
+
+- **Source filter** — one archive (e.g. iMessage only) or everything together.
+- **Contacts** — people with messages who are not marked excluded.
+- **All / Excluded** — manage who appears in the main Contacts list via `exclude` in your contacts CSV (see config examples).
+
+More UI detail: [`web/README.md`](web/README.md).
+
+---
+
+## For developers and operators
+
+This section is for people maintaining the vault, wiring automation, or debugging imports.
+
+### Repository layout
+
+```text
+crates/
+  message-json/     # vault NDJSON schemas
+  csv-ingest/       # CSV → vault convert + vault-push / vault-push-gui
+  demo-seed/        # regenerate committed demo data
+config/             # config.toml.example and related examples
+scripts/            # setup-demo, ingest-staging, smoke tests
+web/                # Next.js UI
+docs/               # schema, dedupe
+```
+
+Backup → CSV converters live in [message-exporters](https://github.com/bitrealm-dev/message-exporters), not in this repo. Fill each source’s `export_dir` (staging) before local `ingest`.
+
+### Config sources
+
+See [`config/config.toml.example`](config/config.toml.example). Each `[[sources]]` entry has an `id` and `export_dir`. Asset files default under `data/<account_id>/<source_id>/…`.
+
+Ingest contract (CSV columns → vault NDJSON): [`crates/message-json/docs/CSV_INGEST.md`](crates/message-json/docs/CSV_INGEST.md).
+
+### HTTP import API
+
+`serve` reads `[server]` in config (`bind`, `api_token`). Prefer **vault-push** (multipart: conversation data + attachment files). Per-account tokens come from web Settings; `[server] api_token` is an admin secret for ops/smoke.
+
+```bash
+curl -sS "http://127.0.0.1:8080/v1/auth/check" \
+  -H "Authorization: Bearer <user-token-from-settings>"
+```
+
+Smokes: `./scripts/smoke-import-api.sh`, `./scripts/smoke-vault-push.sh`.
+
+### Import modes and dedupe
+
+- **replace** — wipe that source’s messages, then reload.
+- **append** — keep existing rows; skip when `(source, guid)` already exists.
+
+Cross-source soft-dedupe (exact / near-time matches): [docs/dedupe.md](docs/dedupe.md).  
+Database tables: [docs/schema.md](docs/schema.md).
+
+```bash
+cargo run --release -- import --source imessage --mode replace --account yourusername
+cargo run --release -- dedupe-cross-source --account yourusername
+```
+
+### Obsidian export
+
+```bash
+cargo run --release -- export-markdown --out /path/to/Obsidian-Message-Vault --account yourusername
+```
+
+Enable the `message-vault-bubbles` CSS snippet in Obsidian (from `config/obsidian-message-vault.css`).
+
+### Demo data for maintainers
 
 ```bash
 cargo run -p demo-seed -- --out demo --seed 42
 ```
 
-See [`demo/README.md`](demo/README.md) for what the dataset exercises.
+See [`demo/README.md`](demo/README.md).
 
-## Web
+### csv-ingest CLI details
 
-See [`web/README.md`](web/README.md). Quick start:
-
-```bash
-cd web && npm run process-assets && npm run dev
-```
-
-Use the **Source** dropdown in the sidebar for a single source or **All (combined)** person threads.
-
-Contact browsing:
-
-- **Contacts** — everyone with messages who is not excluded (`exclude=false` in `config/contacts.csv`). Derived as All − Excluded; you only manage the `exclude` column.
-- **All** — every contact with messages, including excluded.
-- **Excluded** — `exclude=true`. Still browsable; hidden from Contacts and from labels.
-
-`contacts.csv` maps **phone numbers** only. In SQLite, `contact_handles` stores phones and optional iMessage emails for thread linking; emails are never written back to the CSV. Email-only peers you do not want to map stay under Unassigned.
-
-Older DBs with `contact_phones` / `preferred_phone` are not upgraded — wipe `data/vault.db` and re-ingest.
+[`crates/csv-ingest/README.md`](crates/csv-ingest/README.md) — vault-push flags, checkpoints, GUI notes.

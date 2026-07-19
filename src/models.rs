@@ -70,6 +70,9 @@ fn conversation_from_sms(c: message_json::sms::ConversationRecord) -> Conversati
         group_title: c.group_title,
         participants: c.participants.into_iter().map(participant_from_sms).collect(),
         exported_at: c.exported_at,
+        export_source: None,
+        export_tool: None,
+        export_tool_version: None,
     }
 }
 

@@ -26,9 +26,11 @@ cargo run -p csv-ingest --bin vault-push --release -- \
   --source-id go-sms-pro \
   --url http://vault-host:8080 \
   --token "$VAULT_API_TOKEN" \
-  --account <uuid> \
+  --account <username> \
   --mode append
 ```
+
+Omit `--account` when using a personal Import API token from web Settings (the token binds the account).
 
 | Flag | Role |
 |------|------|
@@ -36,7 +38,7 @@ cargo run -p csv-ingest --bin vault-push --release -- \
 | `--source-id` | Vault source + converter |
 | `--url` / `VAULT_URL` | Vault base URL |
 | `--token` / `VAULT_API_TOKEN` | Bearer token |
-| `--account` | Account UUID (optional for user tokens; required for admin `server.api_token`) |
+| `--account` | Username or UUID (optional for user tokens; required for admin `server.api_token`) |
 | `--mode append` | Default; resume-safe |
 | `--mode replace` | Wipe source on first conversation, then append |
 | `--continue-on-error` | Keep going after a failed chat |

@@ -5,15 +5,15 @@
 # Fill it with message-exporters (or another tool), then run this script.
 #
 # Usage:
-#   ./scripts/ingest-staging.sh --account <uuid>                         # all known sources
-#   ./scripts/ingest-staging.sh --account <uuid> go-sms-pro
-#   ./scripts/ingest-staging.sh --account <uuid> imessage go-sms-pro sms-backup-plus
-#   ./scripts/ingest-staging.sh --account <uuid> --append sms-backup-plus
-#   ./scripts/ingest-staging.sh --account <uuid> --overwrite-contacts imessage
-#   ./scripts/ingest-staging.sh --account <uuid> --skip-dedupe go-sms-pro
+#   ./scripts/ingest-staging.sh --account <username>                     # all known sources
+#   ./scripts/ingest-staging.sh --account <username> go-sms-pro
+#   ./scripts/ingest-staging.sh --account <username> imessage go-sms-pro sms-backup-plus
+#   ./scripts/ingest-staging.sh --account <username> --append sms-backup-plus
+#   ./scripts/ingest-staging.sh --account <username> --overwrite-contacts imessage
+#   ./scripts/ingest-staging.sh --account <username> --skip-dedupe go-sms-pro
 #
 # Runs:
-#   cargo run --release -- ingest <id> --account <uuid> …
+#   cargo run --release -- ingest <id> --account <username> …
 #
 # When multiple sources run, cross-source dedupe runs once after the last ingest
 # (unless --skip-dedupe).
@@ -35,13 +35,13 @@ ALL_SOURCES=(imessage go-sms-pro sms-backup-restore sms-backup-plus)
 
 usage() {
   cat <<'EOF'
-Usage: ingest-staging.sh --account <uuid> [OPTIONS] [SOURCE_ID…]
+Usage: ingest-staging.sh --account <username> [OPTIONS] [SOURCE_ID…]
 
 Staging must already be populated (message-exporters → staging/<source>/).
 With no SOURCE_ID, ingests all known sources that have staging content.
 
 Options:
-  --account <uuid>       Vault account UUID (required)
+  --account <username>   Vault account username or UUID (required)
   --append               Import mode append (default: replace)
   --overwrite-contacts   Reload contacts CSV on import
   --skip-dedupe          Skip cross-source soft-dedupe after import
@@ -60,7 +60,7 @@ while [[ $# -gt 0 ]]; do
     --account)
       ACCOUNT="${2:-}"
       if [[ -z "${ACCOUNT}" ]]; then
-        echo "error: --account requires a uuid" >&2
+        echo "error: --account requires a username or uuid" >&2
         exit 1
       fi
       shift 2
@@ -94,7 +94,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${ACCOUNT}" ]]; then
-  echo "error: --account <uuid> is required" >&2
+  echo "error: --account <username> is required" >&2
   usage >&2
   exit 1
 fi

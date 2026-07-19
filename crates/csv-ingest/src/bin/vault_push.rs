@@ -34,7 +34,7 @@ struct Cli {
     #[arg(long, env = "VAULT_API_TOKEN")]
     token: Option<String>,
 
-    /// Account UUID (optional for user API tokens from Settings; required for admin server.api_token)
+    /// Account username or UUID (optional for user API tokens from Settings; required for admin server.api_token)
     #[arg(long)]
     account: Option<String>,
 

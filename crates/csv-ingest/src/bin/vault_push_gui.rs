@@ -40,7 +40,10 @@ impl AuthState {
 struct App {
     url: String,
     token: String,
+    /// Resolved account UUID (used for push / prefs).
     account: String,
+    /// Display name from auth/check (`username`), falls back to UUID.
+    account_label: String,
     source_id: String,
     input_dir: String,
     mode_append: bool,
@@ -66,6 +69,7 @@ enum UiMsg {
         state: AuthState,
         detail: String,
         account_id: Option<String>,
+        username: Option<String>,
     },
     Done {
         code: i32,
@@ -90,6 +94,7 @@ impl Default for App {
                 String::new()
             },
             account: prefs.account,
+            account_label: String::new(),
             source_id,
             input_dir: String::new(),
             mode_append: true,
@@ -212,17 +217,23 @@ struct AuthCheckBody {
     #[serde(default)]
     sources: Vec<String>,
     account_id: Option<String>,
+    username: Option<String>,
     account_ok: Option<bool>,
     admin: Option<bool>,
 }
 
-/// Returns (state, detail, resolved_account_id).
-fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, Option<String>) {
+/// Returns (state, detail, resolved_account_id, username).
+fn run_auth_check(
+    url: &str,
+    token: &str,
+    account: &str,
+) -> (AuthState, String, Option<String>, Option<String>) {
     let base = url.trim().trim_end_matches('/');
     if base.is_empty() || token.trim().is_empty() {
         return (
             AuthState::Error,
             "Enter vault URL and API token first.".into(),
+            None,
             None,
         );
     }
@@ -243,6 +254,7 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, 
                 AuthState::Error,
                 format!("HTTP client error: {e}"),
                 None,
+                None,
             );
         }
     };
@@ -253,18 +265,26 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, 
         .send()
     {
         Ok(r) => r,
-        Err(e) => return (AuthState::Error, format!("Request failed: {e}"), None),
+        Err(e) => {
+            return (
+                AuthState::Error,
+                format!("Request failed: {e}"),
+                None,
+                None,
+            );
+        }
     };
 
     let status = resp.status();
     if status.as_u16() == 401 {
-        return (AuthState::BadToken, "Invalid token".into(), None);
+        return (AuthState::BadToken, "Invalid token".into(), None, None);
     }
     if status.as_u16() == 403 {
         let body = resp.text().unwrap_or_default();
         return (
             AuthState::Error,
             format!("Forbidden: {body}"),
+            None,
             None,
         );
     }
@@ -274,15 +294,28 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, 
             AuthState::Error,
             format!("Auth check failed ({status}): {body}"),
             None,
+            None,
         );
     }
 
     let body: AuthCheckBody = match resp.json() {
         Ok(b) => b,
-        Err(e) => return (AuthState::Error, format!("Bad response: {e}"), None),
+        Err(e) => {
+            return (
+                AuthState::Error,
+                format!("Bad response: {e}"),
+                None,
+                None,
+            );
+        }
     };
     if !body.ok {
-        return (AuthState::Error, "Server returned ok=false".into(), None);
+        return (
+            AuthState::Error,
+            "Server returned ok=false".into(),
+            None,
+            None,
+        );
     }
 
     let n = body.sources.len();
@@ -292,14 +325,17 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, 
             "This is the server admin token. Use your personal Import API token from web Settings."
                 .into(),
             None,
+            None,
         );
     }
 
+    let username = body.username.filter(|s| !s.is_empty());
     if let Some(id) = body.account_id.filter(|s| !s.is_empty()) {
         return (
             AuthState::Ok,
             format!("Connected — {n} sources"),
             Some(id),
+            username,
         );
     }
 
@@ -308,10 +344,12 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, 
             AuthState::TokenOkAccountMissing,
             format!("Token OK, account not found — {n} sources"),
             None,
+            username,
         ),
         _ => (
             AuthState::Error,
             "Token OK but no account_id returned. Use a user token from web Settings.".into(),
+            None,
             None,
         ),
     }
@@ -333,6 +371,7 @@ fn urlencoding_simple(s: &str) -> String {
 
 impl App {
     fn invalidate_auth(&mut self) {
+        self.account_label.clear();
         if self.auth_state != AuthState::None {
             self.auth_state = AuthState::None;
             self.auth_detail.clear();
@@ -396,11 +435,12 @@ impl App {
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         thread::spawn(move || {
-            let (state, detail, account_id) = run_auth_check(&url, &token, "");
+            let (state, detail, account_id, username) = run_auth_check(&url, &token, "");
             let _ = tx.send(UiMsg::AuthResult {
                 state,
                 detail,
                 account_id,
+                username,
             });
         });
     }
@@ -529,6 +569,7 @@ impl App {
                     state,
                     detail,
                     account_id,
+                    username,
                 } => {
                     self.authenticating = false;
                     self.auth_state = state;
@@ -537,6 +578,9 @@ impl App {
                     if let Some(id) = account_id {
                         self.account = id;
                     }
+                    self.account_label = username
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| self.account.clone());
                     if state.allows_import() {
                         save_prefs(self);
                     }
@@ -643,11 +687,8 @@ impl eframe::App for App {
                     ui.colored_label(self.auth_color(), &self.auth_detail);
                 }
             });
-            if self.auth_state == AuthState::Ok && !self.account.is_empty() {
-                hint(
-                    ui,
-                    &format!("Account: {}", self.account),
-                );
+            if self.auth_state == AuthState::Ok && !self.account_label.is_empty() {
+                hint(ui, &format!("Account: {}", self.account_label));
             }
 
             ui.add_space(12.0);

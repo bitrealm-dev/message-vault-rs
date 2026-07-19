@@ -340,20 +340,41 @@ struct AuthCheckResponse {
     #[serde(default)]
     account_id: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
+    username: Option<String>,
+    #[serde(default)]
+    account_ok: Option<bool>,
+    #[serde(default)]
     admin: Option<bool>,
     #[serde(default)]
     error: Option<String>,
 }
 
-/// Resolve account UUID from a user API token via `GET /v1/auth/check`.
-/// If `account` is already set, returns it unchanged.
-pub fn resolve_account(base_url: &str, token: &str, account: Option<&str>) -> Result<String> {
-    if let Some(a) = account.map(str::trim).filter(|s| !s.is_empty()) {
-        return Ok(a.to_string());
+fn looks_like_uuid(s: &str) -> bool {
+    let s = s.trim();
+    if s.len() != 36 {
+        return false;
     }
+    let b = s.as_bytes();
+    if b[8] != b'-' || b[13] != b'-' || b[18] != b'-' || b[23] != b'-' {
+        return false;
+    }
+    s.chars()
+        .enumerate()
+        .all(|(i, c)| matches!(i, 8 | 13 | 18 | 23) || c.is_ascii_hexdigit())
+}
 
+/// Resolve account UUID via `GET /v1/auth/check`.
+///
+/// `account` may be a username or UUID. User tokens omit it and bind from the token.
+/// Always returns the vault `accounts.id` UUID for import.
+pub fn resolve_account(base_url: &str, token: &str, account: Option<&str>) -> Result<String> {
     let base = base_url.trim_end_matches('/');
-    let url = format!("{base}/v1/auth/check");
+    let mut url = format!("{base}/v1/auth/check");
+    let account = account.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(a) = account {
+        url.push_str(&format!("?account={}", urlencoding_encode(a)));
+    }
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -368,6 +389,9 @@ pub fn resolve_account(base_url: &str, token: &str, account: Option<&str>) -> Re
     if status.as_u16() == 401 {
         bail!("invalid API token");
     }
+    if status.as_u16() == 403 {
+        bail!("account does not match token: {text}");
+    }
     if !status.is_success() {
         bail!("auth/check failed (HTTP {status}): {text}");
     }
@@ -380,10 +404,21 @@ pub fn resolve_account(base_url: &str, token: &str, account: Option<&str>) -> Re
         );
     }
     if let Some(id) = parsed.account_id.filter(|s| !s.is_empty()) {
+        if parsed.admin == Some(true) {
+            if account.is_none() {
+                bail!("admin API token requires --account <username or uuid>");
+            }
+            if parsed.account_ok == Some(false) && !looks_like_uuid(&id) {
+                bail!(
+                    "account not found: {} (use an existing username or account UUID)",
+                    account.unwrap_or(id.as_str())
+                );
+            }
+        }
         return Ok(id);
     }
     if parsed.admin == Some(true) {
-        bail!("admin API token requires --account <uuid>");
+        bail!("admin API token requires --account <username or uuid>");
     }
     bail!("auth/check did not return account_id; pass --account or use a user API token from Settings");
 }

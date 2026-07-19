@@ -283,8 +283,8 @@ export function SettingsAccountForm() {
           Import API token
         </h2>
         <p className="mt-1 text-[13px] text-muted">
-          Paste this into vault-push or vault-push-gui. It identifies your account — you do not
-          need the account UUID. This is not your website login.
+          Paste this into vault-push or vault-push-gui. It identifies your account by username —
+          you do not need an account UUID. This is not your website login.
         </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <code className="min-w-0 flex-1 break-all rounded-md border border-border bg-elevated px-3 py-2 font-mono text-[12px] text-text">
@@ -309,12 +309,6 @@ export function SettingsAccountForm() {
             </button>
           </div>
         </div>
-        {data?.id && (
-          <p className="mt-2 text-[12px] text-muted">
-            Account ID (optional):{" "}
-            <span className="font-mono text-text/80">{data.id}</span>
-          </p>
-        )}
       </section>
 
       {data && (
