@@ -5,7 +5,14 @@ import {
   contactInitials,
 } from "@/lib/contactInitials";
 import type { ContactListItem } from "@/lib/types";
-import type { MouseEvent, ReactNode, RefObject } from "react";
+import {
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { CountBadge } from "./CountBadge";
 import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
@@ -29,6 +36,7 @@ export function BrowseContactList({
   onQueryChange,
   onToggleSelectAll,
   onNewContact,
+  onImportVcf,
   vaultReadOnly = false,
   labelsMenu,
   onEdit,
@@ -55,6 +63,8 @@ export function BrowseContactList({
   onQueryChange: (q: string) => void;
   onToggleSelectAll: () => void;
   onNewContact: (anchorEl: HTMLElement) => void;
+  /** Upload a .vcf and import contacts (Contacts section). */
+  onImportVcf?: (file: File) => Promise<void>;
   vaultReadOnly?: boolean;
   /** Icon-only LabelsMenu element rendered first in the toolbar cluster. */
   labelsMenu?: ReactNode;
@@ -74,11 +84,25 @@ export function BrowseContactList({
   onNamePhoneClick: (id: number, e: MouseEvent | { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
   onContextMenu: (id: number, x: number, y: number) => void;
 }) {
+  const vcfInputRef = useRef<HTMLInputElement>(null);
+  const [vcfImporting, setVcfImporting] = useState(false);
   const {
     showMessageBadge,
     showGroupMessageBadge,
     showContactInitials,
   } = useMessageBadgePrefs();
+  const onVcfPicked = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !onImportVcf) return;
+    setVcfImporting(true);
+    try {
+      await onImportVcf(file);
+    } finally {
+      setVcfImporting(false);
+    }
+  };
+
   const menuItems: ListHistoryMenuItem[] = [
     {
       key: "new-contact",
@@ -88,6 +112,19 @@ export function BrowseContactList({
         if (triggerEl) onNewContact(triggerEl);
       },
     },
+    ...(onImportVcf
+      ? [
+          {
+            key: "import-vcf",
+            label: vcfImporting ? "Importing…" : "Import VCF",
+            icon: <ImportVcfIcon className="size-5 shrink-0 opacity-80" />,
+            disabled: vcfImporting,
+            onClick: () => {
+              vcfInputRef.current?.click();
+            },
+          } satisfies ListHistoryMenuItem,
+        ]
+      : []),
     ...(onEdit
       ? [
           {
@@ -117,6 +154,15 @@ export function BrowseContactList({
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
+      {onImportVcf && (
+        <input
+          ref={vcfInputRef}
+          type="file"
+          accept=".vcf,.vcard,text/vcard,text/x-vcard"
+          className="hidden"
+          onChange={(e) => void onVcfPicked(e)}
+        />
+      )}
 
       <div className="flex h-[45px] shrink-0 items-center border-b border-border px-3">
         <PaneSearchField
@@ -354,6 +400,25 @@ export function NewContactIcon({ className }: { className?: string }) {
       <circle cx="7.25" cy="8" r="3" />
       <path d="M2.25 19.25c.65-3 2.85-4.75 5-4.75s4.35 1.75 5 4.75" />
       <path d="M19 9v6M16 12h6" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function ImportVcfIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 19h14" />
     </svg>
   );
 }

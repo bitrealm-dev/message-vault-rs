@@ -1294,6 +1294,49 @@ export function BrowseShell({
     ],
   );
 
+  const onImportVcf = useCallback(
+    async (file: File) => {
+      if (vaultReadOnly) return;
+      const body = new FormData();
+      body.set("file", file);
+      try {
+        const res = await fetch("/api/contacts/import-vcf", {
+          method: "POST",
+          body,
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          created?: number;
+          updated?: number;
+          skipped?: number;
+          errors?: string[];
+        };
+        if (!res.ok) throw new Error(data.error ?? "VCF import failed");
+        const created = data.created ?? 0;
+        const updated = data.updated ?? 0;
+        const skipped = data.skipped ?? 0;
+        const errCount = data.errors?.length ?? 0;
+        const parts = [
+          `Created ${created}`,
+          `updated ${updated}`,
+          `skipped ${skipped}`,
+        ];
+        if (errCount > 0) parts.push(`${errCount} note${errCount === 1 ? "" : "s"}`);
+        queueStatusMessage(`VCF import: ${parts.join(", ")}`);
+        if (errCount > 0 && data.errors) {
+          console.warn("VCF import notes:", data.errors);
+        }
+        router.refresh();
+      } catch (err) {
+        console.error(err);
+        queueStatusMessage(
+          err instanceof Error ? err.message : "VCF import failed",
+        );
+      }
+    },
+    [vaultReadOnly, queueStatusMessage, router],
+  );
+
   const groupTrashTargets = useCallback(
     (forId?: number) => {
       const primaryIds =
@@ -1417,6 +1460,7 @@ export function BrowseShell({
               contactFormAnchorFromRect(el.getBoundingClientRect()),
             )
           }
+          onImportVcf={vaultReadOnly ? undefined : onImportVcf}
           vaultReadOnly={vaultReadOnly}
           labelsMenu={
             <LabelsMenu
