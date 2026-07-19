@@ -10,7 +10,7 @@ Conversation headers carry a `"schema"` discriminator and `schema_version`:
 
 | Wire schema | Rust module | Who writes it | Discriminator |
 |-------------|-------------|---------------|---------------|
-| **Vault NDJSON** | [`message_json::vault`](src/vault.rs) | `csv-ingest` (all CSV sources); intended HTTP ingest body | `"schema": "vault"`, `schema_version` 1 |
+| **Vault NDJSON** | [`message_json::vault`](src/vault.rs) | `csv-ingest` (all CSV sources); `POST /v1/import` body | `"schema": "vault"`, `schema_version` 1 |
 | **iMessage NDJSON** | [`message_json::imessage`](src/imessage.rs) | `imessage-exporter-json` (legacy wire) | `"schema": "imessage"`, `schema_version` 4 (headers without `schema` still default to imessage) |
 | **SMS NDJSON** | [`message_json::sms`](src/sms.rs) | SMS Backup+ exporter | `"schema": "sms"`, `schema_version` 2 |
 

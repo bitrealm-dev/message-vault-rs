@@ -34,26 +34,13 @@ export function useVaultTitleActions() {
   }, [router]);
 
   const resetDemo = useCallback(async () => {
-    const ok = await confirm(
-      "Restore all messages, contacts, labels, and trash to the committed demo dataset. Your edits will be lost.",
+    setResetError(null);
+    await confirm(
+      "Demo reset is CLI-only (the web app no longer imports data).\n\nFrom the repo root:\n\ncargo run --release -- reset-demo\n\nThen reload this page (or sign out and back in).",
       "Reset demo",
     );
-    if (!ok) return;
-
-    setResettingDemo(true);
-    setResetError(null);
-    try {
-      const res = await fetch("/api/demo/reset", { method: "POST" });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error ?? "Reset failed");
-      }
-      await logout();
-    } catch (e) {
-      setResetError(e instanceof Error ? e.message : "Reset failed");
-      setResettingDemo(false);
-    }
-  }, [confirm, logout]);
+    setResettingDemo(false);
+  }, [confirm]);
 
   return {
     demoResetAvailable,

@@ -64,4 +64,5 @@ Labels and No label list only non-excluded contacts.
 
 - Paths and DB location are read from the repo-root `config/config.toml`.
 - Converted assets land under `data/<source_id>/assets_converted`.
-- **Reset demo** calls `POST /api/demo/reset`, which runs `message-vault-rs reset-demo` when the `demo/` bundle is present.
+- **Reset demo** is CLI-only: `cargo run --release -- reset-demo`. The web UI only shows that hint; NDJSON import is the Rust `serve` API / CLI, not Next.js.
+- Ingest: `message-vault-rs serve` → `POST /v1/import` (`application/x-ndjson`).

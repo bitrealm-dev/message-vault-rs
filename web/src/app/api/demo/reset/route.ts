@@ -1,18 +1,16 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { resetDb } from "@/lib/db";
-import {
-  unauthorizedResponse,
-  withAccountHandler,
-} from "@/lib/accountContext";
+import { unauthorizedResponse, withAccountHandler } from "@/lib/accountContext";
 import { assertVaultWritable } from "@/lib/owner";
 import { configTomlPath, repoRoot } from "@/lib/paths";
 import { NextResponse } from "next/server";
 import { parse } from "smol-toml";
 
 export const dynamic = "force-dynamic";
+
+const CLI_HINT =
+  "Demo reset is CLI-only. From the repo root run: cargo run --release -- reset-demo";
 
 function demoBundleEnabled(): boolean {
   const bundleConfig = path.join(repoRoot(), "demo", "config", "config.toml");
@@ -29,75 +27,6 @@ function demoBundleEnabled(): boolean {
   }
 }
 
-function vaultBinary(): string {
-  const release = path.join(repoRoot(), "target", "release", "message-vault-rs");
-  if (fs.existsSync(release)) {
-    return release;
-  }
-  return "cargo";
-}
-
-type ResetDemoResult = {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  code: number;
-};
-
-function spawnResetDemo(bin: string, args: string[]): ResetDemoResult {
-  const result = spawnSync(bin, args, {
-    cwd: repoRoot(),
-    encoding: "utf8",
-    timeout: 5 * 60 * 1000,
-  });
-  return {
-    ok: result.status === 0,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    code: result.status ?? 1,
-  };
-}
-
-/** Stale release binaries built before reset-demo was added reject the subcommand. */
-function lacksResetDemoSubcommand(result: ResetDemoResult): boolean {
-  if (result.ok) return false;
-  const text = `${result.stderr}\n${result.stdout}`.toLowerCase();
-  return (
-    text.includes("unrecognized subcommand") ||
-    text.includes("unexpected argument") ||
-    (text.includes("reset-demo") && text.includes("usage:"))
-  );
-}
-
-function runResetDemo(): ResetDemoResult {
-  const bin = vaultBinary();
-  if (bin === "cargo") {
-    return spawnResetDemo("cargo", ["run", "--release", "--", "reset-demo"]);
-  }
-
-  const result = spawnResetDemo(bin, ["reset-demo"]);
-  if (!lacksResetDemoSubcommand(result)) {
-    return result;
-  }
-
-  // Fall back so the GUI works without rebuilding the release binary.
-  return spawnResetDemo("cargo", ["run", "--release", "--", "reset-demo"]);
-}
-
-function parseStats(stdout: string) {
-  const pick = (label: string) => {
-    const m = stdout.match(new RegExp(`${label}:\\s*(\\d+)`, "m"));
-    return m ? Number(m[1]) : 0;
-  };
-  return {
-    conversations: pick("conversations"),
-    messages: pick("messages"),
-    attachments: pick("attachments"),
-    contacts: pick("contacts"),
-    assetsMissing: pick("assets missing"),
-  };
-}
-
 function authError(err: unknown): NextResponse | null {
   if (err instanceof Error && err.message === "Not signed in") {
     return unauthorizedResponse();
@@ -105,43 +34,23 @@ function authError(err: unknown): NextResponse | null {
   return null;
 }
 
+/** Whether the demo bundle is present (UI can show CLI reset instructions). */
 export async function GET() {
-  return NextResponse.json({ available: demoBundleEnabled() });
+  return NextResponse.json({
+    available: demoBundleEnabled(),
+    hint: CLI_HINT,
+  });
 }
 
+/** Ingest is owned by the Rust server/CLI — web no longer spawns reset-demo. */
 export async function POST() {
   try {
     return await withAccountHandler(async () => {
       assertVaultWritable();
-
-      if (!demoBundleEnabled()) {
-        return NextResponse.json(
-          { ok: false, error: "Demo reset is not available (missing demo/ bundle)." },
-          { status: 403 },
-        );
-      }
-
-      resetDb();
-
-      const started = Date.now();
-      const result = runResetDemo();
-      const durationMs = Date.now() - started;
-
-      if (!result.ok) {
-        const err = (result.stderr || result.stdout || "reset-demo failed").trim();
-        return NextResponse.json(
-          { ok: false, error: err.slice(0, 2000), durationMs },
-          { status: 500 },
-        );
-      }
-
-      resetDb();
-
-      return NextResponse.json({
-        ok: true,
-        durationMs,
-        stats: parseStats(result.stdout),
-      });
+      return NextResponse.json(
+        { ok: false, error: CLI_HINT },
+        { status: 410 },
+      );
     });
   } catch (err) {
     const auth = authError(err);

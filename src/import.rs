@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, OptionalExtension, Statement, Transaction};
-
+use serde::Serialize;
 
 use crate::assets::{self, AssetStats, StoredAsset};
 use crate::contacts;
@@ -38,7 +38,22 @@ impl ImportMode {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
+pub struct ImportOptions<'a> {
+    pub db_path: &'a Path,
+    /// Content-addressed asset store (SHA-named files under account/source).
+    pub assets_dir: &'a Path,
+    /// Root for resolving relative attachment paths in NDJSON.
+    pub asset_root: &'a Path,
+    pub contacts_csv: &'a Path,
+    pub exclude_csv: &'a Path,
+    pub overwrite_contacts: bool,
+    pub mode: ImportMode,
+    pub source: &'a str,
+    pub account_id: &'a str,
+}
+
+#[derive(Debug, Default, Serialize)]
 pub struct ImportStats {
     pub conversations: u64,
     pub participants: u64,
@@ -62,11 +77,26 @@ pub struct ImportStats {
     pub mode: String,
 }
 
+impl ImportStats {
+    fn merge_file(&mut self, other: &ImportStats) {
+        self.conversations += other.conversations;
+        self.participants += other.participants;
+        self.messages += other.messages;
+        self.attachments += other.attachments;
+        self.tapbacks += other.tapbacks;
+        self.messages_deduped += other.messages_deduped;
+        self.conversations_excluded += other.conversations_excluded;
+        self.messages_excluded += other.messages_excluded;
+        self.participants_excluded += other.participants_excluded;
+    }
+}
+
 struct PreparedAttachment {
     record: AttachmentRecord,
     stored: Option<StoredAsset>,
 }
 
+/// Import every `*.json` NDJSON file under `export_dir` (CLI staging path).
 pub fn import_export(
     export_dir: &Path,
     db_path: &Path,
@@ -78,69 +108,11 @@ pub fn import_export(
     source: &str,
     account_id: &str,
 ) -> Result<ImportStats> {
-    if source.trim().is_empty() {
-        bail!("import source id must not be empty");
-    }
     if !export_dir.is_dir() {
         bail!("export directory does not exist: {}", export_dir.display());
     }
 
-    if let Some(parent) = db_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-    }
-    fs::create_dir_all(assets_dir)
-        .with_context(|| format!("failed to create {}", assets_dir.display()))?;
-
-    let mut conn = Connection::open(db_path)
-        .with_context(|| format!("failed to open database {}", db_path.display()))?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    println!("  sql:      opened {}", db_path.display());
-    let _ = io::stdout().flush();
-
-    schema::ensure_vault_schema(&conn)?;
-    crate::vault_owner::ensure_account_row(&conn, account_id)?;
-
-    println!(
-        "  sql:      loading contacts from {}…",
-        contacts_csv.display()
-    );
-    let _ = io::stdout().flush();
-    let contact_stats = contacts::load_contacts_if_needed(
-        &mut conn,
-        contacts_csv,
-        overwrite_contacts,
-        account_id,
-    )?;
-    if contact_stats.skipped {
-        println!("  sql:      contacts skipped (already loaded)");
-    } else {
-        println!(
-            "  sql:      contacts={} phones={} labels={}",
-            contact_stats.contacts, contact_stats.phones, contact_stats.labels
-        );
-    }
-    let exclude = ExcludeSet::load(exclude_csv)?;
-    println!(
-        "  sql:      exclude entries from {}",
-        exclude_csv.display()
-    );
-
-    println!("  sql:      ensuring schema + recreating staging tables…");
-    let _ = io::stdout().flush();
-    schema::ensure_messages_schema(&conn)?;
-    schema::recreate_staging(&conn)?;
-    if mode == ImportMode::Replace {
-        println!("  sql:      deleting existing messages for source '{source}'…");
-        let _ = io::stdout().flush();
-        schema::delete_messages_for_source(&conn, account_id, source)?;
-        println!("  sql:      wipe complete");
-    }
-    let _ = io::stdout().flush();
-
-    let mut paths: Vec<_> = fs::read_dir(export_dir)
+    let mut paths: Vec<PathBuf> = fs::read_dir(export_dir)
         .with_context(|| format!("failed to read {}", export_dir.display()))?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
@@ -152,15 +124,97 @@ pub fn import_export(
         .collect();
     paths.sort();
 
+    import_ndjson_files(
+        &paths,
+        &ImportOptions {
+            db_path,
+            assets_dir,
+            asset_root: export_dir,
+            contacts_csv,
+            exclude_csv,
+            overwrite_contacts,
+            mode,
+            source,
+            account_id,
+        },
+    )
+}
+
+/// Import one or more NDJSON files. Attachment relative paths resolve against `opts.asset_root`.
+pub fn import_ndjson_files(paths: &[PathBuf], opts: &ImportOptions<'_>) -> Result<ImportStats> {
+    if opts.source.trim().is_empty() {
+        bail!("import source id must not be empty");
+    }
+
+    if let Some(parent) = opts.db_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    fs::create_dir_all(opts.assets_dir)
+        .with_context(|| format!("failed to create {}", opts.assets_dir.display()))?;
+
+    let mut conn = Connection::open(opts.db_path)
+        .with_context(|| format!("failed to open database {}", opts.db_path.display()))?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    println!("  sql:      opened {}", opts.db_path.display());
+    let _ = io::stdout().flush();
+
+    schema::ensure_vault_schema(&conn)?;
+    crate::vault_owner::ensure_account_row(&conn, opts.account_id)?;
+
+    println!(
+        "  sql:      loading contacts from {}…",
+        opts.contacts_csv.display()
+    );
+    let _ = io::stdout().flush();
+    let contact_stats = contacts::load_contacts_if_needed(
+        &mut conn,
+        opts.contacts_csv,
+        opts.overwrite_contacts,
+        opts.account_id,
+    )?;
+    if contact_stats.skipped {
+        println!("  sql:      contacts skipped (already loaded)");
+    } else {
+        println!(
+            "  sql:      contacts={} phones={} labels={}",
+            contact_stats.contacts, contact_stats.phones, contact_stats.labels
+        );
+    }
+    let exclude = ExcludeSet::load(opts.exclude_csv)?;
+    println!(
+        "  sql:      exclude entries from {}",
+        opts.exclude_csv.display()
+    );
+
+    println!("  sql:      ensuring schema + recreating staging tables…");
+    let _ = io::stdout().flush();
+    schema::ensure_messages_schema(&conn)?;
+    schema::recreate_staging(&conn)?;
+    if opts.mode == ImportMode::Replace {
+        println!(
+            "  sql:      deleting existing messages for source '{}'…",
+            opts.source
+        );
+        let _ = io::stdout().flush();
+        schema::delete_messages_for_source(&conn, opts.account_id, opts.source)?;
+        println!("  sql:      wipe complete");
+    }
+    let _ = io::stdout().flush();
+
     let total_files = paths.len();
     println!(
-        "  import:   {} NDJSON file{} under {}",
+        "  import:   {} NDJSON file{}",
         total_files,
-        if total_files == 1 { "" } else { "s" },
-        export_dir.display()
+        if total_files == 1 { "" } else { "s" }
     );
-    if mode == ImportMode::Replace {
-        println!("  import:   wiped existing rows for source '{source}'");
+    if opts.mode == ImportMode::Replace {
+        println!(
+            "  import:   wiped existing rows for source '{}'",
+            opts.source
+        );
     }
     let _ = io::stdout().flush();
 
@@ -169,43 +223,33 @@ pub fn import_export(
         contact_handles: contact_stats.phones,
         contact_label_links: contact_stats.labels,
         contacts_skipped: contact_stats.skipped,
-        mode: mode.as_str().to_string(),
+        mode: opts.mode.as_str().to_string(),
         ..Default::default()
     };
     let mut asset_stats = AssetStats::default();
     let started = Instant::now();
-    // Log often enough to feel alive on large iMessage exports without flooding.
     let progress_every = if total_files <= 20 {
         1usize
     } else {
         (total_files / 40).max(10)
     };
-    // Commit staging every N conversation files to cut transaction overhead vs per-file commits.
     const STAGING_COMMIT_EVERY: usize = 50;
 
     let mut tx = conn.transaction()?;
-    let mut stmts = StagingInserts::prepare(&tx, account_id)?;
+    let mut stmts = StagingInserts::prepare(&tx, opts.account_id)?;
 
-    for (idx, path) in paths.into_iter().enumerate() {
+    for (idx, path) in paths.iter().enumerate() {
         let file_stats = import_file_to_staging(
             &tx,
             &mut stmts,
-            export_dir,
-            assets_dir,
-            &path,
+            opts.asset_root,
+            opts.assets_dir,
+            path,
             &exclude,
             &mut asset_stats,
-            source,
+            opts.source,
         )?;
-        stats.conversations += file_stats.conversations;
-        stats.participants += file_stats.participants;
-        stats.messages += file_stats.messages;
-        stats.attachments += file_stats.attachments;
-        stats.tapbacks += file_stats.tapbacks;
-        stats.messages_deduped += file_stats.messages_deduped;
-        stats.conversations_excluded += file_stats.conversations_excluded;
-        stats.messages_excluded += file_stats.messages_excluded;
-        stats.participants_excluded += file_stats.participants_excluded;
+        stats.merge_file(&file_stats);
         stats.files += 1;
 
         let n = idx + 1;
@@ -229,22 +273,21 @@ pub fn import_export(
             drop(stmts);
             tx.commit()?;
             tx = conn.transaction()?;
-            stmts = StagingInserts::prepare(&tx, account_id)?;
+            stmts = StagingInserts::prepare(&tx, opts.account_id)?;
         }
     }
     drop(stmts);
     tx.commit()?;
 
-    // Always merge staging into production (replace already deleted this source's rows).
     println!(
         "  import:   promoting staging → production ({:.0}s so far)…",
         started.elapsed().as_secs_f64()
     );
     let _ = io::stdout().flush();
-    let promote_stats = promote_append(&mut conn, mode, account_id)?;
+    let promote_stats = promote_append(&mut conn, opts.mode, opts.account_id)?;
     stats.messages_deduped += promote_stats.messages_deduped;
     stats.messages_appended = promote_stats.messages_appended;
-    if mode == ImportMode::Append {
+    if opts.mode == ImportMode::Append {
         stats.conversations = promote_stats.conversations;
         stats.participants = promote_stats.participants;
         stats.messages = promote_stats.messages;
@@ -254,7 +297,8 @@ pub fn import_export(
 
     schema::clear_staging(&conn)?;
 
-    let unknown = contacts::ensure_unknown_contacts(&mut conn, account_id, contacts_csv)?;
+    let unknown =
+        contacts::ensure_unknown_contacts(&mut conn, opts.account_id, opts.contacts_csv)?;
     stats.unknown_contacts = unknown;
     if unknown > 0 {
         println!("  sql:      created {unknown} contact(s) for previously unassigned handles");
@@ -274,6 +318,14 @@ pub fn import_export(
     );
 
     Ok(stats)
+}
+
+/// Write NDJSON bytes to a temp file and import (HTTP body / single stream).
+pub fn import_ndjson_bytes(bytes: &[u8], opts: &ImportOptions<'_>) -> Result<ImportStats> {
+    let dir = tempfile::tempdir().context("failed to create temp dir for NDJSON import")?;
+    let path = dir.path().join("import.json");
+    fs::write(&path, bytes).context("failed to write temp NDJSON")?;
+    import_ndjson_files(&[path], opts)
 }
 
 fn prepare_attachments(
@@ -359,10 +411,19 @@ impl<'conn> StagingInserts<'conn> {
     }
 }
 
+type ConversationHeader = (
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Vec<(String, Option<String>)>,
+);
+
 fn import_file_to_staging(
     tx: &Transaction<'_>,
     stmts: &mut StagingInserts<'_>,
-    export_dir: &Path,
+    asset_root: &Path,
     assets_dir: &Path,
     path: &Path,
     exclude: &ExcludeSet,
@@ -376,21 +437,28 @@ fn import_file_to_staging(
         .to_string();
 
     let records = ndjson::read_records(path)?;
-
+    let mut stats = ImportStats::default();
+    let mut pending: Option<ConversationHeader> = None;
     let mut messages: Vec<MessageRecord> = Vec::new();
-    let mut conversation: Option<(
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-        Option<String>,
-        Vec<(String, Option<String>)>,
-    )> = None;
 
     for record in records {
         match record {
             ExportRecord::Conversation(c) => {
-                conversation = Some((
+                if let Some(header) = pending.take() {
+                    stats.merge_file(&import_conversation_to_staging(
+                        tx,
+                        stmts,
+                        asset_root,
+                        assets_dir,
+                        &source_file,
+                        header,
+                        std::mem::take(&mut messages),
+                        exclude,
+                        asset_stats,
+                        source,
+                    )?);
+                }
+                pending = Some((
                     c.chat_identifier,
                     c.service,
                     c.conversation_type,
@@ -402,14 +470,38 @@ fn import_file_to_staging(
                         .collect(),
                 ));
             }
-            ExportRecord::Message(m) => messages.push(m),
+            ExportRecord::Message(m) => {
+                if pending.is_none() && source_file != "orphaned.json" {
+                    bail!(
+                        "{} is missing a conversation header (expected before messages)",
+                        path.display()
+                    );
+                }
+                messages.push(m);
+            }
         }
     }
 
-    let (chat_identifier, service, conversation_type, group_title, exported_at, participants) =
-        if let Some(c) = conversation {
-            c
-        } else if source_file == "orphaned.json" {
+    if let Some(header) = pending.take() {
+        stats.merge_file(&import_conversation_to_staging(
+            tx,
+            stmts,
+            asset_root,
+            assets_dir,
+            &source_file,
+            header,
+            messages,
+            exclude,
+            asset_stats,
+            source,
+        )?);
+    } else if source_file == "orphaned.json" {
+        stats.merge_file(&import_conversation_to_staging(
+            tx,
+            stmts,
+            asset_root,
+            assets_dir,
+            &source_file,
             (
                 "orphaned".to_string(),
                 None,
@@ -417,22 +509,44 @@ fn import_file_to_staging(
                 None,
                 None,
                 Vec::new(),
-            )
-        } else if messages.is_empty() {
-            bail!(
-                "{} has no conversation header and no messages",
-                path.display()
-            );
-        } else {
-            bail!(
-                "{} is missing a conversation header (expected first record)",
-                path.display()
-            );
-        };
+            ),
+            messages,
+            exclude,
+            asset_stats,
+            source,
+        )?);
+    } else if messages.is_empty() {
+        bail!(
+            "{} has no conversation header and no messages",
+            path.display()
+        );
+    } else {
+        bail!(
+            "{} is missing a conversation header (expected first record)",
+            path.display()
+        );
+    }
+
+    Ok(stats)
+}
+
+fn import_conversation_to_staging(
+    tx: &Transaction<'_>,
+    stmts: &mut StagingInserts<'_>,
+    asset_root: &Path,
+    assets_dir: &Path,
+    source_file: &str,
+    conversation: ConversationHeader,
+    messages: Vec<MessageRecord>,
+    exclude: &ExcludeSet,
+    asset_stats: &mut AssetStats,
+    source: &str,
+) -> Result<ImportStats> {
+    let (chat_identifier, service, conversation_type, group_title, exported_at, participants) =
+        conversation;
 
     let mut stats = ImportStats::default();
 
-    // Skip whole conversation when chat id or 1:1 peer is excluded.
     if exclude.contains_handle(&chat_identifier) {
         stats.conversations_excluded = 1;
         return Ok(stats);
@@ -475,11 +589,10 @@ fn import_file_to_staging(
         })
         .collect();
 
-    // Hash/copy assets before DB writes (still outside any per-row SQL cost).
     let mut prepared_messages = Vec::with_capacity(kept_messages.len());
     for mut msg in kept_messages {
         let attachments = prepare_attachments(
-            export_dir,
+            asset_root,
             assets_dir,
             std::mem::take(&mut msg.attachments),
             asset_stats,

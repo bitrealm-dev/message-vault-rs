@@ -39,6 +39,11 @@ assets_converted_dir = "assets_converted"
 contacts_csv = "config/contacts.csv"
 exclude_csv = "config/exclude.csv"
 
+# HTTP NDJSON import API (`cargo run --release -- serve`).
+# [server]
+# bind = "127.0.0.1:8080"
+# api_token = "change-me"
+
 [[sources]]
 id = "imessage"
 export_dir = "staging/imessage"

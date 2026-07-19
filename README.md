@@ -114,6 +114,28 @@ Lower-level import-only path:
 ./scripts/import-staging.sh         # import + dedupe only
 ```
 
+### HTTP import API
+
+Ingest can also accept vault NDJSON over HTTP (Rust server — not the Next.js UI):
+
+```toml
+# config/config.toml
+[server]
+bind = "127.0.0.1:8080"
+api_token = "change-me"
+```
+
+```bash
+cargo run --release -- serve
+
+curl -sS -X POST "http://127.0.0.1:8080/v1/import?source=imessage&account=<uuid>&mode=append" \
+  -H "Authorization: Bearer change-me" \
+  -H "Content-Type: application/x-ndjson" \
+  --data-binary @crates/csv-ingest/samples/vault/01-sms-text.json
+```
+
+Attachment paths in the NDJSON still resolve against that source’s `export_dir`. Smoke: `./scripts/smoke-import-api.sh`.
+
 ### Import modes
 
 - **replace** — delete that source’s messages, then reload from staging.
@@ -161,7 +183,7 @@ A committed iMessage bundle lives under [`demo/`](demo/) (~30 contacts, ~50 conv
 cd web && npm run dev
 ```
 
-Restore the default demo state after exploring the UI (sidebar **Reset demo**, or CLI):
+Restore the default demo state from the CLI (sidebar **Reset demo** only shows this command — the web app does not import):
 
 ```bash
 cargo run --release -- reset-demo

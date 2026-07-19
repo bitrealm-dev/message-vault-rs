@@ -16,6 +16,22 @@ pub struct Config {
     /// Named import sources. If empty, a single legacy `paths.export_dir` becomes source `default`.
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
+    /// HTTP ingest server (`message-vault-rs serve`). Required for `serve`.
+    #[serde(default)]
+    pub server: Option<ServerConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServerConfig {
+    /// Bind address (default `127.0.0.1:8080`).
+    #[serde(default = "default_server_bind")]
+    pub bind: String,
+    /// Bearer token required for `POST /v1/import`.
+    pub api_token: String,
+}
+
+fn default_server_bind() -> String {
+    "127.0.0.1:8080".to_string()
 }
 
 /// Message / vault owner — whose backups this vault holds.
@@ -193,7 +209,25 @@ impl Config {
             }
         }
 
+        if let Some(server) = &config.server
+            && server.api_token.trim().is_empty()
+        {
+            bail!("server.api_token must not be empty when [server] is set");
+        }
+
         Ok(config)
+    }
+
+    /// Server settings for `serve`. Fails if `[server]` is missing or token empty.
+    pub fn require_server(&self) -> Result<&ServerConfig> {
+        let server = self
+            .server
+            .as_ref()
+            .context("config missing [server] section (needed for serve)")?;
+        if server.api_token.trim().is_empty() {
+            bail!("server.api_token must not be empty");
+        }
+        Ok(server)
     }
 
     pub fn source(&self, id: &str) -> Result<&SourceConfig> {

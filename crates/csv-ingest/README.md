@@ -49,14 +49,21 @@ Shared reshape helpers: [`python/exporter_csv.py`](python/exporter_csv.py), [`py
 - [`samples/vault/`](samples/vault/) — hand-written vault NDJSON per message shape
 - [`samples/converted/`](samples/converted/) — example conversion output
 
-## Future HTTP ingest
+## HTTP ingest
 
-The NDJSON this tool writes is the intended payload for a later vault HTTP API, for example:
+The NDJSON this tool writes is the body for the vault HTTP import API:
 
-- `POST /v1/import` with `Content-Type: application/x-ndjson` (stream of conversation + message records), or
-- `POST /v1/conversations` + `POST /v1/messages` with the same JSON objects
+```bash
+# config.toml needs [server] api_token=…
+cargo run --release -- serve
 
-No server is implemented in this crate; local files / stdout are the contract.
+curl -X POST "http://127.0.0.1:8080/v1/import?source=<id>&account=<uuid>&mode=append" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/x-ndjson" \
+  --data-binary @path/to/conversation.json
+```
+
+See the root README and `./scripts/smoke-import-api.sh`. This crate only produces NDJSON; the vault binary serves `/v1/import`.
 
 ## License
 

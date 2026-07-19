@@ -11,6 +11,7 @@ mod ndjson;
 mod phone;
 mod reset_demo;
 mod schema;
+mod server;
 mod vault_owner;
 mod vcf;
 mod vcf_to_contacts;
@@ -199,6 +200,13 @@ enum Commands {
         bundle: PathBuf,
 
         /// Active config path to overwrite (default config/config.toml)
+        #[arg(long, default_value = "config/config.toml")]
+        config: PathBuf,
+    },
+
+    /// Run HTTP ingest API (`POST /v1/import` with vault NDJSON)
+    Serve {
+        /// Path to config.toml (must include `[server]` with `api_token`)
         #[arg(long, default_value = "config/config.toml")]
         config: PathBuf,
     },
@@ -515,6 +523,13 @@ fn main() -> Result<()> {
             println!("  assets copied: {}", stats.import.assets_copied);
             println!("  assets missing:{}", stats.import.assets_missing);
             println!("  dedupe keys:   {}", stats.dedupe_keys_filled);
+        }
+
+        Commands::Serve { config } => {
+            let cfg = Config::load(&config)?;
+            let _ = cfg.require_server()?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(server::run(cfg))?;
         }
     }
 

@@ -235,6 +235,7 @@ mod tests {
                 assets_dir: None,
                 assets_converted_dir: None,
             }],
+            server: None,
         };
 
         let stats = ingest(
@@ -273,6 +274,7 @@ mod tests {
                 exclude_csv: root.join("exclude.csv"),
                 export_dir: None,
             },
+            server: None,
             sources: vec![SourceConfig {
                 id: "imessage".into(),
                 export_dir: staging,
