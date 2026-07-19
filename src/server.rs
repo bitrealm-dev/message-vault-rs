@@ -10,9 +10,12 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_http::limit::RequestBodyLimitLayer;
 
+use rusqlite::{params, Connection, OptionalExtension};
+
 use crate::config::Config;
 use crate::dedupe;
 use crate::import::{self, ImportMode, ImportOptions, ImportStats};
+use crate::schema;
 
 const MAX_BODY_BYTES: usize = 512 * 1024 * 1024; // 512 MiB (multipart uploads)
 
@@ -98,6 +101,7 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/v1/auth/check", get(auth_check))
         .route("/v1/import", post(import_handler))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .with_state(state);
@@ -105,6 +109,7 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     eprintln!("message-vault-rs serve listening on http://{bind}");
     eprintln!("  GET  /health");
+    eprintln!("  GET  /v1/auth/check?account=   (Bearer token)");
     eprintln!(
         "  POST /v1/import?source=&account=&mode=append|replace&dedupe=false"
     );
@@ -125,6 +130,70 @@ async fn shutdown_signal() {
 
 async fn health() -> impl IntoResponse {
     (StatusCode::OK, "ok\n")
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthCheckQuery {
+    #[serde(default)]
+    account: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthCheckResponse {
+    ok: bool,
+    sources: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_ok: Option<bool>,
+}
+
+async fn auth_check(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AuthCheckQuery>,
+) -> Result<Json<AuthCheckResponse>, ApiError> {
+    let server = state
+        .cfg
+        .require_server()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    check_bearer(&headers, &server.api_token)?;
+
+    let sources: Vec<String> = state.cfg.sources.iter().map(|s| s.id.clone()).collect();
+
+    let account_ok = if let Some(account) = query.account.as_deref().map(str::trim) {
+        if account.is_empty() {
+            Some(false)
+        } else {
+            let db = state.cfg.paths.db.clone();
+            let account = account.to_string();
+            let exists = tokio::task::spawn_blocking(move || account_exists(&db, &account))
+                .await
+                .map_err(|e| ApiError::Internal(format!("auth check task: {e}")))?
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
+            Some(exists)
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(AuthCheckResponse {
+        ok: true,
+        sources,
+        account_ok,
+    }))
+}
+
+fn account_exists(db_path: &Path, account_id: &str) -> anyhow::Result<bool> {
+    let conn = Connection::open(db_path)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    schema::ensure_accounts_schema(&conn)?;
+    let found: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM accounts WHERE id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(found.is_some())
 }
 
 fn check_bearer(headers: &HeaderMap, expected: &str) -> Result<(), ApiError> {

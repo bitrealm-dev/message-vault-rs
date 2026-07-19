@@ -157,6 +157,10 @@ api_token = "change-me"
 ```bash
 cargo run --release -- serve
 
+# Check API token (+ optional account UUID) — used by vault-push-gui Authenticate
+curl -sS "http://127.0.0.1:8080/v1/auth/check?account=<uuid>" \
+  -H "Authorization: Bearer change-me"
+
 # Multipart (NDJSON + files) — what vault-push sends
 # fields: ndjson, file (filename = relative path e.g. attachments/photo.jpg)
 

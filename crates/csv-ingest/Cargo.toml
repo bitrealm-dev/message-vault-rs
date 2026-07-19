@@ -25,7 +25,7 @@ gui = ["dep:eframe", "dep:egui", "dep:rfd", "dep:dirs", "dep:open"]
 anyhow = "1.0.103"
 clap = { version = "4.6.1", features = ["derive", "env"] }
 csv = "1.4.0"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 eframe = { version = "0.31", optional = true, default-features = true }

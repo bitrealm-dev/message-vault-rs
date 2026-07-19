@@ -55,7 +55,15 @@ Stdout progress (for the GUI): `PROGRESS 12/400 ok chat.json …` / `fail` / `sk
 cargo run -p csv-ingest --bin vault-push-gui --features gui --release
 ```
 
-Requires `vault-push` on `PATH` or next to the GUI binary. Form → spawn CLI → live log → open report/log.
+Requires `vault-push` on `PATH` or next to the GUI binary. **Authenticate** (calls `GET /v1/auth/check`) must succeed before **Start import**; the GUI then spawns the CLI and shows a live log.
+
+Fields (easy to mix up):
+
+| Field | What it is |
+|-------|------------|
+| **API token** | Shared secret from the vault host’s `config.toml` → `[server] api_token`. Used as `Authorization: Bearer …`. **Not** your web UI password. |
+| **Account ID (UUID)** | Vault tenant id (`accounts.id` in SQLite), shown after web login / account list. **Not** the login username. |
+| **Export folder** | Directory from message-exporters (or a vendor export): `*.csv` files plus `attachments/` for that source. |
 
 ## Converters
 

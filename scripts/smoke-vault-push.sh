@@ -56,6 +56,19 @@ for _ in $(seq 1 50); do
 done
 curl -sf "http://${BIND}/health" >/dev/null
 
+# Auth check: bad token → 401; good token → sources; unknown account → account_ok=false
+code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer wrong-token" \
+  "http://${BIND}/v1/auth/check")"
+test "$code" = "401"
+
+AUTH="$(curl -sS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "http://${BIND}/v1/auth/check?account=${ACCOUNT}")"
+echo "$AUTH" | grep -q '"ok":true'
+echo "$AUTH" | grep -q '"account_ok":false'
+echo "$AUTH" | grep -q 'imessage'
+
 OUT1="$("$CARGO_TARGET_DIR/release/vault-push" \
   --input "$TMP/client" \
   --output "$TMP/client" \
@@ -71,6 +84,11 @@ echo "$OUT1" | grep -q 'PROGRESS 1/2 ok'
 echo "$OUT1" | grep -q 'PROGRESS 2/2 ok'
 test -f "$TMP/client/vault-push-report.json"
 test -f "$TMP/client/vault-push-done.json"
+
+AUTH2="$(curl -sS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "http://${BIND}/v1/auth/check?account=${ACCOUNT}")"
+echo "$AUTH2" | grep -q '"account_ok":true'
 
 OUT2="$("$CARGO_TARGET_DIR/release/vault-push" \
   --input "$TMP/client" \

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::time::Duration;
 
 use eframe::egui;
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,23 @@ struct SavedPrefs {
     token: String,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AuthState {
+    None,
+    /// Token valid; account exists (or was not checked).
+    Ok,
+    /// Token valid but account UUID not in DB yet (import may create it).
+    TokenOkAccountMissing,
+    BadToken,
+    Error,
+}
+
+impl AuthState {
+    fn allows_import(self) -> bool {
+        matches!(self, Self::Ok | Self::TokenOkAccountMissing)
+    }
+}
+
 struct App {
     url: String,
     token: String,
@@ -31,6 +49,10 @@ struct App {
     remember_token: bool,
     log: String,
     status: String,
+    current_file: String,
+    auth_state: AuthState,
+    auth_detail: String,
+    authenticating: bool,
     running: bool,
     last_report: Option<PathBuf>,
     last_log: Option<PathBuf>,
@@ -39,12 +61,25 @@ struct App {
 
 enum UiMsg {
     Line(String),
-    Done { code: i32, report: PathBuf, log: PathBuf },
+    AuthResult {
+        state: AuthState,
+        detail: String,
+    },
+    Done {
+        code: i32,
+        report: PathBuf,
+        log: PathBuf,
+    },
 }
 
 impl Default for App {
     fn default() -> Self {
         let prefs = load_prefs();
+        let source_id = if prefs.source_id.trim().is_empty() {
+            "imessage".into()
+        } else {
+            prefs.source_id
+        };
         Self {
             url: prefs.url,
             token: if prefs.remember_token {
@@ -53,14 +88,18 @@ impl Default for App {
                 String::new()
             },
             account: prefs.account,
-            source_id: prefs.source_id,
+            source_id,
             input_dir: String::new(),
             mode_append: true,
             continue_on_error: true,
             force_repush: false,
             remember_token: prefs.remember_token,
             log: String::new(),
-            status: "Ready.".into(),
+            status: "Ready — Authenticate before importing.".into(),
+            current_file: String::new(),
+            auth_state: AuthState::None,
+            auth_detail: String::new(),
+            authenticating: false,
             running: false,
             last_report: None,
             last_log: None,
@@ -126,9 +165,195 @@ fn find_vault_push() -> PathBuf {
     PathBuf::from("vault-push")
 }
 
+fn source_label(id: &str) -> &'static str {
+    match id {
+        "imessage" => "iMessage",
+        "go-sms-pro" => "GO SMS Pro",
+        "sms-backup-plus" => "SMS Backup+",
+        "sms-backup-restore" => "SMS Backup & Restore",
+        "imazing" => "iMazing",
+        _ => "Unknown",
+    }
+}
+
+fn sorted_source_ids() -> Vec<&'static str> {
+    let mut ids: Vec<_> = csv_ingest::known_source_ids().into_iter().collect();
+    ids.sort_unstable();
+    ids
+}
+
+fn hint(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .small()
+            .weak()
+            .color(egui::Color32::from_gray(140)),
+    );
+}
+
+fn parse_progress_filename(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("PROGRESS ")?;
+    // "12/400 ok chat.json …" / fail / skip
+    let mut parts = rest.splitn(3, ' ');
+    let _frac = parts.next()?;
+    let _status = parts.next()?;
+    let tail = parts.next()?;
+    let name = tail.split_whitespace().next().unwrap_or(tail);
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+fn format_log_line(line: &str) -> String {
+    if let Some(name) = parse_progress_filename(line) {
+        format!("▶ {name}\n  {line}")
+    } else {
+        line.to_string()
+    }
+}
+
+#[derive(Deserialize)]
+struct AuthCheckBody {
+    ok: bool,
+    #[serde(default)]
+    sources: Vec<String>,
+    account_ok: Option<bool>,
+}
+
+fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String) {
+    let base = url.trim().trim_end_matches('/');
+    if base.is_empty() || token.trim().is_empty() {
+        return (
+            AuthState::Error,
+            "Enter vault URL and API token first.".into(),
+        );
+    }
+
+    let mut endpoint = format!("{base}/v1/auth/check");
+    let account = account.trim();
+    if !account.is_empty() {
+        endpoint.push_str(&format!(
+            "?account={}",
+            urlencoding_simple(account)
+        ));
+    }
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return (AuthState::Error, format!("HTTP client error: {e}")),
+    };
+
+    let resp = match client
+        .get(&endpoint)
+        .header("Authorization", format!("Bearer {}", token.trim()))
+        .send()
+    {
+        Ok(r) => r,
+        Err(e) => return (AuthState::Error, format!("Request failed: {e}")),
+    };
+
+    let status = resp.status();
+    if status.as_u16() == 401 {
+        return (AuthState::BadToken, "Invalid token".into());
+    }
+    if !status.is_success() {
+        let body = resp.text().unwrap_or_default();
+        return (
+            AuthState::Error,
+            format!("Auth check failed ({status}): {body}"),
+        );
+    }
+
+    let body: AuthCheckBody = match resp.json() {
+        Ok(b) => b,
+        Err(e) => return (AuthState::Error, format!("Bad response: {e}")),
+    };
+    if !body.ok {
+        return (AuthState::Error, "Server returned ok=false".into());
+    }
+
+    let n = body.sources.len();
+    match body.account_ok {
+        Some(false) => (
+            AuthState::TokenOkAccountMissing,
+            format!("Token OK, account not found — {n} sources (import can create it)"),
+        ),
+        Some(true) => (
+            AuthState::Ok,
+            format!("Connected — {n} sources (account OK)"),
+        ),
+        None => (AuthState::Ok, format!("Connected — {n} sources")),
+    }
+}
+
+/// Minimal query escaping for UUID / account ids (no full url crate in GUI).
+fn urlencoding_simple(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 impl App {
+    fn invalidate_auth(&mut self) {
+        if self.auth_state != AuthState::None {
+            self.auth_state = AuthState::None;
+            self.auth_detail.clear();
+            self.status = "Credentials changed — Authenticate again.".into();
+        }
+    }
+
+    fn start_authenticate(&mut self) {
+        if self.authenticating || self.running {
+            return;
+        }
+        if self.url.trim().is_empty() || self.token.trim().is_empty() {
+            self.status = "Enter vault URL and API token.".into();
+            self.auth_state = AuthState::Error;
+            self.auth_detail = self.status.clone();
+            return;
+        }
+        if self.account.trim().is_empty() {
+            self.status = "Enter Account ID (UUID) to authenticate.".into();
+            self.auth_state = AuthState::Error;
+            self.auth_detail = self.status.clone();
+            return;
+        }
+
+        save_prefs(self);
+
+        let url = self.url.clone();
+        let token = self.token.clone();
+        let account = self.account.clone();
+        self.authenticating = true;
+        self.status = "Authenticating…".into();
+        self.auth_detail = "Checking…".into();
+
+        let (tx, rx) = mpsc::channel();
+        self.rx = Some(rx);
+        thread::spawn(move || {
+            let (state, detail) = run_auth_check(&url, &token, &account);
+            let _ = tx.send(UiMsg::AuthResult { state, detail });
+        });
+    }
+
     fn start_import(&mut self) {
         if self.running {
+            return;
+        }
+        if !self.auth_state.allows_import() {
+            self.status = "Authenticate successfully before importing.".into();
             return;
         }
         if self.url.trim().is_empty()
@@ -136,11 +361,11 @@ impl App {
             || self.account.trim().is_empty()
             || self.input_dir.trim().is_empty()
         {
-            self.status = "Fill URL, token, account, and export folder.".into();
+            self.status = "Fill URL, token, account UUID, and export folder.".into();
             return;
         }
         if self.source_id.trim().is_empty() {
-            self.status = "Enter a source id (e.g. go-sms-pro, imessage).".into();
+            self.status = "Choose a source.".into();
             return;
         }
 
@@ -179,6 +404,7 @@ impl App {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
         self.log.clear();
+        self.current_file.clear();
         self.log.push_str(&format!("Running {} …\n", bin.display()));
         self.status = "Import running…".into();
         self.running = true;
@@ -234,15 +460,31 @@ impl App {
         });
     }
 
-    fn poll_child(&mut self, ctx: &egui::Context) {
+    fn poll_messages(&mut self, ctx: &egui::Context) {
         let Some(rx) = &self.rx else {
             return;
         };
         while let Ok(msg) = rx.try_recv() {
             match msg {
                 UiMsg::Line(line) => {
-                    self.log.push_str(&line);
+                    if let Some(name) = parse_progress_filename(&line) {
+                        self.current_file = name;
+                    }
+                    self.log.push_str(&format_log_line(&line));
                     self.log.push('\n');
+                }
+                UiMsg::AuthResult { state, detail } => {
+                    self.authenticating = false;
+                    self.auth_state = state;
+                    self.auth_detail = detail.clone();
+                    self.status = detail;
+                    if state.allows_import() {
+                        save_prefs(self);
+                    }
+                    if !self.running {
+                        self.rx = None;
+                    }
+                    break;
                 }
                 UiMsg::Done { code, report, log } => {
                     self.running = false;
@@ -258,99 +500,213 @@ impl App {
                 }
             }
         }
-        if self.running {
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        if self.running || self.authenticating {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
+    }
+
+    fn auth_color(&self) -> egui::Color32 {
+        match self.auth_state {
+            AuthState::Ok => egui::Color32::from_rgb(40, 140, 70),
+            AuthState::TokenOkAccountMissing => egui::Color32::from_rgb(180, 120, 30),
+            AuthState::BadToken | AuthState::Error => egui::Color32::from_rgb(180, 50, 50),
+            AuthState::None => egui::Color32::from_gray(120),
         }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.poll_child(ctx);
+        self.poll_messages(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Message Vault Import");
-            ui.label("Connect to your vault, choose the folder from your exporter, then Import.");
-            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new(
+                    "Push an exporter folder to your vault server. Authenticate first, then start import.",
+                )
+                .weak(),
+            );
+            ui.add_space(10.0);
 
+            // --- Vault connection ---
+            ui.heading(egui::RichText::new("Vault connection").size(16.0));
             egui::Grid::new("conn")
                 .num_columns(2)
-                .spacing([8.0, 6.0])
+                .spacing([12.0, 8.0])
                 .show(ui, |ui| {
                     ui.label("Vault URL");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.url)
-                            .desired_width(400.0)
-                            .hint_text("http://127.0.0.1:8080"),
-                    );
+                    ui.vertical(|ui| {
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut self.url)
+                                    .desired_width(480.0)
+                                    .hint_text("http://127.0.0.1:8080"),
+                            )
+                            .changed()
+                        {
+                            self.invalidate_auth();
+                        }
+                        hint(ui, "Base URL of message-vault-rs serve (no trailing path).");
+                    });
                     ui.end_row();
 
                     ui.label("API token");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.token)
-                            .password(true)
-                            .desired_width(400.0),
-                    );
-                    ui.end_row();
-
-                    ui.label("Account ID");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.account)
-                            .desired_width(400.0)
-                            .hint_text("uuid"),
-                    );
-                    ui.end_row();
-
-                    ui.label("Source");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.source_id)
-                            .desired_width(400.0)
-                            .hint_text("go-sms-pro / imessage / …"),
-                    );
-                    ui.end_row();
-
-                    ui.label("Export folder");
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.input_dir).desired_width(320.0),
-                        );
-                        if ui.button("Browse…").clicked() {
-                            if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                self.input_dir = path.display().to_string();
-                            }
+                    ui.vertical(|ui| {
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut self.token)
+                                    .password(true)
+                                    .desired_width(480.0),
+                            )
+                            .changed()
+                        {
+                            self.invalidate_auth();
                         }
+                        hint(
+                            ui,
+                            "From the vault server config (server.api_token), not your website password.",
+                        );
+                    });
+                    ui.end_row();
+
+                    ui.label("Account ID (UUID)");
+                    ui.vertical(|ui| {
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut self.account)
+                                    .desired_width(480.0)
+                                    .hint_text("00000000-0000-0000-0000-000000000000"),
+                            )
+                            .changed()
+                        {
+                            self.invalidate_auth();
+                        }
+                        hint(
+                            ui,
+                            "Your vault account’s UUID — not your login username. Find it after signing into the web app (or ask your vault admin).",
+                        );
                     });
                     ui.end_row();
                 });
 
             ui.horizontal(|ui| {
-                ui.checkbox(&mut self.mode_append, "Append (resume-safe)");
-                if !self.mode_append {
-                    ui.colored_label(egui::Color32::from_rgb(180, 100, 40), "Replace wipes source on first chat");
+                let auth_btn = ui.add_enabled(
+                    !self.authenticating && !self.running,
+                    egui::Button::new("Authenticate"),
+                );
+                if auth_btn.clicked() {
+                    self.start_authenticate();
                 }
-                ui.checkbox(&mut self.continue_on_error, "Continue on error");
-                ui.checkbox(&mut self.force_repush, "Force re-upload all");
                 ui.checkbox(&mut self.remember_token, "Remember token");
+                if !self.auth_detail.is_empty() {
+                    ui.colored_label(self.auth_color(), &self.auth_detail);
+                }
             });
 
-            ui.add_space(6.0);
+            ui.add_space(12.0);
+
+            // --- What to import ---
+            ui.heading(egui::RichText::new("What to import").size(16.0));
+            egui::Grid::new("import")
+                .num_columns(2)
+                .spacing([12.0, 8.0])
+                .show(ui, |ui| {
+                    ui.label("Source");
+                    ui.vertical(|ui| {
+                        let ids = sorted_source_ids();
+                        let selected_label = if self.source_id.is_empty() {
+                            "Choose source…".to_string()
+                        } else {
+                            format!("{} ({})", source_label(&self.source_id), self.source_id)
+                        };
+                        egui::ComboBox::from_id_salt("source_combo")
+                            .selected_text(selected_label)
+                            .width(480.0)
+                            .show_ui(ui, |ui| {
+                                for id in ids {
+                                    let label = format!("{} ({id})", source_label(id));
+                                    ui.selectable_value(&mut self.source_id, id.to_string(), label);
+                                }
+                            });
+                        hint(ui, "Must match the exporter that produced the folder.");
+                    });
+                    ui.end_row();
+
+                    ui.label("Export folder");
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.input_dir).desired_width(400.0),
+                            );
+                            if ui.button("Browse…").clicked() {
+                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                    self.input_dir = path.display().to_string();
+                                }
+                            }
+                        });
+                        hint(
+                            ui,
+                            "Folder from your exporter (CSV files and attachments).",
+                        );
+                    });
+                    ui.end_row();
+                });
+
+            egui::CollapsingHeader::new("Advanced")
+                .default_open(false)
+                .show(ui, |ui| {
+                    ui.checkbox(&mut self.mode_append, "Append mode (resume-safe)");
+                    if !self.mode_append {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 100, 40),
+                            "Replace wipes this source on the first uploaded chat.",
+                        );
+                    }
+                    ui.checkbox(&mut self.continue_on_error, "Continue on error");
+                    ui.checkbox(&mut self.force_repush, "Force re-upload all (ignore checkpoint)");
+                });
+
+            ui.add_space(10.0);
             ui.horizontal(|ui| {
-                let import = ui.add_enabled(!self.running, egui::Button::new("Import"));
+                let can_import = !self.running
+                    && !self.authenticating
+                    && self.auth_state.allows_import();
+                let import = ui.add_enabled(can_import, egui::Button::new("Start import"));
                 if import.clicked() {
                     self.start_import();
                 }
                 ui.label(&self.status);
             });
+            if !self.auth_state.allows_import() && !self.running {
+                hint(ui, "Start import stays disabled until Authenticate succeeds.");
+            }
 
-            ui.add_space(6.0);
-            ui.label("Log");
+            ui.add_space(10.0);
+
+            // --- Progress ---
+            ui.heading(egui::RichText::new("Progress").size(16.0));
+            if !self.current_file.is_empty() {
+                ui.horizontal(|ui| {
+                    ui.label("Current file:");
+                    ui.label(
+                        egui::RichText::new(&self.current_file)
+                            .strong()
+                            .monospace(),
+                    );
+                });
+            }
+
+            let avail = ui.available_height().max(360.0) - 36.0;
             egui::ScrollArea::vertical()
-                .max_height(280.0)
+                .min_scrolled_height(avail.max(360.0))
+                .max_height(avail.max(360.0))
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.add(
                         egui::TextEdit::multiline(&mut self.log)
                             .desired_width(f32::INFINITY)
+                            .desired_rows(18)
                             .font(egui::TextStyle::Monospace)
                             .interactive(false),
                     );
@@ -376,7 +732,7 @@ impl eframe::App for App {
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([720.0, 560.0])
+            .with_inner_size([900.0, 700.0])
             .with_title("Message Vault Import"),
         ..Default::default()
     };
