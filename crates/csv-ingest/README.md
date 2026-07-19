@@ -36,14 +36,14 @@ cargo run -p csv-ingest --bin vault-push --release -- \
 | `--source-id` | Vault source + converter |
 | `--url` / `VAULT_URL` | Vault base URL |
 | `--token` / `VAULT_API_TOKEN` | Bearer token |
-| `--account` | Account UUID |
+| `--account` | Account UUID (optional for user tokens; required for admin `server.api_token`) |
 | `--mode append` | Default; resume-safe |
 | `--mode replace` | Wipe source on first conversation, then append |
 | `--continue-on-error` | Keep going after a failed chat |
 | `--force-repush` | Ignore checkpoint |
 | `--report` / `--log` / `--checkpoint` | Paths (default: under export dir) |
 
-**Per conversation:** multipart `ndjson` + `file` parts. Missing local attachments → that chat fails (no silent `assets_missing` import). Re-run with `append` **skips** chats listed in `vault-push-done.json`.
+**Per conversation:** multipart `ndjson` + `file` parts. Attachment paths come from each message’s data; vault-push resolves them (export folder, absolute paths, or next to the conversation file) and uploads the files. Missing files → that chat fails (no silent skip). Re-run with `append` **skips** chats listed in `vault-push-done.json`.
 
 Artifacts: `vault-push.log`, `vault-push-report.json`, `vault-push-done.json`.
 
@@ -57,13 +57,12 @@ cargo run -p csv-ingest --bin vault-push-gui --features gui --release
 
 Requires `vault-push` on `PATH` or next to the GUI binary. **Authenticate** (calls `GET /v1/auth/check`) must succeed before **Start import**; the GUI then spawns the CLI and shows a live log.
 
-Fields (easy to mix up):
+Fields:
 
 | Field | What it is |
 |-------|------------|
-| **API token** | Shared secret from the vault host’s `config.toml` → `[server] api_token`. Used as `Authorization: Bearer …`. **Not** your web UI password. |
-| **Account ID (UUID)** | Vault tenant id (`accounts.id` in SQLite), shown after web login / account list. **Not** the login username. |
-| **Export folder** | Directory from message-exporters (or a vendor export): `*.csv` files plus `attachments/` for that source. |
+| **API token** | Your per-account import token from web **Settings → Import API token**. Identifies your account (no UUID needed). **Not** your web UI password. |
+| **Export folder** | Directory that contains your exported conversations. Attachment files are located from paths stored on each message (in the CSV / NDJSON), not by assuming a fixed `attachments/` folder. |
 
 ## Converters
 

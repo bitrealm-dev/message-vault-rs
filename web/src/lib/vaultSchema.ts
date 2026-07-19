@@ -92,6 +92,12 @@ export function ensureVaultSchema(db: Database.Database): void {
       PRIMARY KEY (account_id, email)
     );
 
+    CREATE TABLE IF NOT EXISTS account_api_tokens (
+      account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS conversations (
       id INTEGER PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

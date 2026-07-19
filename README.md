@@ -74,7 +74,7 @@ One shared SQLite DB holds all sources. Each message row has a `source` column. 
 
 Typical setup: exporters + CSV on one machine, vault server on another.
 
-1. On the **client**, export backups with [message-exporters](https://github.com/bitrealm-dev/message-exporters) into a local staging dir (CSV + `attachments/`).
+1. On the **client**, export backups with [message-exporters](https://github.com/bitrealm-dev/message-exporters) into a local staging dir. Attachment locations come from paths in the CSV (not a fixed folder layout).
 2. On the **vault host**, run `message-vault-rs serve` (see HTTP section below).
 3. On the **client**, run **`vault-push`** (CLI) or **`vault-push-gui`** (wrapper). One conversation per HTTP request; resume with append + checkpoint.
 
@@ -157,19 +157,23 @@ api_token = "change-me"
 ```bash
 cargo run --release -- serve
 
-# Check API token (+ optional account UUID) — used by vault-push-gui Authenticate
-curl -sS "http://127.0.0.1:8080/v1/auth/check?account=<uuid>" \
-  -H "Authorization: Bearer change-me"
+# Check token — user tokens return bound account_id; admin token may pass ?account=
+curl -sS "http://127.0.0.1:8080/v1/auth/check" \
+  -H "Authorization: Bearer <user-token-from-settings>"
 
 # Multipart (NDJSON + files) — what vault-push sends
 # fields: ndjson, file (filename = relative path e.g. attachments/photo.jpg)
+# account= optional when using a user API token (bound to the token)
 
 # NDJSON only (assets resolved from source export_dir on the vault host)
+# Admin host token still requires ?account=
 curl -sS -X POST "http://127.0.0.1:8080/v1/import?source=imessage&account=<uuid>&mode=append" \
   -H "Authorization: Bearer change-me" \
   -H "Content-Type: application/x-ndjson" \
   --data-binary @crates/csv-ingest/samples/vault/01-sms-text.json
 ```
+
+Per-account import tokens are created at web signup and shown under **Settings**. `[server] api_token` remains an admin secret for ops/smoke.
 
 Smokes: `./scripts/smoke-import-api.sh`, `./scripts/smoke-vault-push.sh`.
 

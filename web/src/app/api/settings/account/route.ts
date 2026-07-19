@@ -1,4 +1,12 @@
-import { deleteAccount, loadAccount, primaryEmail, saveAccount, type AccountEmail } from "@/lib/accounts";
+import {
+  deleteAccount,
+  ensureAccountApiToken,
+  loadAccount,
+  primaryEmail,
+  rotateAccountApiToken,
+  saveAccount,
+  type AccountEmail,
+} from "@/lib/accounts";
 import {
   unauthorizedResponse,
   withAccountHandler,
@@ -23,6 +31,7 @@ function accountJson(account: ReturnType<typeof loadAccount>, accountId: string)
     })),
     readOnly: account.read_only,
     isDemo: isDemoAccount(accountId),
+    apiToken: ensureAccountApiToken(accountId),
   };
 }
 
@@ -117,13 +126,20 @@ export async function PATCH(req: Request) {
           typeof vaultOwnerBody.lastName === "string" ||
           Array.isArray(vaultOwnerBody.phones));
 
+      const regenerateApiToken = body.regenerateApiToken === true;
+
       if (
         patch.username === undefined &&
         patch.read_only === undefined &&
         patch.emails === undefined &&
-        !hasVaultOwnerPatch
+        !hasVaultOwnerPatch &&
+        !regenerateApiToken
       ) {
         return NextResponse.json({ error: "no valid fields to update" }, { status: 400 });
+      }
+
+      if (regenerateApiToken) {
+        rotateAccountApiToken(accountId);
       }
 
       if (hasVaultOwnerPatch) {

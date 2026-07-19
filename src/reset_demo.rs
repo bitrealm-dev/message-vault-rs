@@ -127,6 +127,7 @@ fn seed_demo_account(db_path: &Path, account_id: &str, cfg: &Config) -> Result<(
             "#,
             params![account_id, acct.login_email],
         )?;
+        crate::api_tokens::ensure_account_api_token(&conn, account_id)?;
     }
 
     if let Some(owner) = &cfg.owner {

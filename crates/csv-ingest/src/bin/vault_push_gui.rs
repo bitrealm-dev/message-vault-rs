@@ -52,6 +52,7 @@ struct App {
     current_file: String,
     auth_state: AuthState,
     auth_detail: String,
+    source_detect_note: String,
     authenticating: bool,
     running: bool,
     last_report: Option<PathBuf>,
@@ -64,6 +65,7 @@ enum UiMsg {
     AuthResult {
         state: AuthState,
         detail: String,
+        account_id: Option<String>,
     },
     Done {
         code: i32,
@@ -99,6 +101,7 @@ impl Default for App {
             current_file: String::new(),
             auth_state: AuthState::None,
             auth_detail: String::new(),
+            source_detect_note: String::new(),
             authenticating: false,
             running: false,
             last_report: None,
@@ -219,25 +222,26 @@ struct AuthCheckBody {
     ok: bool,
     #[serde(default)]
     sources: Vec<String>,
+    account_id: Option<String>,
     account_ok: Option<bool>,
+    admin: Option<bool>,
 }
 
-fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String) {
+/// Returns (state, detail, resolved_account_id).
+fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String, Option<String>) {
     let base = url.trim().trim_end_matches('/');
     if base.is_empty() || token.trim().is_empty() {
         return (
             AuthState::Error,
             "Enter vault URL and API token first.".into(),
+            None,
         );
     }
 
     let mut endpoint = format!("{base}/v1/auth/check");
     let account = account.trim();
     if !account.is_empty() {
-        endpoint.push_str(&format!(
-            "?account={}",
-            urlencoding_simple(account)
-        ));
+        endpoint.push_str(&format!("?account={}", urlencoding_simple(account)));
     }
 
     let client = match reqwest::blocking::Client::builder()
@@ -245,7 +249,13 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String) 
         .build()
     {
         Ok(c) => c,
-        Err(e) => return (AuthState::Error, format!("HTTP client error: {e}")),
+        Err(e) => {
+            return (
+                AuthState::Error,
+                format!("HTTP client error: {e}"),
+                None,
+            );
+        }
     };
 
     let resp = match client
@@ -254,40 +264,67 @@ fn run_auth_check(url: &str, token: &str, account: &str) -> (AuthState, String) 
         .send()
     {
         Ok(r) => r,
-        Err(e) => return (AuthState::Error, format!("Request failed: {e}")),
+        Err(e) => return (AuthState::Error, format!("Request failed: {e}"), None),
     };
 
     let status = resp.status();
     if status.as_u16() == 401 {
-        return (AuthState::BadToken, "Invalid token".into());
+        return (AuthState::BadToken, "Invalid token".into(), None);
+    }
+    if status.as_u16() == 403 {
+        let body = resp.text().unwrap_or_default();
+        return (
+            AuthState::Error,
+            format!("Forbidden: {body}"),
+            None,
+        );
     }
     if !status.is_success() {
         let body = resp.text().unwrap_or_default();
         return (
             AuthState::Error,
             format!("Auth check failed ({status}): {body}"),
+            None,
         );
     }
 
     let body: AuthCheckBody = match resp.json() {
         Ok(b) => b,
-        Err(e) => return (AuthState::Error, format!("Bad response: {e}")),
+        Err(e) => return (AuthState::Error, format!("Bad response: {e}"), None),
     };
     if !body.ok {
-        return (AuthState::Error, "Server returned ok=false".into());
+        return (AuthState::Error, "Server returned ok=false".into(), None);
     }
 
     let n = body.sources.len();
+    if body.admin == Some(true) {
+        return (
+            AuthState::Error,
+            "This is the server admin token. Use your personal Import API token from web Settings."
+                .into(),
+            None,
+        );
+    }
+
+    if let Some(id) = body.account_id.filter(|s| !s.is_empty()) {
+        return (
+            AuthState::Ok,
+            format!("Connected — {n} sources"),
+            Some(id),
+        );
+    }
+
     match body.account_ok {
         Some(false) => (
             AuthState::TokenOkAccountMissing,
-            format!("Token OK, account not found — {n} sources (import can create it)"),
+            format!("Token OK, account not found — {n} sources"),
+            None,
         ),
-        Some(true) => (
-            AuthState::Ok,
-            format!("Connected — {n} sources (account OK)"),
+        _ => (
+            AuthState::Error,
+            "Token OK but no account_id returned. Use a user token from web Settings.".into(),
+            None,
         ),
-        None => (AuthState::Ok, format!("Connected — {n} sources")),
     }
 }
 
@@ -314,6 +351,27 @@ impl App {
         }
     }
 
+    fn detect_source_from_folder(&mut self) {
+        let dir = self.input_dir.trim();
+        if dir.is_empty() {
+            self.source_detect_note.clear();
+            return;
+        }
+        match csv_ingest::detect_export_source(PathBuf::from(dir).as_path()) {
+            Ok(Some(id)) => {
+                self.source_id = id.clone();
+                self.source_detect_note = format!("Detected: {}", source_label(&id));
+            }
+            Ok(None) => {
+                self.source_detect_note =
+                    "Could not detect source from CSV — choose manually.".into();
+            }
+            Err(e) => {
+                self.source_detect_note = format!("Source detection failed: {e}");
+            }
+        }
+    }
+
     fn start_authenticate(&mut self) {
         if self.authenticating || self.running {
             return;
@@ -324,18 +382,11 @@ impl App {
             self.auth_detail = self.status.clone();
             return;
         }
-        if self.account.trim().is_empty() {
-            self.status = "Enter Account ID (UUID) to authenticate.".into();
-            self.auth_state = AuthState::Error;
-            self.auth_detail = self.status.clone();
-            return;
-        }
 
         save_prefs(self);
 
         let url = self.url.clone();
         let token = self.token.clone();
-        let account = self.account.clone();
         self.authenticating = true;
         self.status = "Authenticating…".into();
         self.auth_detail = "Checking…".into();
@@ -343,8 +394,12 @@ impl App {
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         thread::spawn(move || {
-            let (state, detail) = run_auth_check(&url, &token, &account);
-            let _ = tx.send(UiMsg::AuthResult { state, detail });
+            let (state, detail, account_id) = run_auth_check(&url, &token, "");
+            let _ = tx.send(UiMsg::AuthResult {
+                state,
+                detail,
+                account_id,
+            });
         });
     }
 
@@ -356,12 +411,9 @@ impl App {
             self.status = "Authenticate successfully before importing.".into();
             return;
         }
-        if self.url.trim().is_empty()
-            || self.token.trim().is_empty()
-            || self.account.trim().is_empty()
-            || self.input_dir.trim().is_empty()
+        if self.url.trim().is_empty() || self.token.trim().is_empty() || self.input_dir.trim().is_empty()
         {
-            self.status = "Fill URL, token, account UUID, and export folder.".into();
+            self.status = "Fill URL, API token, and export folder.".into();
             return;
         }
         if self.source_id.trim().is_empty() {
@@ -383,8 +435,6 @@ impl App {
             .arg(self.url.trim())
             .arg("--token")
             .arg(self.token.trim())
-            .arg("--account")
-            .arg(self.account.trim())
             .arg("--source-id")
             .arg(self.source_id.trim())
             .arg("--mode")
@@ -473,11 +523,18 @@ impl App {
                     self.log.push_str(&format_log_line(&line));
                     self.log.push('\n');
                 }
-                UiMsg::AuthResult { state, detail } => {
+                UiMsg::AuthResult {
+                    state,
+                    detail,
+                    account_id,
+                } => {
                     self.authenticating = false;
                     self.auth_state = state;
                     self.auth_detail = detail.clone();
                     self.status = detail;
+                    if let Some(id) = account_id {
+                        self.account = id;
+                    }
                     if state.allows_import() {
                         save_prefs(self);
                     }
@@ -565,26 +622,7 @@ impl eframe::App for App {
                         }
                         hint(
                             ui,
-                            "From the vault server config (server.api_token), not your website password.",
-                        );
-                    });
-                    ui.end_row();
-
-                    ui.label("Account ID (UUID)");
-                    ui.vertical(|ui| {
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut self.account)
-                                    .desired_width(480.0)
-                                    .hint_text("00000000-0000-0000-0000-000000000000"),
-                            )
-                            .changed()
-                        {
-                            self.invalidate_auth();
-                        }
-                        hint(
-                            ui,
-                            "Your vault account’s UUID — not your login username. Find it after signing into the web app (or ask your vault admin).",
+                            "From web Settings → Import API token (identifies your account). Not your website password.",
                         );
                     });
                     ui.end_row();
@@ -603,6 +641,12 @@ impl eframe::App for App {
                     ui.colored_label(self.auth_color(), &self.auth_detail);
                 }
             });
+            if self.auth_state == AuthState::Ok && !self.account.is_empty() {
+                hint(
+                    ui,
+                    &format!("Account: {}", self.account),
+                );
+            }
 
             ui.add_space(12.0);
 
@@ -612,6 +656,32 @@ impl eframe::App for App {
                 .num_columns(2)
                 .spacing([12.0, 8.0])
                 .show(ui, |ui| {
+                    ui.label("Export folder");
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.input_dir)
+                                        .desired_width(400.0),
+                                )
+                                .changed()
+                            {
+                                self.detect_source_from_folder();
+                            }
+                            if ui.button("Browse…").clicked() {
+                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                    self.input_dir = path.display().to_string();
+                                    self.detect_source_from_folder();
+                                }
+                            }
+                        });
+                        hint(
+                            ui,
+                            "Folder that contains your exported conversations. Media files are found from paths stored on each message — you do not pick them separately.",
+                        );
+                    });
+                    ui.end_row();
+
                     ui.label("Source");
                     ui.vertical(|ui| {
                         let ids = sorted_source_ids();
@@ -626,29 +696,23 @@ impl eframe::App for App {
                             .show_ui(ui, |ui| {
                                 for id in ids {
                                     let label = format!("{} ({id})", source_label(id));
-                                    ui.selectable_value(&mut self.source_id, id.to_string(), label);
+                                    if ui
+                                        .selectable_value(
+                                            &mut self.source_id,
+                                            id.to_string(),
+                                            label,
+                                        )
+                                        .changed()
+                                    {
+                                        self.source_detect_note.clear();
+                                    }
                                 }
                             });
-                        hint(ui, "Must match the exporter that produced the folder.");
-                    });
-                    ui.end_row();
-
-                    ui.label("Export folder");
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.input_dir).desired_width(400.0),
-                            );
-                            if ui.button("Browse…").clicked() {
-                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                    self.input_dir = path.display().to_string();
-                                }
-                            }
-                        });
-                        hint(
-                            ui,
-                            "Folder from your exporter (CSV files and attachments).",
-                        );
+                        if !self.source_detect_note.is_empty() {
+                            hint(ui, &self.source_detect_note.clone());
+                        } else {
+                            hint(ui, "Usually detected from the export; override if needed.");
+                        }
                     });
                     ui.end_row();
                 });
@@ -657,14 +721,25 @@ impl eframe::App for App {
                 .default_open(false)
                 .show(ui, |ui| {
                     ui.checkbox(&mut self.mode_append, "Append mode (resume-safe)");
+                    hint(
+                        ui,
+                        "Keep existing vault data; skip chats already uploaded (recommended).",
+                    );
                     if !self.mode_append {
                         ui.colored_label(
                             egui::Color32::from_rgb(180, 100, 40),
                             "Replace wipes this source on the first uploaded chat.",
                         );
                     }
+                    ui.add_space(4.0);
                     ui.checkbox(&mut self.continue_on_error, "Continue on error");
+                    hint(ui, "If one chat fails, keep uploading the rest.");
+                    ui.add_space(4.0);
                     ui.checkbox(&mut self.force_repush, "Force re-upload all (ignore checkpoint)");
+                    hint(
+                        ui,
+                        "Upload every chat again, even ones marked done locally.",
+                    );
                 });
 
             ui.add_space(10.0);

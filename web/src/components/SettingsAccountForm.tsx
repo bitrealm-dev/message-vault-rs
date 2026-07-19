@@ -12,11 +12,13 @@ type AccountEmail = {
 };
 
 type AccountData = {
+  id: string;
   username: string;
   primaryEmail: string;
   emails: AccountEmail[];
   readOnly: boolean;
   isDemo: boolean;
+  apiToken: string;
   vaultOwner: {
     firstName: string;
     lastName: string;
@@ -44,6 +46,9 @@ export function SettingsAccountForm() {
   const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [apiToken, setApiToken] = useState("");
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [regeneratingToken, setRegeneratingToken] = useState(false);
 
   const applyAccount = (json: AccountData) => {
     setData(json);
@@ -51,6 +56,7 @@ export function SettingsAccountForm() {
     setPrimaryEmail(json.primaryEmail);
     setEmails(json.emails);
     setReadOnly(json.readOnly);
+    setApiToken(json.apiToken ?? "");
   };
 
   const load = useCallback(async () => {
@@ -127,6 +133,43 @@ export function SettingsAccountForm() {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyApiToken = async () => {
+    if (!apiToken) return;
+    try {
+      await navigator.clipboard.writeText(apiToken);
+      setTokenCopied(true);
+      window.setTimeout(() => setTokenCopied(false), 2000);
+    } catch {
+      setError("Could not copy token to clipboard");
+    }
+  };
+
+  const regenerateApiToken = async () => {
+    if (
+      !window.confirm(
+        "Regenerate API token? The old token will stop working for vault-push immediately.",
+      )
+    ) {
+      return;
+    }
+    setRegeneratingToken(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerateApiToken: true }),
+      });
+      const json = (await res.json()) as AccountData & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Regenerate failed");
+      applyAccount(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Regenerate failed");
+    } finally {
+      setRegeneratingToken(false);
     }
   };
 
@@ -233,6 +276,45 @@ export function SettingsAccountForm() {
             </span>
           </label>
         </div>
+      </section>
+
+      <section>
+        <h2 className="text-[12px] font-semibold tracking-wider text-muted uppercase">
+          Import API token
+        </h2>
+        <p className="mt-1 text-[13px] text-muted">
+          Paste this into vault-push or vault-push-gui. It identifies your account — you do not
+          need the account UUID. This is not your website login.
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <code className="min-w-0 flex-1 break-all rounded-md border border-border bg-elevated px-3 py-2 font-mono text-[12px] text-text">
+            {apiToken || "—"}
+          </code>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              disabled={!apiToken || regeneratingToken}
+              onClick={() => void copyApiToken()}
+              className="rounded-md border border-border bg-elevated px-3 py-2 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
+            >
+              {tokenCopied ? "Copied" : "Copy"}
+            </button>
+            <button
+              type="button"
+              disabled={regeneratingToken || deleting}
+              onClick={() => void regenerateApiToken()}
+              className="rounded-md border border-border bg-elevated px-3 py-2 text-[13px] text-text transition-colors hover:bg-hover disabled:opacity-50"
+            >
+              {regeneratingToken ? "…" : "Regenerate"}
+            </button>
+          </div>
+        </div>
+        {data?.id && (
+          <p className="mt-2 text-[12px] text-muted">
+            Account ID (optional):{" "}
+            <span className="font-mono text-text/80">{data.id}</span>
+          </p>
+        )}
       </section>
 
       {data && (

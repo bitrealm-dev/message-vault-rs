@@ -34,7 +34,7 @@ struct Cli {
     #[arg(long, env = "VAULT_API_TOKEN")]
     token: Option<String>,
 
-    /// Account UUID
+    /// Account UUID (optional for user API tokens from Settings; required for admin server.api_token)
     #[arg(long)]
     account: Option<String>,
 
@@ -138,7 +138,7 @@ fn run() -> Result<bool> {
     let account = cli
         .account
         .filter(|s| !s.trim().is_empty())
-        .context("--account is required to push")?;
+        .unwrap_or_default();
 
     let base = if output.is_dir() {
         output.clone()

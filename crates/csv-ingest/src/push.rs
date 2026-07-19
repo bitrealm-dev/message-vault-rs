@@ -127,7 +127,7 @@ fn list_json_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-/// Collect unique relative attachment paths referenced in vault NDJSON.
+/// Collect unique attachment paths referenced in vault NDJSON.
 pub fn attachment_paths_from_ndjson(ndjson: &[u8]) -> Result<BTreeSet<String>> {
     let mut paths = BTreeSet::new();
     for (i, line) in ndjson.split(|&b| b == b'\n').enumerate() {
@@ -152,22 +152,135 @@ pub fn attachment_paths_from_ndjson(ndjson: &[u8]) -> Result<BTreeSet<String>> {
     Ok(paths)
 }
 
-/// Resolve relative attachment paths under `root`; returns (rel, abs) for files that exist.
+/// One attachment file ready for multipart upload.
+#[derive(Debug, Clone)]
+pub struct ResolvedAttachment {
+    /// Path string for multipart `filename` (and NDJSON after rewrite).
+    pub wire_path: String,
+    pub abs_path: PathBuf,
+    /// Original path from NDJSON (may differ from `wire_path` for absolute sources).
+    pub original_path: String,
+}
+
+/// Resolve attachment paths from message data.
+///
+/// Lookup order for each path string:
+/// 1. Absolute path on disk (if the string is absolute)
+/// 2. `export_root / path`
+/// 3. `alongside / path` (e.g. directory containing the conversation JSON/CSV)
+///
+/// Returns `(found, missing_original_paths)`. For absolute hits, `wire_path` is a
+/// relative name suitable for multipart (relative to export_root when possible,
+/// otherwise basename under `attachments/`).
 pub fn resolve_attachment_files(
-    root: &Path,
-    rel_paths: &BTreeSet<String>,
-) -> (Vec<(String, PathBuf)>, Vec<String>) {
+    export_root: &Path,
+    paths: &BTreeSet<String>,
+    alongside: Option<&Path>,
+) -> (Vec<ResolvedAttachment>, Vec<String>) {
     let mut found = Vec::new();
     let mut missing = Vec::new();
-    for rel in rel_paths {
-        let abs = root.join(rel);
-        if abs.is_file() {
-            found.push((rel.clone(), abs));
-        } else {
-            missing.push(rel.clone());
+    for original in paths {
+        match resolve_one_attachment(export_root, alongside, original) {
+            Some(resolved) => found.push(resolved),
+            None => missing.push(original.clone()),
         }
     }
     (found, missing)
+}
+
+fn resolve_one_attachment(
+    export_root: &Path,
+    alongside: Option<&Path>,
+    original: &str,
+) -> Option<ResolvedAttachment> {
+    let candidate = Path::new(original);
+
+    if candidate.is_absolute() {
+        if candidate.is_file() {
+            let wire_path = wire_path_for_absolute(export_root, candidate);
+            return Some(ResolvedAttachment {
+                wire_path,
+                abs_path: candidate.to_path_buf(),
+                original_path: original.to_string(),
+            });
+        }
+        return None;
+    }
+
+    let under_root = export_root.join(candidate);
+    if under_root.is_file() {
+        return Some(ResolvedAttachment {
+            wire_path: original.to_string(),
+            abs_path: under_root,
+            original_path: original.to_string(),
+        });
+    }
+
+    if let Some(base) = alongside {
+        let under_alongside = base.join(candidate);
+        if under_alongside.is_file() {
+            return Some(ResolvedAttachment {
+                wire_path: original.to_string(),
+                abs_path: under_alongside,
+                original_path: original.to_string(),
+            });
+        }
+    }
+
+    None
+}
+
+fn wire_path_for_absolute(export_root: &Path, abs: &Path) -> String {
+    if let Ok(rel) = abs.strip_prefix(export_root) {
+        let s = rel.to_string_lossy().replace('\\', "/");
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    let name = abs
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("attachment.bin");
+    format!("attachments/{name}")
+}
+
+/// Rewrite `attachments[].path` in NDJSON when wire names differ from originals.
+pub fn rewrite_ndjson_attachment_paths(ndjson: &[u8], renames: &[(String, String)]) -> Result<Vec<u8>> {
+    if renames.is_empty() || renames.iter().all(|(a, b)| a == b) {
+        return Ok(ndjson.to_vec());
+    }
+    let map: std::collections::HashMap<&str, &str> = renames
+        .iter()
+        .filter(|(a, b)| a != b)
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    if map.is_empty() {
+        return Ok(ndjson.to_vec());
+    }
+
+    let mut out = Vec::with_capacity(ndjson.len());
+    for (i, line) in ndjson.split(|&b| b == b'\n').enumerate() {
+        let line = line.trim_ascii();
+        if line.is_empty() {
+            continue;
+        }
+        let mut v: Value = serde_json::from_slice(line)
+            .with_context(|| format!("parse NDJSON line {} for path rewrite", i + 1))?;
+        if let Some(atts) = v.get_mut("attachments").and_then(|a| a.as_array_mut()) {
+            for att in atts {
+                if let Some(p) = att.get("path").and_then(|p| p.as_str()) {
+                    if let Some(new_p) = map.get(p) {
+                        att.as_object_mut()
+                            .context("attachment must be object")?
+                            .insert("path".into(), Value::String((*new_p).to_string()));
+                    }
+                }
+            }
+        }
+        serde_json::to_writer(&mut out, &v)?;
+        out.push(b'\n');
+    }
+    Ok(out)
 }
 
 fn load_checkpoint(path: &Path, source: &str, account: &str) -> Checkpoint {
@@ -219,6 +332,60 @@ impl LogWriter {
         let _ = self.file.flush();
         println!("{msg}");
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthCheckResponse {
+    ok: bool,
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    admin: Option<bool>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+/// Resolve account UUID from a user API token via `GET /v1/auth/check`.
+/// If `account` is already set, returns it unchanged.
+pub fn resolve_account(base_url: &str, token: &str, account: Option<&str>) -> Result<String> {
+    if let Some(a) = account.map(str::trim).filter(|s| !s.is_empty()) {
+        return Ok(a.to_string());
+    }
+
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{base}/v1/auth/check");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .context("build HTTP client")?;
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .with_context(|| format!("GET {url}"))?;
+    let status = response.status();
+    let text = response.text().context("read auth/check body")?;
+    if status.as_u16() == 401 {
+        bail!("invalid API token");
+    }
+    if !status.is_success() {
+        bail!("auth/check failed (HTTP {status}): {text}");
+    }
+    let parsed: AuthCheckResponse = serde_json::from_str(&text)
+        .with_context(|| format!("parse auth/check JSON: {text}"))?;
+    if !parsed.ok {
+        bail!(
+            "auth/check rejected: {}",
+            parsed.error.unwrap_or_else(|| text)
+        );
+    }
+    if let Some(id) = parsed.account_id.filter(|s| !s.is_empty()) {
+        return Ok(id);
+    }
+    if parsed.admin == Some(true) {
+        bail!("admin API token requires --account <uuid>");
+    }
+    bail!("auth/check did not return account_id; pass --account or use a user API token from Settings");
 }
 
 /// POST multipart import to `{base}/v1/import?...`.
@@ -308,6 +475,18 @@ fn post_with_retries(req: &PushRequest, max_retries: u32, log: &mut LogWriter) -
 pub fn run_push(cfg: &PushConfig) -> Result<PushReport> {
     let started_at = now_rfc3339();
     let mut log = LogWriter::open(&cfg.log_path)?;
+
+    let account = if cfg.account.trim().is_empty() {
+        let resolved = resolve_account(&cfg.base_url, &cfg.token, None)?;
+        log.line(&format!("resolved account={resolved} from API token"));
+        resolved
+    } else {
+        cfg.account.clone()
+    };
+    // Use a local cfg-like values for the rest of the run
+    let mut cfg = cfg.clone();
+    cfg.account = account;
+
     log.line(&format!(
         "vault-push start source={} account={} mode={} input={}",
         cfg.source_id,
@@ -401,8 +580,10 @@ pub fn run_push(cfg: &PushConfig) -> Result<PushReport> {
             ndjson.push(b'\n');
         }
 
-        let rel_paths = attachment_paths_from_ndjson(&ndjson)?;
-        let (files, missing) = resolve_attachment_files(&input_root, &rel_paths);
+        let att_paths = attachment_paths_from_ndjson(&ndjson)?;
+        let alongside = path.parent();
+        let (resolved, missing) =
+            resolve_attachment_files(&input_root, &att_paths, alongside);
         if !missing.is_empty() {
             let err = format!("missing attachment: {}", missing.join(", "));
             fail_n += 1;
@@ -421,6 +602,16 @@ pub fn run_push(cfg: &PushConfig) -> Result<PushReport> {
             }
             continue;
         }
+
+        let renames: Vec<(String, String)> = resolved
+            .iter()
+            .map(|r| (r.original_path.clone(), r.wire_path.clone()))
+            .collect();
+        let ndjson = rewrite_ndjson_attachment_paths(&ndjson, &renames)?;
+        let files: Vec<(String, PathBuf)> = resolved
+            .into_iter()
+            .map(|r| (r.wire_path, r.abs_path))
+            .collect();
 
         let mode = if cfg.mode == "replace" && first_post {
             "replace"
@@ -551,4 +742,66 @@ fn urlencoding_encode(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn resolve_relative_under_export_root() {
+        let dir = tempdir().unwrap();
+        let media = dir.path().join("media");
+        fs::create_dir_all(&media).unwrap();
+        let file = media.join("a.jpg");
+        fs::write(&file, b"x").unwrap();
+
+        let paths = BTreeSet::from(["media/a.jpg".into()]);
+        let (found, missing) = resolve_attachment_files(dir.path(), &paths, None);
+        assert!(missing.is_empty());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].wire_path, "media/a.jpg");
+        assert_eq!(found[0].abs_path, file);
+    }
+
+    #[test]
+    fn resolve_relative_alongside_conversation() {
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("chats").join("one");
+        fs::create_dir_all(&nested).unwrap();
+        let file = nested.join("pic.png");
+        fs::write(&file, b"x").unwrap();
+
+        let paths = BTreeSet::from(["pic.png".into()]);
+        let (found, missing) = resolve_attachment_files(dir.path(), &paths, Some(&nested));
+        assert!(missing.is_empty());
+        assert_eq!(found[0].wire_path, "pic.png");
+        assert_eq!(found[0].abs_path, file);
+    }
+
+    #[test]
+    fn resolve_absolute_path() {
+        let dir = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let file = outside.path().join("abs.jpg");
+        fs::write(&file, b"x").unwrap();
+
+        let paths = BTreeSet::from([file.to_string_lossy().to_string()]);
+        let (found, missing) = resolve_attachment_files(dir.path(), &paths, None);
+        assert!(missing.is_empty());
+        assert_eq!(found[0].wire_path, "attachments/abs.jpg");
+        assert_eq!(found[0].abs_path, file);
+    }
+
+    #[test]
+    fn rewrite_absolute_paths_in_ndjson() {
+        let ndjson = br#"{"schema":"vault","attachments":[{"path":"/tmp/x.jpg"}]}"#;
+        let renames = vec![("/tmp/x.jpg".into(), "attachments/x.jpg".into())];
+        let out = rewrite_ndjson_attachment_paths(ndjson, &renames).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("attachments/x.jpg"));
+        assert!(!text.contains("/tmp/x.jpg"));
+    }
 }

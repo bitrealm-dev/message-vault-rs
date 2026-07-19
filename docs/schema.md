@@ -130,6 +130,18 @@ An account must always have one primary email. Additional emails can be added or
 
 On first access, the account row is seeded from legacy `config.toml` `[account]` when present.
 
+### `account_api_tokens`
+
+One row = the import API token for a web account (`vault-push` / `Authorization: Bearer`).
+
+| Column | Plain meaning |
+|--------|----------------|
+| `account_id` | Points to `accounts.id` (one token per account) |
+| `token` | Plaintext token shown in Settings (v1; regenerate replaces it) |
+| `created_at` | When the current token was issued |
+
+Created on signup (and backfilled on Settings load). Distinct from the host-wide `[server] api_token` admin secret in `config.toml`.
+
 ### `vault_owners`
 
 Per-account message / vault owner profile (whose backups this tenant holds).

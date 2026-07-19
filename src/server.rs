@@ -12,12 +12,22 @@ use tower_http::limit::RequestBodyLimitLayer;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::api_tokens;
 use crate::config::Config;
 use crate::dedupe;
 use crate::import::{self, ImportMode, ImportOptions, ImportStats};
 use crate::schema;
 
 const MAX_BODY_BYTES: usize = 512 * 1024 * 1024; // 512 MiB (multipart uploads)
+
+/// Who the Bearer token authenticated as.
+#[derive(Debug, Clone)]
+enum AuthIdentity {
+    /// Per-account import token from `account_api_tokens`.
+    User { account_id: String },
+    /// Config `[server] api_token` — may target any account via query param.
+    Admin,
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -29,7 +39,9 @@ struct AppState {
 #[derive(Debug, Deserialize)]
 struct ImportQuery {
     source: String,
-    account: String,
+    /// Required for admin token; optional for user tokens (derived from Bearer).
+    #[serde(default)]
+    account: Option<String>,
     #[serde(default = "default_import_mode")]
     mode: String,
     /// Run cross-source soft-dedupe after import.
@@ -68,6 +80,7 @@ struct ErrorBody {
 
 enum ApiError {
     Unauthorized(String),
+    Forbidden(String),
     BadRequest(String),
     Internal(String),
 }
@@ -76,6 +89,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m),
+            Self::Forbidden(m) => (StatusCode::FORBIDDEN, m),
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
             Self::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
         };
@@ -109,10 +123,11 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     eprintln!("message-vault-rs serve listening on http://{bind}");
     eprintln!("  GET  /health");
-    eprintln!("  GET  /v1/auth/check?account=   (Bearer token)");
+    eprintln!("  GET  /v1/auth/check   (Bearer user or admin token)");
     eprintln!(
         "  POST /v1/import?source=&account=&mode=append|replace&dedupe=false"
     );
+    eprintln!("       account= optional for user tokens (bound to token); required for admin");
     eprintln!("       Content-Type: application/x-ndjson  (body only; assets from export_dir)");
     eprintln!(
         "       Content-Type: multipart/form-data   (field ndjson + file parts; remote push)"
@@ -143,7 +158,11 @@ struct AuthCheckResponse {
     ok: bool,
     sources: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    account_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     account_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    admin: Option<bool>,
 }
 
 async fn auth_check(
@@ -155,31 +174,51 @@ async fn auth_check(
         .cfg
         .require_server()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
-    check_bearer(&headers, &server.api_token)?;
-
+    let auth = resolve_auth(&headers, &server.api_token, &state.cfg.paths.db).await?;
     let sources: Vec<String> = state.cfg.sources.iter().map(|s| s.id.clone()).collect();
 
-    let account_ok = if let Some(account) = query.account.as_deref().map(str::trim) {
-        if account.is_empty() {
-            Some(false)
-        } else {
-            let db = state.cfg.paths.db.clone();
-            let account = account.to_string();
-            let exists = tokio::task::spawn_blocking(move || account_exists(&db, &account))
-                .await
-                .map_err(|e| ApiError::Internal(format!("auth check task: {e}")))?
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
-            Some(exists)
+    match auth {
+        AuthIdentity::User { account_id } => {
+            if let Some(q) = query.account.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                if q != account_id {
+                    return Err(ApiError::Forbidden(
+                        "account query does not match token's account".into(),
+                    ));
+                }
+            }
+            Ok(Json(AuthCheckResponse {
+                ok: true,
+                sources,
+                account_id: Some(account_id),
+                account_ok: Some(true),
+                admin: None,
+            }))
         }
-    } else {
-        None
-    };
-
-    Ok(Json(AuthCheckResponse {
-        ok: true,
-        sources,
-        account_ok,
-    }))
+        AuthIdentity::Admin => {
+            let (account_id, account_ok) =
+                if let Some(account) = query.account.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                {
+                    let db = state.cfg.paths.db.clone();
+                    let account = account.to_string();
+                    let account_for_check = account.clone();
+                    let exists =
+                        tokio::task::spawn_blocking(move || account_exists(&db, &account_for_check))
+                            .await
+                            .map_err(|e| ApiError::Internal(format!("auth check task: {e}")))?
+                            .map_err(|e| ApiError::Internal(e.to_string()))?;
+                    (Some(account), Some(exists))
+                } else {
+                    (None, None)
+                };
+            Ok(Json(AuthCheckResponse {
+                ok: true,
+                sources,
+                account_id,
+                account_ok,
+                admin: Some(true),
+            }))
+        }
+    }
 }
 
 fn account_exists(db_path: &Path, account_id: &str) -> anyhow::Result<bool> {
@@ -196,7 +235,7 @@ fn account_exists(db_path: &Path, account_id: &str) -> anyhow::Result<bool> {
     Ok(found.is_some())
 }
 
-fn check_bearer(headers: &HeaderMap, expected: &str) -> Result<(), ApiError> {
+fn bearer_token(headers: &HeaderMap) -> Result<String, ApiError> {
     let Some(value) = headers.get(header::AUTHORIZATION) else {
         return Err(ApiError::Unauthorized(
             "missing Authorization: Bearer <token>".into(),
@@ -210,10 +249,77 @@ fn check_bearer(headers: &HeaderMap, expected: &str) -> Result<(), ApiError> {
             "Authorization must be Bearer <token>".into(),
         ));
     };
-    if token != expected {
-        return Err(ApiError::Unauthorized("invalid API token".into()));
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(ApiError::Unauthorized("empty API token".into()));
     }
-    Ok(())
+    Ok(token.to_string())
+}
+
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let ab = a.as_bytes();
+    let bb = b.as_bytes();
+    if ab.len() != bb.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in ab.iter().zip(bb.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+async fn resolve_auth(
+    headers: &HeaderMap,
+    admin_token: &str,
+    db_path: &Path,
+) -> Result<AuthIdentity, ApiError> {
+    let token = bearer_token(headers)?;
+    if constant_time_eq(&token, admin_token) {
+        return Ok(AuthIdentity::Admin);
+    }
+
+    let db = db_path.to_path_buf();
+    let token_owned = token.clone();
+    let account_id = tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&db)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        schema::ensure_accounts_schema(&conn)?;
+        api_tokens::lookup_account_for_token(&conn, &token_owned)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("auth lookup task: {e}")))?
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    match account_id {
+        Some(account_id) => Ok(AuthIdentity::User { account_id }),
+        None => Err(ApiError::Unauthorized("invalid API token".into())),
+    }
+}
+
+/// Resolve the account id for an import: user tokens bind; admin requires query.
+fn resolve_import_account(
+    auth: &AuthIdentity,
+    query_account: Option<&str>,
+) -> Result<String, ApiError> {
+    let query = query_account.map(str::trim).filter(|s| !s.is_empty());
+    match auth {
+        AuthIdentity::User { account_id } => {
+            if let Some(q) = query {
+                if q != account_id {
+                    return Err(ApiError::Forbidden(
+                        "account query does not match token's account".into(),
+                    ));
+                }
+            }
+            Ok(account_id.clone())
+        }
+        AuthIdentity::Admin => query.map(|s| s.to_string()).ok_or_else(|| {
+            ApiError::BadRequest(
+                "query param account is required when using the admin API token".into(),
+            )
+        }),
+    }
 }
 
 fn content_type_base(headers: &HeaderMap) -> Option<&str> {
@@ -265,14 +371,14 @@ fn safe_rel_path(name: &str) -> Result<PathBuf, ApiError> {
 async fn import_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<ImportQuery>,
+    Query(mut query): Query<ImportQuery>,
     request: Request,
 ) -> Result<Json<ImportResponse>, ApiError> {
     let server = state
         .cfg
         .require_server()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
-    check_bearer(&headers, &server.api_token)?;
+    let auth = resolve_auth(&headers, &server.api_token, &state.cfg.paths.db).await?;
 
     let Some(ct) = content_type_base(&headers) else {
         return Err(ApiError::BadRequest(
@@ -280,7 +386,11 @@ async fn import_handler(
         ));
     };
 
-    validate_import_query(&query)?;
+    if query.source.trim().is_empty() {
+        return Err(ApiError::BadRequest("query param source is required".into()));
+    }
+    let account = resolve_import_account(&auth, query.account.as_deref())?;
+    query.account = Some(account);
 
     if is_multipart_content_type(ct) {
         let multipart = Multipart::from_request(request, &state)
@@ -302,16 +412,6 @@ async fn import_handler(
     Err(ApiError::BadRequest(
         "Content-Type must be application/x-ndjson or multipart/form-data".into(),
     ))
-}
-
-fn validate_import_query(query: &ImportQuery) -> Result<(), ApiError> {
-    if query.source.trim().is_empty() {
-        return Err(ApiError::BadRequest("query param source is required".into()));
-    }
-    if query.account.trim().is_empty() {
-        return Err(ApiError::BadRequest("query param account is required".into()));
-    }
-    Ok(())
 }
 
 async fn stream_field_to_file(
@@ -429,7 +529,10 @@ async fn run_import(
         .clone();
 
     let cfg = Arc::clone(&state.cfg);
-    let account = query.account.clone();
+    let account = query
+        .account
+        .clone()
+        .ok_or_else(|| ApiError::BadRequest("account is required".into()))?;
     let source_id = source.id.clone();
     let do_dedupe = query.dedupe;
 

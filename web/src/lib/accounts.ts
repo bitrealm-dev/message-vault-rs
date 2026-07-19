@@ -154,6 +154,55 @@ function getAccountRow(db: Database.Database, accountId: string): AccountRow | u
     .get(accountId) as AccountRow | undefined;
 }
 
+export function generateApiToken(): string {
+  return `mv_${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+/** Return existing import API token, or create one (backfill for older accounts). */
+export function ensureAccountApiToken(accountId: string): string {
+  const db = openDb();
+  try {
+    return ensureAccountApiTokenTx(db, accountId);
+  } finally {
+    db.close();
+  }
+}
+
+function ensureAccountApiTokenTx(db: Database.Database, accountId: string): string {
+  const row = db
+    .prepare(`SELECT token FROM account_api_tokens WHERE account_id = ?`)
+    .get(accountId) as { token: string } | undefined;
+  if (row?.token) return row.token;
+
+  const token = generateApiToken();
+  const createdAt = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO account_api_tokens (account_id, token, created_at) VALUES (?, ?, ?)`,
+  ).run(accountId, token, createdAt);
+  return token;
+}
+
+/** Replace the account's import API token; returns the new plaintext value. */
+export function rotateAccountApiToken(accountId: string): string {
+  const db = openDb();
+  try {
+    const row = getAccountRow(db, accountId);
+    if (!row) throw new Error("account not found");
+    const token = generateApiToken();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO account_api_tokens (account_id, token, created_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(account_id) DO UPDATE SET
+         token = excluded.token,
+         created_at = excluded.created_at`,
+    ).run(accountId, token, createdAt);
+    return token;
+  } finally {
+    db.close();
+  }
+}
+
 export function listAccounts(): AccountSummary[] {
   const db = openDb();
   try {
@@ -229,6 +278,7 @@ export function createAccount(input: {
         last_name: lastName,
         phones: [input.phone],
       });
+      ensureAccountApiTokenTx(db, id);
     } catch (err) {
       throw friendlyDbError(err);
     }
