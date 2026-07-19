@@ -33,6 +33,10 @@ cd web && npm install && npm run process-assets && npm run dev
 
 Open the URL the web app prints (usually `http://localhost:3000`). You should see demo contacts and conversations you can click through.
 
+On Windows, use the native PowerShell commands in the
+[developer setup guide](docs/development.md). The guide also covers Linux
+prerequisites and troubleshooting.
+
 To put the demo data back later:
 
 ```bash
@@ -134,6 +138,9 @@ More UI detail: [`web/README.md`](web/README.md).
 ## For developers and operators
 
 This section is for people maintaining the vault, wiring automation, or debugging imports.
+
+For complete Windows and Linux prerequisites, setup commands, checks, and
+troubleshooting, see the [developer setup guide](docs/development.md).
 
 ### Repository layout
 

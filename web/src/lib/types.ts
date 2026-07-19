@@ -21,12 +21,14 @@ export type ContactListItem = {
   messageCount: number;
   /** Distinct group chats this contact participates in (non-trashed). */
   groupMessageCount: number;
+  /** Earliest 1:1 message date (YYYY-MM-DD), if any. */
+  dateStart: string | null;
+  /** Latest 1:1 message date (YYYY-MM-DD), if any. */
+  dateEnd: string | null;
 };
 
 export type ContactDetail = ContactListItem & {
   phones: string[];
-  dateStart: string | null;
-  dateEnd: string | null;
 };
 
 export type YearThread = {

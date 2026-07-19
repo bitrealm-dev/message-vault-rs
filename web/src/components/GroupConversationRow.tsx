@@ -122,44 +122,44 @@ export function GroupConversationRowBody({
   }
 
   return (
-    <>
-      <span className="min-w-0 flex-1">
-        {g.namedTitle ? (
-          <span className="mb-0.5 block truncate text-[12px] font-medium text-text">
-            {g.namedTitle}
-          </span>
-        ) : null}
-        {names.length > 0 ? (
-          <span
-            className="line-clamp-3 text-[13px] font-medium leading-snug text-text"
-            title={namesTitle}
-          >
-            {names.map((name, idx) => (
-              <span key={`${g.conversationId}-name-${idx}`}>
-                {idx > 0 ? <GroupNameSep /> : null}
-                <span className="whitespace-nowrap">{name}</span>
-              </span>
-            ))}
-          </span>
-        ) : !g.namedTitle ? (
-          <span className="line-clamp-3 text-[13px] font-medium leading-snug text-text">
-            {g.title}
-          </span>
-        ) : null}
-        <span className="mt-0.5 block text-[11px] text-muted tabular-nums">
-          {dateLabel}
+    <span className="flex min-w-0 flex-1 flex-col">
+      <span className="flex min-w-0 items-start gap-2">
+        <span className="min-w-0 flex-1">
+          {g.namedTitle ? (
+            <span className="mb-0.5 block truncate text-[12px] font-medium text-text">
+              {g.namedTitle}
+            </span>
+          ) : null}
+          {names.length > 0 ? (
+            <span
+              className="line-clamp-3 text-[13px] font-medium leading-snug text-text"
+              title={namesTitle}
+            >
+              {names.map((name, idx) => (
+                <span key={`${g.conversationId}-name-${idx}`}>
+                  {idx > 0 ? <GroupNameSep /> : null}
+                  <span className="whitespace-nowrap">{name}</span>
+                </span>
+              ))}
+            </span>
+          ) : !g.namedTitle ? (
+            <span className="line-clamp-3 text-[13px] font-medium leading-snug text-text">
+              {g.title}
+            </span>
+          ) : null}
         </span>
-      </span>
-      <span className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch py-0.5 text-[11px] text-muted">
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex shrink-0 items-center gap-1 py-0.5 text-[11px] text-muted">
           <CountBadge count={g.messageCount} title="Messages" />
           <MessageIcon className="size-3.5 shrink-0 text-muted opacity-80" />
         </span>
-        <span className="inline-flex items-center gap-0.5 tabular-nums">
+      </span>
+      <span className="mt-0.5 flex min-w-0 items-center justify-between gap-2 text-[11px] text-muted tabular-nums">
+        <span className="inline-flex shrink-0 items-center gap-0.5">
           <PeopleCountIcon className="size-3.5 shrink-0 opacity-80" />
           {g.participantCount.toLocaleString()}
         </span>
+        <span className="min-w-0 truncate text-right">{dateLabel}</span>
       </span>
-    </>
+    </span>
   );
 }

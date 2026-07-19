@@ -251,11 +251,13 @@ export function listContacts(section: ContactSection): ContactListItem[] {
   const contactIds = rows.map((r) => r.id);
   const messageCounts = contactMessageCountsById(contactIds);
   const groupMessageCounts = contactGroupMessageCountsById(contactIds);
+  const dateRanges = contactDateRangesById(contactIds);
 
   return rows
     .map((row) => {
       const name = displayName(row);
       const sorts = sortFields(row);
+      const range = dateRanges.get(row.id);
       return {
         id: row.id,
         displayName: name,
@@ -266,6 +268,8 @@ export function listContacts(section: ContactSection): ContactListItem[] {
         exclude: row.exclude !== 0,
         messageCount: messageCounts.get(row.id) ?? 0,
         groupMessageCount: groupMessageCounts.get(row.id) ?? 0,
+        dateStart: range?.start ?? null,
+        dateEnd: range?.end ?? null,
         ...sorts,
       };
     })
@@ -520,6 +524,44 @@ function contactGroupMessageCountsById(
     .all(accountId, ...contactIds) as Array<{ contact_id: number; n: number }>;
   for (const r of rows) counts.set(r.contact_id, r.n);
   return counts;
+}
+
+/** 1:1 message date ranges for many contacts (non-trashed, soft-deduped). */
+function contactDateRangesById(
+  contactIds: number[],
+): Map<number, { start: string; end: string }> {
+  const ranges = new Map<number, { start: string; end: string }>();
+  if (!contactIds.length) return ranges;
+  const accountId = currentAccountId();
+  const db = getDb();
+  const placeholders = contactIds.map(() => "?").join(",");
+  const hideDupes = hasDuplicateOfColumn()
+    ? " AND m.duplicate_of IS NULL"
+    : "";
+  const rows = db
+    .prepare(
+      `SELECT cp.contact_id AS contact_id,
+              MIN(substr(m.timestamp, 1, 10)) AS start,
+              MAX(substr(m.timestamp, 1, 10)) AS end
+       FROM contact_handles cp
+       JOIN conversations c
+         ON c.chat_identifier = cp.handle
+        AND c.conversation_type = 'individual'
+        AND c.account_id = cp.account_id
+       JOIN messages m ON m.conversation_id = c.id
+       WHERE cp.account_id = ? AND cp.contact_id IN (${placeholders})${hideDupes}
+         ${notTrashedHandleSql("cp.handle", "cp.account_id")}
+       GROUP BY cp.contact_id`,
+    )
+    .all(accountId, ...contactIds) as Array<{
+    contact_id: number;
+    start: string | null;
+    end: string | null;
+  }>;
+  for (const r of rows) {
+    if (r.start && r.end) ranges.set(r.contact_id, { start: r.start, end: r.end });
+  }
+  return ranges;
 }
 
 /** One contact open: yearly + groups + available sources with shared phone/conv lookups. */

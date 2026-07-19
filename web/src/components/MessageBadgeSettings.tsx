@@ -7,9 +7,11 @@ export function MessageBadgeSettings() {
     showMessageBadge,
     showGroupMessageBadge,
     showContactInitials,
+    showContactDateRange,
     setShowMessageBadge,
     setShowGroupMessageBadge,
     setShowContactInitials,
+    setShowContactDateRange,
   } = useMessageBadgePrefs();
 
   return (
@@ -19,7 +21,7 @@ export function MessageBadgeSettings() {
           Messages
         </h3>
         <p className="mt-1 text-[14px] text-muted">
-          Choose which count badges appear on contacts in the list.
+          Choose which badges and indicators appear on contacts in the list.
         </p>
 
         <div className="mt-4 space-y-3">
@@ -27,10 +29,19 @@ export function MessageBadgeSettings() {
             <input
               type="checkbox"
               className="checkbox-list"
+              checked={showContactDateRange}
+              onChange={(e) => setShowContactDateRange(e.target.checked)}
+            />
+            Show message date range
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5 text-[14px] text-text">
+            <input
+              type="checkbox"
+              className="checkbox-list"
               checked={showMessageBadge}
               onChange={(e) => setShowMessageBadge(e.target.checked)}
             />
-            Show message badge
+            Show 1-1 message count
           </label>
           <label className="flex cursor-pointer items-center gap-2.5 text-[14px] text-text">
             <input
@@ -39,7 +50,7 @@ export function MessageBadgeSettings() {
               checked={showGroupMessageBadge}
               onChange={(e) => setShowGroupMessageBadge(e.target.checked)}
             />
-            Show group message badge
+            Show group messages icon
           </label>
         </div>
       </section>

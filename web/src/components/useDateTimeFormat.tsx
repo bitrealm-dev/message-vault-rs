@@ -11,6 +11,8 @@ import {
   formatDateRange,
   formatDateTime,
   formatTimeOnly,
+  isDateFormatMode,
+  isTimeFormatMode,
   readStoredDateTimeFormat,
   resolveDatePattern,
   resolveTimePattern,
@@ -23,6 +25,11 @@ import {
   type TimeFormatMode,
 } from "@/lib/dateTimeFormat";
 import {
+  fetchServerPrefs,
+  pushServerPrefs,
+  reconcilePrefs,
+} from "@/lib/prefsClient";
+import {
   createContext,
   useCallback,
   useContext,
@@ -31,6 +38,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
+
+const DATE_TIME_PREF_KEYS = [
+  DATE_MODE_KEY,
+  DATE_CUSTOM_KEY,
+  TIME_MODE_KEY,
+  TIME_CUSTOM_KEY,
+] as const;
 
 export type UseDateTimeFormatResult = {
   dateMode: DateFormatMode;
@@ -54,22 +68,12 @@ const DateTimeFormatContext = createContext<UseDateTimeFormatResult | null>(
 );
 
 export function DateTimeFormatProvider({ children }: { children: ReactNode }) {
-  const [dateMode, setDateModeState] = useState<DateFormatMode>(() => {
-    if (typeof window === "undefined") return DEFAULT_DATE_MODE;
-    return readStoredDateTimeFormat().dateMode;
-  });
-  const [dateCustom, setDateCustomState] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_DATE_CUSTOM;
-    return readStoredDateTimeFormat().dateCustom;
-  });
-  const [timeMode, setTimeModeState] = useState<TimeFormatMode>(() => {
-    if (typeof window === "undefined") return DEFAULT_TIME_MODE;
-    return readStoredDateTimeFormat().timeMode;
-  });
-  const [timeCustom, setTimeCustomState] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_TIME_CUSTOM;
-    return readStoredDateTimeFormat().timeCustom;
-  });
+  // Start from defaults on both server and client so hydration matches;
+  // stored values are applied in the mount effect below.
+  const [dateMode, setDateModeState] = useState<DateFormatMode>(DEFAULT_DATE_MODE);
+  const [dateCustom, setDateCustomState] = useState(DEFAULT_DATE_CUSTOM);
+  const [timeMode, setTimeModeState] = useState<TimeFormatMode>(DEFAULT_TIME_MODE);
+  const [timeCustom, setTimeCustomState] = useState(DEFAULT_TIME_CUSTOM);
 
   useEffect(() => {
     const stored = readStoredDateTimeFormat();
@@ -77,6 +81,27 @@ export function DateTimeFormatProvider({ children }: { children: ReactNode }) {
     setDateCustomState(stored.dateCustom);
     setTimeModeState(stored.timeMode);
     setTimeCustomState(stored.timeCustom);
+
+    let cancelled = false;
+    void fetchServerPrefs().then((serverPrefs) => {
+      if (cancelled || !serverPrefs) return;
+      const { values, toPush } = reconcilePrefs(
+        serverPrefs,
+        DATE_TIME_PREF_KEYS,
+      );
+      const dm = values[DATE_MODE_KEY];
+      if (isDateFormatMode(dm)) setDateModeState(dm);
+      const dc = values[DATE_CUSTOM_KEY];
+      if (dc != null && dc.trim()) setDateCustomState(dc);
+      const tm = values[TIME_MODE_KEY];
+      if (isTimeFormatMode(tm)) setTimeModeState(tm);
+      const tc = values[TIME_CUSTOM_KEY];
+      if (tc != null && tc.trim()) setTimeCustomState(tc);
+      if (Object.keys(toPush).length > 0) pushServerPrefs(toPush);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const datePattern = resolveDatePattern(dateMode, dateCustom);
@@ -85,6 +110,7 @@ export function DateTimeFormatProvider({ children }: { children: ReactNode }) {
   const setDateMode = useCallback((mode: DateFormatMode) => {
     setDateModeState(mode);
     window.localStorage.setItem(DATE_MODE_KEY, mode);
+    pushServerPrefs({ [DATE_MODE_KEY]: mode });
   }, []);
 
   const setDateCustom = useCallback((pattern: string): PatternValidation => {
@@ -92,12 +118,14 @@ export function DateTimeFormatProvider({ children }: { children: ReactNode }) {
     if (!v.ok) return v;
     setDateCustomState(pattern);
     window.localStorage.setItem(DATE_CUSTOM_KEY, pattern);
+    pushServerPrefs({ [DATE_CUSTOM_KEY]: pattern });
     return v;
   }, []);
 
   const setTimeMode = useCallback((mode: TimeFormatMode) => {
     setTimeModeState(mode);
     window.localStorage.setItem(TIME_MODE_KEY, mode);
+    pushServerPrefs({ [TIME_MODE_KEY]: mode });
   }, []);
 
   const setTimeCustom = useCallback((pattern: string): PatternValidation => {
@@ -105,6 +133,7 @@ export function DateTimeFormatProvider({ children }: { children: ReactNode }) {
     if (!v.ok) return v;
     setTimeCustomState(pattern);
     window.localStorage.setItem(TIME_CUSTOM_KEY, pattern);
+    pushServerPrefs({ [TIME_CUSTOM_KEY]: pattern });
     return v;
   }, []);
 

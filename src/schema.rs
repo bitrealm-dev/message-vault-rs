@@ -547,6 +547,13 @@ pub fn ensure_accounts_schema(conn: &Connection) -> Result<()> {
             token TEXT NOT NULL UNIQUE,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS account_prefs (
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            PRIMARY KEY (account_id, key)
+        );
         "#,
     )?;
     migrate_legacy_accounts_email(conn)?;

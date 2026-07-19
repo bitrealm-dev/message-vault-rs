@@ -47,6 +47,7 @@ export function BrowseThreadPane({
   activeThread,
   groupThread,
   onParticipantClick,
+  hasConversationChoices = false,
 }: {
   detail: ContactDetail | null;
   sources: string[];
@@ -66,6 +67,8 @@ export function BrowseThreadPane({
     participant: GroupParticipant,
     anchor: DOMRect,
   ) => void;
+  /** Direct and/or groups exist in column 3 — prompt the user to pick one. */
+  hasConversationChoices?: boolean;
 }) {
   const { formatDateRange } = useDateTimeFormat();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -447,7 +450,11 @@ export function BrowseThreadPane({
 
         {!activeThread && !loadingMessages && detail && (
           <p className="pt-8 text-center text-[13px] text-muted">
-            {threadsReady ? "No messages" : "Loading messages…"}
+            {!threadsReady
+              ? "Loading messages…"
+              : hasConversationChoices
+                ? "Pick a conversation"
+                : "No messages"}
           </p>
         )}
         {loadingMessages && messages.length === 0 && (

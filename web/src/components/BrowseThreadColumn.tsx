@@ -43,6 +43,7 @@ export function BrowseThreadColumn({
   loadingMessages,
   loadingSelectionGroups,
   threadsLoadedFor,
+  hasConversationChoices = false,
   onContactNameClick,
   onGroupParticipantClick,
   onClearContactSelection,
@@ -73,6 +74,7 @@ export function BrowseThreadColumn({
   loadingMessages: boolean;
   loadingSelectionGroups: boolean;
   threadsLoadedFor: number | null;
+  hasConversationChoices?: boolean;
   onContactNameClick: (anchorRect: DOMRect) => void;
   onGroupParticipantClick: (
     participant: GroupParticipant,
@@ -164,6 +166,7 @@ export function BrowseThreadColumn({
             onParticipantClick={
               vaultReadOnly ? undefined : onGroupParticipantClick
             }
+            hasConversationChoices={hasConversationChoices}
           />
         </div>
       ) : null}

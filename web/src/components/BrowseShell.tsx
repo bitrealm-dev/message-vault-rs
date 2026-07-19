@@ -329,11 +329,9 @@ export function BrowseShell({
       setGroupChatQuery("");
       cancelContactFormRef.current();
       if (id === contactId) {
-        const dmIds = [
-          ...new Set(yearly.flatMap((y) => y.conversationIds)),
-        ];
-        setActiveThread("dm");
-        setThreadConversationIds(dmIds.length > 0 ? dmIds : null);
+        // Re-focus: reload and let the threads effect apply Direct-only auto-open.
+        setThreadConversationIds(null);
+        setActiveThread(null);
         setThreadsEpoch((e) => e + 1);
         return;
       }
@@ -347,7 +345,7 @@ export function BrowseShell({
       params.delete("conv");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [contactId, pathname, router, searchParams, yearly],
+    [contactId, pathname, router, searchParams],
   );
   selectContactRef.current = selectContact;
 
@@ -469,7 +467,9 @@ export function BrowseShell({
           return;
         }
 
+        // Keep a valid already-open thread on the same contact; reset when switching.
         setActiveThread((prev) => {
+          if (switchingContact) return null;
           if (prev === "dm") return prev;
           if (prev?.startsWith("gfull-")) {
             const stillThere = nextGroupChats.some((t) => {
@@ -484,8 +484,8 @@ export function BrowseShell({
           return null;
         });
 
-        // Prefer an already-open group thread; otherwise load full 1:1 history.
-        let key = activeThreadRef.current;
+        // Keep a valid already-open group; auto-open Direct only when there are no groups.
+        let key = switchingContact ? null : activeThreadRef.current;
         if (key?.startsWith("gfull-")) {
           const stillThere = nextGroupChats.some((t) => {
             const ids =
@@ -502,19 +502,30 @@ export function BrowseShell({
         const dmIds = [
           ...new Set(nextYearly.flatMap((y) => y.conversationIds)),
         ];
+        const hasGroups = nextGroupChats.length > 0;
 
-        if (!key || key === "dm" || switchingContact) {
-          if (dmIds.length === 0) {
-            if (switchingContact) {
-              setThreadConversationIds(null);
-              setActiveThread(null);
-              setSelectedGroupConversationId(null);
-            }
+        if (switchingContact) {
+          setSelectedGroupConversationId(null);
+          if (dmIds.length > 0 && !hasGroups) {
+            key = "dm";
+            setActiveThread("dm");
+          } else {
+            setActiveThread(null);
+            setThreadConversationIds(null);
             return;
           }
-          key = "dm";
-          setActiveThread("dm");
-          if (switchingContact) setSelectedGroupConversationId(null);
+        } else if (!key) {
+          if (dmIds.length > 0 && !hasGroups) {
+            key = "dm";
+            setActiveThread("dm");
+          } else {
+            setThreadConversationIds(null);
+            return;
+          }
+        } else if (key === "dm" && dmIds.length === 0) {
+          setActiveThread(null);
+          setThreadConversationIds(null);
+          return;
         }
 
         let convIds: number[] | null = null;
@@ -730,10 +741,26 @@ export function BrowseShell({
     setSelectedGroupConversationId(null);
   }, [hasGroupSelection]);
 
+  // Multi-select is for shared-group discovery — clear an open Direct thread.
+  useEffect(() => {
+    if (!hasSelection) return;
+    if (activeThreadRef.current !== "dm") return;
+    setActiveThread(null);
+    setThreadConversationIds(null);
+  }, [hasSelection]);
+
   useEffect(() => {
     clearGroupSelection();
     setSelectedGroupConversationId(null);
   }, [selectionIdsKey, contactId, paneStorageKey, clearGroupSelection]);
+
+  const openDirectThread = useCallback(() => {
+    const dmIds = [...new Set(yearly.flatMap((y) => y.conversationIds))];
+    if (dmIds.length === 0) return;
+    clearGroupSelection();
+    setSelectedGroupConversationId(null);
+    openThread(dmIds, "dm");
+  }, [yearly, openThread, clearGroupSelection]);
 
   const { messages, loading: loadingMessages } = useThreadMessages({
     conversationIds: threadConversationIds,
@@ -1545,6 +1572,29 @@ export function BrowseShell({
                   ? "No matches"
                   : "No group messages"
           }
+          directAvailable={
+            !hasSelection &&
+            contactId != null &&
+            yearly.some((y) => y.conversationIds.length > 0)
+          }
+          directActive={activeThread === "dm"}
+          directDateStart={
+            yearly.length > 0
+              ? yearly.reduce(
+                  (min, y) => (y.dateStart < min ? y.dateStart : min),
+                  yearly[0].dateStart,
+                )
+              : null
+          }
+          directDateEnd={
+            yearly.length > 0
+              ? yearly.reduce(
+                  (max, y) => (y.dateEnd > max ? y.dateEnd : max),
+                  yearly[0].dateEnd,
+                )
+              : null
+          }
+          onDirectClick={openDirectThread}
         />
       </Panel>
 
@@ -1576,6 +1626,11 @@ export function BrowseShell({
           loadingMessages={loadingMessages}
           loadingSelectionGroups={loadingSelectionGroups}
           threadsLoadedFor={threadsLoadedFor}
+          hasConversationChoices={
+            !hasSelection &&
+            (yearly.some((y) => y.conversationIds.length > 0) ||
+              groupChats.length > 0)
+          }
           onContactNameClick={onContactNameClick}
           onGroupParticipantClick={onGroupParticipantClick}
           onClearContactSelection={clearSelection}

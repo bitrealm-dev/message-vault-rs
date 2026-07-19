@@ -1,14 +1,16 @@
-/** Display toggles for contact-list chrome (badges + initials). */
+/** Display toggles for contact-list chrome (badges + initials + date range). */
 
 export const SHOW_MESSAGE_BADGE_KEY = "mv-show-message-badge";
 export const SHOW_GROUP_MESSAGE_BADGE_KEY = "mv-show-group-message-badge";
 export const SHOW_CONTACT_INITIALS_KEY = "mv-show-contact-initials";
+export const SHOW_CONTACT_DATE_RANGE_KEY = "mv-show-contact-date-range";
 
 export type BadgeVisibility = "on" | "off";
 
-export const DEFAULT_SHOW_MESSAGE_BADGE: BadgeVisibility = "on";
-export const DEFAULT_SHOW_GROUP_MESSAGE_BADGE: BadgeVisibility = "on";
+export const DEFAULT_SHOW_MESSAGE_BADGE: BadgeVisibility = "off";
+export const DEFAULT_SHOW_GROUP_MESSAGE_BADGE: BadgeVisibility = "off";
 export const DEFAULT_SHOW_CONTACT_INITIALS: BadgeVisibility = "on";
+export const DEFAULT_SHOW_CONTACT_DATE_RANGE: BadgeVisibility = "on";
 
 export function isBadgeVisibility(
   v: string | null | undefined,

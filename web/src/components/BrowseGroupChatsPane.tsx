@@ -11,6 +11,7 @@ import {
   type BrowseGroupChatSortBy,
   type SortOrder,
 } from "./SortByMenu";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 import { YearFilterMenu } from "./YearFilterMenu";
 
 export function BrowseGroupChatsPane({
@@ -35,6 +36,11 @@ export function BrowseGroupChatsPane({
   onSearchQueryChange,
   searchDisabled = false,
   emptyLabel = "No group messages",
+  directAvailable = false,
+  directActive = false,
+  directDateStart = null,
+  directDateEnd = null,
+  onDirectClick,
 }: {
   items: CollapsedGroupConversation[];
   selectedConversationId: number | null;
@@ -63,8 +69,19 @@ export function BrowseGroupChatsPane({
   onSearchQueryChange: (query: string) => void;
   searchDisabled?: boolean;
   emptyLabel?: string;
+  /** Synthetic 1:1 chooser row (focused contact path only). */
+  directAvailable?: boolean;
+  directActive?: boolean;
+  directDateStart?: string | null;
+  directDateEnd?: string | null;
+  onDirectClick?: () => void;
 }) {
+  const { formatDateRange } = useDateTimeFormat();
   const selectionActive = selectedIds.size >= 1;
+  const directDateLabel =
+    directDateStart && directDateEnd
+      ? formatDateRange(directDateStart, directDateEnd, " – ")
+      : null;
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-sidebar">
@@ -121,6 +138,36 @@ export function BrowseGroupChatsPane({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+        {directAvailable && onDirectClick && (
+          <button
+            type="button"
+            onClick={onDirectClick}
+            aria-pressed={directActive}
+            className={`group relative flex w-full items-start gap-1.5 border-b border-border/40 py-2.5 pr-3 pl-0 text-left select-none outline-none focus:outline-none focus-visible:outline-none ${
+              directActive
+                ? "bg-accent/20 hover:bg-accent/25"
+                : "hover:bg-hover-strong"
+            }`}
+          >
+            {directActive && (
+              <span
+                aria-hidden
+                className="absolute top-1 bottom-1 left-0 w-1 rounded-full bg-accent/80"
+              />
+            )}
+            <span className="w-10 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium leading-snug text-text">
+                1-1 messages
+              </span>
+              {directDateLabel ? (
+                <span className="mt-0.5 block text-right text-[11px] text-muted tabular-nums">
+                  {directDateLabel}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        )}
         <div className="sticky top-0 z-10 border-b border-border bg-sidebar px-3 py-1 text-[11px] font-semibold text-muted">
           Group Messages
         </div>

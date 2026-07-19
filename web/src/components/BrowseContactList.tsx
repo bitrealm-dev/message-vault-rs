@@ -24,6 +24,7 @@ import {
 } from "./icons";
 import { PaneSearchField } from "./PaneSearchField";
 import { SortByMenu, type SortMode, type SortOrder } from "./SortByMenu";
+import { useDateTimeFormat } from "./useDateTimeFormat";
 import { useMessageBadgePrefs } from "./useMessageBadgePrefs";
 
 export function BrowseContactList({
@@ -90,7 +91,9 @@ export function BrowseContactList({
     showMessageBadge,
     showGroupMessageBadge,
     showContactInitials,
+    showContactDateRange,
   } = useMessageBadgePrefs();
+  const { formatDateRange } = useDateTimeFormat();
   const onVcfPicked = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -327,27 +330,38 @@ export function BrowseContactList({
                     }}
                     className="flex min-w-0 flex-1 items-stretch justify-between gap-2 self-stretch text-left outline-none focus:outline-none focus-visible:outline-none"
                   >
-                    <span className="min-w-0 self-start">
+                    <span className="min-w-0 flex-1 self-start">
                       <span className="block truncate text-[13px] font-semibold text-text">
                         {c.displayName}
                       </span>
-                      {c.preferredHandle &&
-                        c.preferredHandle !== c.displayName && (
-                          <span className="block truncate text-[12px] text-muted">
-                            {c.preferredHandle}
-                          </span>
-                        )}
-                      {c.preferredHandle &&
-                        c.preferredHandle === c.displayName && (
-                          <span
-                            className="block h-[1.5rem] text-[12px]"
-                            aria-hidden
-                          />
-                        )}
+                      {(() => {
+                        const showHandle =
+                          !!c.preferredHandle &&
+                          c.preferredHandle !== c.displayName;
+                        const dateLabel =
+                          showContactDateRange && c.dateStart && c.dateEnd
+                            ? formatDateRange(c.dateStart, c.dateEnd, " – ")
+                            : null;
+                        if (!showHandle && !dateLabel) return null;
+                        return (
+                          <>
+                            {showHandle ? (
+                              <span className="block truncate text-[12px] text-muted">
+                                {c.preferredHandle}
+                              </span>
+                            ) : null}
+                            {dateLabel ? (
+                              <span className="block truncate text-right text-[11px] text-muted tabular-nums">
+                                {dateLabel}
+                              </span>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </span>
                     {((showMessageBadge && c.messageCount > 0) ||
                       (showGroupMessageBadge && c.groupMessageCount > 0)) && (
-                      <span className="flex shrink-0 flex-col items-end justify-between gap-1.5 self-stretch">
+                      <span className="flex shrink-0 items-center gap-1.5 self-start pt-0.5">
                         {showMessageBadge && c.messageCount > 0 && (
                           <span className="inline-flex items-center gap-1">
                             <CountBadge
@@ -358,11 +372,10 @@ export function BrowseContactList({
                           </span>
                         )}
                         {showGroupMessageBadge && c.groupMessageCount > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            <CountBadge
-                              count={c.groupMessageCount}
-                              title="Group messages"
-                            />
+                          <span
+                            title="In group messages"
+                            className="inline-flex items-center"
+                          >
                             <GroupMessagesOutlineIcon className="size-3.5 shrink-0 text-muted opacity-80" />
                           </span>
                         )}
