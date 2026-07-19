@@ -168,17 +168,6 @@ fn find_vault_push() -> PathBuf {
     PathBuf::from("vault-push")
 }
 
-fn source_label(id: &str) -> &'static str {
-    match id {
-        "imessage" => "iMessage",
-        "go-sms-pro" => "GO SMS Pro",
-        "sms-backup-plus" => "SMS Backup+",
-        "sms-backup-restore" => "SMS Backup & Restore",
-        "imazing" => "iMazing",
-        _ => "Unknown",
-    }
-}
-
 fn sorted_source_ids() -> Vec<&'static str> {
     let mut ids: Vec<_> = csv_ingest::known_source_ids().into_iter().collect();
     ids.sort_unstable();
@@ -357,10 +346,23 @@ impl App {
             self.source_detect_note.clear();
             return;
         }
-        match csv_ingest::detect_export_source(PathBuf::from(dir).as_path()) {
+        let path = PathBuf::from(dir);
+        match csv_ingest::detect_export_source(path.as_path()) {
             Ok(Some(id)) => {
                 self.source_id = id.clone();
-                self.source_detect_note = format!("Detected: {}", source_label(&id));
+                let mut note = format!("Detected: {}", csv_ingest::source_display_label(&id));
+                if let Ok(Some(csv_ver)) = csv_ingest::detect_export_tool_version(path.as_path()) {
+                    if let Some(info) = csv_ingest::source_info(&id) {
+                        if let Some(expected) = info.tool_version {
+                            if csv_ver != expected {
+                                note.push_str(&format!(
+                                    " (CSV version {csv_ver}; catalog targets {expected})"
+                                ));
+                            }
+                        }
+                    }
+                }
+                self.source_detect_note = note;
             }
             Ok(None) => {
                 self.source_detect_note =
@@ -688,14 +690,14 @@ impl eframe::App for App {
                         let selected_label = if self.source_id.is_empty() {
                             "Choose source…".to_string()
                         } else {
-                            format!("{} ({})", source_label(&self.source_id), self.source_id)
+                            csv_ingest::source_display_label(&self.source_id)
                         };
                         egui::ComboBox::from_id_salt("source_combo")
                             .selected_text(selected_label)
                             .width(480.0)
                             .show_ui(ui, |ui| {
                                 for id in ids {
-                                    let label = format!("{} ({id})", source_label(id));
+                                    let label = csv_ingest::source_display_label(id);
                                     if ui
                                         .selectable_value(
                                             &mut self.source_id,

@@ -66,13 +66,13 @@ Fields:
 
 ## Converters
 
-| Source id | Script |
-|-----------|--------|
-| `go-sms-pro` | [`python/go_sms_pro_to_vault.py`](python/go_sms_pro_to_vault.py) |
-| `sms-backup-plus` | [`python/sms_backup_plus_to_vault.py`](python/sms_backup_plus_to_vault.py) |
-| `sms-backup-restore` | [`python/sms_backup_restore_to_vault.py`](python/sms_backup_restore_to_vault.py) |
-| `imessage` | [`python/imessage_to_vault.py`](python/imessage_to_vault.py) |
-| `imazing` | [`python/imazing_to_vault.py`](python/imazing_to_vault.py) |
+| Source id | Targets | Script |
+|-----------|---------|--------|
+| `imessage` | iMessage Exporter **4.2.0** | [`python/imessage_to_vault.py`](python/imessage_to_vault.py) |
+| `sms-backup-plus` | SMS Backup+ **1.5.11** | [`python/sms_backup_plus_to_vault.py`](python/sms_backup_plus_to_vault.py) |
+| `sms-backup-restore` | SMS Backup & Restore **10.26.003** | [`python/sms_backup_restore_to_vault.py`](python/sms_backup_restore_to_vault.py) |
+| `go-sms-pro` | GO SMS Pro (version TBD) | [`python/go_sms_pro_to_vault.py`](python/go_sms_pro_to_vault.py) |
+| `imazing` | iMazing **3.5.5** | [`python/imazing_to_vault.py`](python/imazing_to_vault.py) |
 
 ## Samples
 

@@ -39,6 +39,15 @@ pub struct ConversationRecord {
     pub participants: Vec<ParticipantRecord>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exported_at: Option<String>,
+    /// Wire source id (`imessage`, `sms-backup-plus`, …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_source: Option<String>,
+    /// Upstream export tool name (e.g. `iMessage Exporter`, `SMS Backup+`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_tool: Option<String>,
+    /// Upstream tool / app version this export targets (e.g. `4.2.0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_tool_version: Option<String>,
 }
 
 fn default_schema_name() -> String {
@@ -185,6 +194,9 @@ impl ConversationRecord {
             group_title,
             participants,
             exported_at: Some(exported_at.into()),
+            export_source: None,
+            export_tool: None,
+            export_tool_version: None,
         }
     }
 }

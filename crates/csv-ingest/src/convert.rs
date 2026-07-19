@@ -229,6 +229,28 @@ pub fn detect_export_source(input: &Path) -> Result<Option<String>> {
     Ok(None)
 }
 
+/// Read `export_tool_version` from the first data row of the first CSV (if present).
+pub fn detect_export_tool_version(input: &Path) -> Result<Option<String>> {
+    let paths = collect_csv_paths(input)?;
+    let Some(path) = paths.first() else {
+        return Ok(None);
+    };
+    let mut rdr = Reader::from_path(path)?;
+    let headers = rdr.headers()?.clone();
+    let Some(i) = headers.iter().position(|h| h == "export_tool_version") else {
+        return Ok(None);
+    };
+    if let Some(Ok(row)) = rdr.records().next() {
+        if let Some(v) = row.get(i) {
+            let v = v.trim();
+            if !v.is_empty() {
+                return Ok(Some(v.to_string()));
+            }
+        }
+    }
+    Ok(None)
+}
+
 pub fn known_source_ids() -> HashSet<&'static str> {
     CONVERTERS.iter().map(|(id, _)| *id).collect()
 }

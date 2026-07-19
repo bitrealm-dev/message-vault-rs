@@ -7,8 +7,10 @@
 
 mod convert;
 pub mod push;
+pub mod sources;
 
 pub use convert::{
-    convert_directory, detect_export_source, has_converter, known_source_ids,
-    resolve_converter_script, ConvertReport,
+    convert_directory, detect_export_source, detect_export_tool_version, has_converter,
+    known_source_ids, resolve_converter_script, ConvertReport,
 };
+pub use sources::{source_display_label, source_info, SourceInfo, SOURCES};

@@ -29,6 +29,15 @@ from vault_common import (
     write_ndjson,
 )
 
+# source_id → (export_tool, export_tool_version | None)
+SOURCE_PROVENANCE: dict[str, tuple[str, str | None]] = {
+    "go-sms-pro": ("GO SMS Pro", None),
+    "imazing": ("iMazing", "3.5.5"),
+    "imessage": ("iMessage Exporter", "4.2.0"),
+    "sms-backup-plus": ("SMS Backup+", "1.5.11"),
+    "sms-backup-restore": ("SMS Backup & Restore", "10.26.003"),
+}
+
 
 def parse_attachments(raw: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
@@ -202,7 +211,11 @@ def row_to_message(
 
 
 def convert_csv(
-    path: Path, default_service: str, exported_at: str
+    path: Path,
+    default_service: str,
+    exported_at: str,
+    *,
+    source_id: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     with path.open(newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
@@ -263,6 +276,25 @@ def convert_csv(
     }
     if group_title:
         header["group_title"] = group_title
+
+    # Provenance: CSV columns win; fall back to known source catalog.
+    first = rows[0]
+    es = (first.get("export_source") or "").strip() or (source_id or "")
+    et = (first.get("export_tool") or "").strip()
+    etv = (first.get("export_tool_version") or "").strip()
+    if (not et or not etv) and es and es in SOURCE_PROVENANCE:
+        cat_tool, cat_ver = SOURCE_PROVENANCE[es]
+        if not et:
+            et = cat_tool
+        if not etv and cat_ver:
+            etv = cat_ver
+    if es:
+        header["export_source"] = es
+    if et:
+        header["export_tool"] = et
+    if etv:
+        header["export_tool_version"] = etv
+
     return header, messages
 
 
@@ -311,7 +343,12 @@ def run_exporter_main(
 
     for csv_path in csvs:
         try:
-            header, msgs = convert_csv(csv_path, args.default_service, exported_at)
+            header, msgs = convert_csv(
+                csv_path,
+                args.default_service,
+                exported_at,
+                source_id=args.source_id,
+            )
             out_path = args.output / f"{csv_path.stem}.json"
             write_ndjson(out_path, header, msgs)
             conversations += 1

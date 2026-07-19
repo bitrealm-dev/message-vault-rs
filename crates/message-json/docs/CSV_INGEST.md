@@ -46,7 +46,7 @@ Example message line (shortened):
 {"record":"message","guid":"…","timestamp":"2021-01-01T00:00:00Z","is_from_me":false,"sender":"+14075551234","service":"SMS","text":"smoke hello"}
 ```
 
-Which backup the data came from is the vault **source id** in config (for example `go-sms-pro`), not a field on every JSON line. The CSV column `export_source` only helps csv-ingest pick the right converter.
+Which backup the data came from is the vault **source id** (for example `go-sms-pro`). CSV columns `export_source`, `export_tool`, and `export_tool_version` record that provenance; csv-ingest copies them onto the vault **conversation** NDJSON header. `export_source` also helps pick the right converter.
 
 ## Conversation header (first line)
 
@@ -63,6 +63,9 @@ Matches [`message_json::vault::ConversationRecord`](../src/vault.rs):
 | `group_title` | no | Group display name when present |
 | `participants` | yes | People in the chat (from peers, senders, or `participants_json`) |
 | `exported_at` | no | UTC time when the converter ran |
+| `export_source` | no | Wire source id (`imessage`, `sms-backup-plus`, …) |
+| `export_tool` | no | Upstream tool name (`iMessage Exporter`, `SMS Backup+`, …) |
+| `export_tool_version` | no | Upstream tool/app version this export targets |
 
 ## Message fields
 

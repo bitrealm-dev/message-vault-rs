@@ -195,6 +195,9 @@ def convert_csv(path: Path, tz: ZoneInfo, exported_at: str) -> tuple[dict, list[
         "conversation_type": "group" if group else "individual",
         "participants": participants,
         "exported_at": exported_at,
+        "export_source": "imazing",
+        "export_tool": "iMazing",
+        "export_tool_version": "3.5.5",
     }
     if group and chat_session:
         header["group_title"] = chat_session
