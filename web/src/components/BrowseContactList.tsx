@@ -18,7 +18,6 @@ import { ListHistoryMenu, type ListHistoryMenuItem } from "./history";
 import { IconHoverTarget } from "./IconHoverLabel";
 import {
   GroupMessagesOutlineIcon,
-  MessageIcon,
   PencilIcon,
   XIcon,
 } from "./icons";
@@ -342,7 +341,13 @@ export function BrowseContactList({
                           showContactDateRange && c.dateStart && c.dateEnd
                             ? formatDateRange(c.dateStart, c.dateEnd, " – ")
                             : null;
-                        if (!showHandle && !dateLabel) return null;
+                        const showGroupIcon =
+                          showGroupMessageBadge && c.groupMessageCount > 0;
+                        const showCountBadge =
+                          showMessageBadge && c.messageCount > 0;
+                        const hasBottomLine =
+                          !!dateLabel || showGroupIcon || showCountBadge;
+                        if (!showHandle && !hasBottomLine) return null;
                         return (
                           <>
                             {showHandle ? (
@@ -350,37 +355,44 @@ export function BrowseContactList({
                                 {c.preferredHandle}
                               </span>
                             ) : null}
-                            {dateLabel ? (
-                              <span className="block truncate text-right text-[11px] text-muted tabular-nums">
-                                {dateLabel}
+                            {hasBottomLine ? (
+                              <span className="mt-0.5 flex min-w-0 items-center justify-between gap-2">
+                                <span className="inline-flex shrink-0 items-center gap-1.5">
+                                  {/* Reserve the icon slot whenever the setting is on so badges align across rows. */}
+                                  {showGroupMessageBadge && (
+                                    <span
+                                      title={
+                                        showGroupIcon
+                                          ? "In group messages"
+                                          : undefined
+                                      }
+                                      className="inline-flex items-center"
+                                    >
+                                      <GroupMessagesOutlineIcon
+                                        className={`size-3.5 shrink-0 text-muted opacity-80 ${
+                                          showGroupIcon ? "" : "invisible"
+                                        }`}
+                                      />
+                                    </span>
+                                  )}
+                                  {showCountBadge && (
+                                    <CountBadge
+                                      count={c.messageCount}
+                                      title="1:1 messages"
+                                    />
+                                  )}
+                                </span>
+                                {dateLabel ? (
+                                  <span className="min-w-0 truncate text-right text-[11px] text-muted tabular-nums">
+                                    {dateLabel}
+                                  </span>
+                                ) : null}
                               </span>
                             ) : null}
                           </>
                         );
                       })()}
                     </span>
-                    {((showMessageBadge && c.messageCount > 0) ||
-                      (showGroupMessageBadge && c.groupMessageCount > 0)) && (
-                      <span className="flex shrink-0 items-center gap-1.5 self-start pt-0.5">
-                        {showMessageBadge && c.messageCount > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            <CountBadge
-                              count={c.messageCount}
-                              title="1:1 messages"
-                            />
-                            <MessageIcon className="size-3.5 shrink-0 text-muted opacity-80" />
-                          </span>
-                        )}
-                        {showGroupMessageBadge && c.groupMessageCount > 0 && (
-                          <span
-                            title="In group messages"
-                            className="inline-flex items-center"
-                          >
-                            <GroupMessagesOutlineIcon className="size-3.5 shrink-0 text-muted opacity-80" />
-                          </span>
-                        )}
-                      </span>
-                    )}
                   </button>
                   {showInsetDivider && (
                     <span
